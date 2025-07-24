@@ -5,6 +5,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from utils import constants 
 
+# Define drift type order
+drift_type_order = [
+    "Sudden (before to after)",
+    "Gradual (before to after)",
+    "Gradual (before to during)",
+    "Gradual (during to after)",
+    "Incremental (before to after)"
+]
 
 def load_complexity_per_window_dict():
     all_files = list(Path("results/complexity_assessment").glob("*/complexity_per_window.csv"))
@@ -13,8 +21,8 @@ def load_complexity_per_window_dict():
         dataset = f.parent.name
         df = pd.read_csv(f)
         df["dataset"] = dataset
-        df["start_change_id"] = df["start_change_id"].fillna(-1).astype(int)
-        df["end_change_id"] = df["end_change_id"].astype(int)
+        df["start_change_id"] = df["start_change_id"].astype("Int64")
+        df["end_change_id"] =  df["end_change_id"].astype("Int64")
         df["window_id"] = df["window_id"].astype(int)
         complexity_per_window_df_dict[dataset] = df
     return complexity_per_window_df_dict
@@ -26,7 +34,7 @@ def load_drift_info(complexity_per_window_df_dict):
         path = Path("results/drift_detection") / dataset / "results_adwin_j_input_approach.csv"
         if path.exists():
             drift_info = pd.read_csv(path)
-            drift_info["calc_change_id"] = drift_info["calc_change_id"].astype(int)
+            drift_info["calc_change_id"] = drift_info["calc_change_id"].astype("Int64")
             drift_info_by_dataset[dataset] = drift_info.set_index("calc_change_id").to_dict(orient="index")
     return drift_info_by_dataset
 
@@ -45,7 +53,7 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
             if change_type == "sudden":
                 if not prev_row.empty and not curr_row.empty:
                     deltas = (curr_row.iloc[0][measure_columns] - prev_row.iloc[0][measure_columns]).to_dict()
-                    results.append({"change_type": "Sudden", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
+                    results.append({"change_type": "Sudden (before to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
 
             elif change_type == "gradual_start":
                 if not prev_row.empty and not curr_row.empty:
@@ -62,6 +70,12 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
 
                     results.append({"change_type": "Gradual (before to after)", **{k.replace("measure_", ""): v for k, v in (after - before).items()}})
                     results.append({"change_type": "Gradual (during to after)", **{k.replace("measure_", ""): v for k, v in (after - during).items()}})
+            
+            elif change_type == "incremental":
+                if not prev_row.empty and not curr_row.empty:
+                    deltas = (curr_row.iloc[0][measure_columns] - prev_row.iloc[0][measure_columns]).to_dict()
+                    results.append({"change_type": "Incremental (before to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
+
     return pd.DataFrame(results)
 
 
@@ -91,15 +105,6 @@ def save_aggregated_table(results_df):
     return summary_df
 
 def save_simple_aggregated_table(aggregated_table_df):
-    # Define drift type order
-    drift_type_order = [
-        "Sudden",
-        "Gradual (before to after)",
-        "Gradual (before to during)",
-        "Gradual (during to after)",
-        "Incremental"
-    ]
-
     # Ensure index is MultiIndex
     if not isinstance(aggregated_table_df.index, pd.MultiIndex):
         raise ValueError("Expected MultiIndex with levels (change_type, measure)")
@@ -110,19 +115,22 @@ def save_simple_aggregated_table(aggregated_table_df):
 
     for change_type in drift_type_order:
         row = {"Change Type": change_type}
-        subset = aggregated_table_df.loc[change_type]
 
-        # Add instance count (same for all measures, take first)
-        row["Instances"] = int(subset["count"].iloc[0]) if "count" in subset.columns else None
+        if change_type in aggregated_table_df.index.get_level_values("change_type"):
+            subset = aggregated_table_df.loc[change_type]
+            row["Instances"] = int(subset["count"].iloc[0]) if "count" in subset.columns else None
 
-        # Add formatted string for each measure
-        for measure in measures:
-            if measure in subset.index:
-                mean = subset.loc[measure]["mean"]
-                std = subset.loc[measure]["std"]
-                formatted = f"{mean:+.3f} ({std:.3f})"
-                row[measure] = formatted
-            else:
+            for measure in measures:
+                if measure in subset.index:
+                    mean = subset.loc[measure]["mean"]
+                    std = subset.loc[measure]["std"]
+                    formatted = f"{mean:+.3f} ({std:.3f})"
+                    row[measure] = formatted
+                else:
+                    row[measure] = ""
+        else:
+            row["Instances"] = 0
+            for measure in measures:
                 row[measure] = ""
 
         rows.append(row)
@@ -137,9 +145,17 @@ def save_simple_aggregated_table(aggregated_table_df):
 
 def save_boxplots(results_df):
     measure_names = [col for col in results_df.columns if col != "change_type"]
+
     for measure in measure_names:
         plt.figure(figsize=(8, 5))
-        sns.boxplot(data=results_df, x="Change Type", y=measure)
+        sns.boxplot(
+            data=results_df,
+            x="change_type",
+            y=measure,
+            order=drift_type_order
+        )
+        plt.xlabel("Change Type")
+        plt.ylabel(measure.replace("_", " ").title())
         plt.xticks(rotation=25, ha="right")
         plt.tight_layout()
         plt.savefig(constants.COMBINED_RESULTS_BOXPLOT_DIR / f"{measure}_boxplot.png", dpi=300)
@@ -154,12 +170,12 @@ def main():
         return
     drift_info_by_dataset = load_drift_info(window_dict)
     results_df = compute_complexity_deltas(window_dict, drift_info_by_dataset)
+    save_boxplots(results_df)
+
     aggregated_table = save_aggregated_table(results_df)
     print(aggregated_table)
     simple_aggregated_table = save_simple_aggregated_table(aggregated_table)
     print(simple_aggregated_table)
-
-    save_boxplots(results_df)
 
 if __name__ == "__main__":
     main()
