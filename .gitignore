@@ -3,6 +3,7 @@ process_simulation/*
 .archive/*
 .local_scripts/*
 *.slurm
+configuration/data_dictionary.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

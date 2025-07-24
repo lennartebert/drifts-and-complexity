@@ -1,0 +1,8 @@
+{
+  "BPIC12": {
+    "name": "BPIC 2012 (Loan Applications)",
+    "short_name": "BPIC 2012",
+    "type": "real",
+    "path": "data/real/BPIC12/BPI_Challenge_2012.xes"
+  }
+}
