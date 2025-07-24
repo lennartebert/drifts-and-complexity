@@ -14,20 +14,9 @@ sys.path.append(str(Path(__file__).resolve().parent / "process-complexity"))
 from Complexity import generate_log, build_graph, perform_measurements, graph_complexity, log_complexity
 from pm4py.objects.log.importer.xes import importer as xes_importer
 
-
-DRIFT_INPUT_DIR = Path("concept-drift-characterization/input")
-DRIFT_OUTPUT_DIR = Path("concept-drift-characterization/output")
-DRIFT_DIR = Path("concept-drift-characterization/")
-DRIFT_SCRIPT = Path("main.py")
-RESULTS_BASE_DIR = Path("results/drift_detection")
-DATA_DICTIONARY_FILE_PATH = Path('configuration/data_dictionary.json')
-COMPLEXITY_OUTPUT_DIR = Path("results/complexity_assessment")
+from utils import constants, helpers
 
 ## UTILS
-
-def load_data_dictionary(path):
-    with open(path, 'r') as f:
-        return json.load(f)
 
 def clean_folder_except_gitkeep(folder: Path):
     for item in folder.iterdir():
@@ -60,7 +49,7 @@ def flatten_measurements(window_results):
     return flat_records
 
 def save_complexity_csv(dataset_key, flat_data):
-    target_dir = COMPLEXITY_OUTPUT_DIR / dataset_key
+    target_dir = constants.COMPLEXITY_RESULTS_DIR / dataset_key
     target_dir.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(flat_data)
     df.to_csv(target_dir / "complexity_per_window.csv", index=False)
@@ -132,7 +121,7 @@ def plot_complexity_measures(dataset_key, flat_data, drift_info_by_id):
         plt.grid(True)
         plt.tight_layout()
 
-        output_path = COMPLEXITY_OUTPUT_DIR / dataset_key / f"{measure_column}_over_time.png"
+        output_path = constants.COMPLEXITY_RESULTS_DIR / dataset_key / f"{measure_column}_over_time.png"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(output_path, dpi=600)
         plt.close()
@@ -144,7 +133,12 @@ def concept_drift_characterization(dataset_key, dataset_info):
     print(f"## Running concept drift characterization ##")
     dataset_path = Path(dataset_info["path"])
     dataset_filename = dataset_path.name
-    input_target_path = DRIFT_INPUT_DIR / dataset_filename
+    input_target_path = constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR / dataset_filename
+
+    # Clean input ando output directories
+    clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR)
+    clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR)
+
 
     # Copy dataset to input
     shutil.copy(dataset_path, input_target_path)
@@ -152,11 +146,11 @@ def concept_drift_characterization(dataset_key, dataset_info):
     # Run concept drift characterization
     try:
         result = subprocess.run(
-            ["python", str(DRIFT_SCRIPT)],
+            ["python", str(constants.DRIFT_CHARACTERIZATION_SCRIPT)],
             check=True,
             capture_output=True,
             text=True,
-            cwd=DRIFT_DIR
+            cwd=constants.DRIFT_CHARACTERIZATION_DIR
     )
     except subprocess.CalledProcessError as e:
         print("Subprocess failed!")
@@ -165,26 +159,31 @@ def concept_drift_characterization(dataset_key, dataset_info):
         raise
 
     # Copy output to results folder
-    result_target_dir = RESULTS_BASE_DIR / dataset_key
+    result_target_dir = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key
     result_target_dir.mkdir(parents=True, exist_ok=True)
-    for file in DRIFT_OUTPUT_DIR.iterdir():
+    for file in constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR.iterdir():
         if file.name != ".gitkeep":
             shutil.copy(file, result_target_dir / file.name)
-
+    
     # Cleanup input/output (preserve .gitkeep)
-    clean_folder_except_gitkeep(DRIFT_INPUT_DIR)
-    clean_folder_except_gitkeep(DRIFT_OUTPUT_DIR)
+    clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR)
+    clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR)
 
 
 def concept_drift_complexity_assessment(dataset_key, dataset_info):
     print(f"## Running concept drift complexity assessment ##")
 
-    # TODO: Make approach configurable if needed
-    concept_drift_info_path = RESULTS_BASE_DIR / dataset_key / 'results_adwin_j_input_approach.csv'
+    # TODO: Make approach configurable
+    concept_drift_info_path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key / 'results_adwin_j_input_approach.csv'
     concept_drift_info_df = pd.read_csv(concept_drift_info_path)
-
+    
     drift_info_by_id = concept_drift_info_df.set_index('calc_change_id').to_dict(orient='index')
 
+    # calc_change_id == 'na', there is no drift
+    if 'na' in drift_info_by_id.keys():
+        print("No drifts in dataset. Cannot assess drift.") # this is not entirely true - we could still plot the complexity from start to end. However, this would require major updates for this edge case.
+        return None
+    
     log_path = Path(dataset_info["path"])
     pm4py_log = xes_importer.apply(str(log_path))
     traces_sorted = sorted(pm4py_log, key=lambda trace: trace[0]['time:timestamp'])
@@ -192,21 +191,32 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info):
     window_complexity_results = []
     window_id = 0
 
-    for end_change_id, end_change_info in drift_info_by_id.items():
-        start_change_id = None if end_change_id == 1 else int(end_change_id - 1)
-        start_index = 0 if end_change_id == 1 else drift_info_by_id[end_change_id - 1]['calc_change_index']
-        end_index = end_change_info['calc_change_index']
-        start_time = traces_sorted[0][0]['time:timestamp'] if end_change_id == 1 else pd.to_datetime(drift_info_by_id[end_change_id - 1]['calc_change_moment'])
-        end_time = pd.to_datetime(end_change_info['calc_change_moment'])
+    sorted_change_ids = sorted(drift_info_by_id.keys())
 
+    for i, end_change_id in enumerate(sorted_change_ids + [None]):
+        if end_change_id is None:
+            # final window: after last change
+            start_change_id = sorted_change_ids[-1]
+            start_index = drift_info_by_id[start_change_id]['calc_change_index']
+            end_index = len(traces_sorted)
+            start_time = pd.to_datetime(drift_info_by_id[start_change_id]['calc_change_moment'])
+            end_time = traces_sorted[-1][-1]['time:timestamp']
+            window_change = 'stable'
+        else:
+            start_change_id = None if i == 0 else sorted_change_ids[i - 1]
+            start_index = 0 if i == 0 else drift_info_by_id[start_change_id]['calc_change_index']
+            end_index = drift_info_by_id[end_change_id]['calc_change_index']
+            start_time = traces_sorted[0][0]['time:timestamp'] if i == 0 else pd.to_datetime(drift_info_by_id[start_change_id]['calc_change_moment'])
+            end_time = pd.to_datetime(drift_info_by_id[end_change_id]['calc_change_moment'])
+            window_change = 'gradual' if drift_info_by_id[end_change_id]['calc_change_type'] == 'gradual_end' else 'stable'
+
+        # Build window and compute complexity
         window_traces = traces_sorted[start_index:end_index]
         log = generate_log(window_traces, verbose=False)
         pa = build_graph(log, verbose=False, accepting=False)
-
         measurements = perform_measurements('all', log, window_traces, pa, quiet=True, verbose=False)
         var_ent = graph_complexity(pa)
         seq_ent = log_complexity(pa)
-
         measurements['Variant Entropy'] = var_ent[0]
         measurements['Normalized Variant Entropy'] = var_ent[1]
         measurements['Trace Entropy'] = seq_ent[0]
@@ -220,10 +230,11 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info):
             "end_time": pd.to_datetime(end_time).tz_convert(None),
             "start_change_id": start_change_id,
             "end_change_id": end_change_id,
-            "window_change": 'gradual' if end_change_info['calc_change_type'] == 'gradual_end' else 'stable',
+            "window_change": window_change,
             'traces_in_window': end_index - start_index,
             "measurements": measurements
         })
+
         window_id += 1
 
     flat_measurements_per_window = flatten_measurements(window_complexity_results)
@@ -242,7 +253,7 @@ def main_per_dataset(dataset_key, dataset_info, only_complexity=False):
 def main(datasets=None, only_complexity=False):
     print(f"#### Starting drift complextity analysis ####")
 
-    data_dictionary = load_data_dictionary(DATA_DICTIONARY_FILE_PATH)
+    data_dictionary = helpers.load_data_dictionary(constants.DATA_DICTIONARY_FILE_PATH)
 
     # only keep datasets in data_dictionary that are in the datasets
     if datasets is not None:
