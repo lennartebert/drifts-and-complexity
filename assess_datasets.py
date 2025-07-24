@@ -121,7 +121,7 @@ def plot_complexity_measures(dataset_key, flat_data, drift_info_by_id):
         plt.grid(True)
         plt.tight_layout()
 
-        output_path = constants.COMPLEXITY_RESULTS_DIR / dataset_key / f"{measure_column}_over_time.png"
+        output_path = constants.COMPLEXITY_RESULTS_DIR / dataset_key / f"{measure_name}_over_time.png"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(output_path, dpi=600)
         plt.close()
