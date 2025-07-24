@@ -239,14 +239,14 @@ def main_per_dataset(dataset_key, dataset_info, only_complexity=False):
     concept_drift_complexity_assessment(dataset_key, dataset_info)
     
 
-def main(dataset_list=None, only_complexity=False):
+def main(datasets=None, only_complexity=False):
     print(f"#### Starting drift complextity analysis ####")
 
     data_dictionary = load_data_dictionary(DATA_DICTIONARY_FILE_PATH)
 
-    # only keep datasets in data_dictionary that are in the dataset_list
-    if dataset_list is not None:
-        data_dictionary = {k: v for k, v in data_dictionary.items() if k in dataset_list}
+    # only keep datasets in data_dictionary that are in the datasets
+    if datasets is not None:
+        data_dictionary = {k: v for k, v in data_dictionary.items() if k in datasets}
 
     for dataset_key, dataset_info in data_dictionary.items():
         main_per_dataset(dataset_key, dataset_info, only_complexity)
@@ -266,4 +266,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    main(dataset_list=args.datasets, only_complexity=args.only_complexity)
+    main(datasets=args.datasets, only_complexity=args.only_complexity)
