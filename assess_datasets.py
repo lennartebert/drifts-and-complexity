@@ -36,9 +36,9 @@ def flatten_measurements(window_results):
 
         if "Trace length" in meas and isinstance(meas["Trace length"], dict):
             tl = meas.pop("Trace length")
-            meas["measure_Trace length min"] = tl.get("min", None)
-            meas["measure_Trace length avg"] = tl.get("avg", None)
-            meas["measure_Trace length max"] = tl.get("max", None)
+            meas["Trace length min"] = tl.get("min", None)
+            meas["Trace length avg"] = tl.get("avg", None)
+            meas["Trace length max"] = tl.get("max", None)
 
         # Prefix remaining measurement keys with "measure_"
         meas = {f"measure_{k}": v for k, v in meas.items()}
