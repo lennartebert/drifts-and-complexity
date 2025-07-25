@@ -129,7 +129,7 @@ def plot_complexity_measures(dataset_key, flat_data, drift_info_by_id):
 
 ## MAIN FUNCTIONS
 
-def concept_drift_characterization(dataset_key, dataset_info):
+def concept_drift_characterization(dataset_key, dataset_info, change_point_detector=constants.DEFAULT_CHANGE_POINT_DETECTOR):
     print(f"## Running concept drift characterization ##")
     dataset_path = Path(dataset_info["path"])
     dataset_filename = dataset_path.name
@@ -146,7 +146,7 @@ def concept_drift_characterization(dataset_key, dataset_info):
     # Run concept drift characterization
     try:
         result = subprocess.run(
-            ["python", str(constants.DRIFT_CHARACTERIZATION_SCRIPT)],
+            ["python", str(constants.DRIFT_CHARACTERIZATION_SCRIPT), '--step-1-methods', change_point_detector],
             check=True,
             capture_output=True,
             text=True,
@@ -162,22 +162,23 @@ def concept_drift_characterization(dataset_key, dataset_info):
         raise
 
     # Copy output to results folder
+    output_file_path = constants.DRIFT_CHARACTERIZATION_DIR / dataset_key / f'results_{change_point_detector}_input_approach.csv'
+
     result_target_dir = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key
     result_target_dir.mkdir(parents=True, exist_ok=True)
-    for file in constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR.iterdir():
-        if file.name != ".gitkeep":
-            shutil.copy(file, result_target_dir / file.name)
+
+    shutil.copy(output_file_path, result_target_dir / output_file_path.name)
     
     # Cleanup input/output (preserve .gitkeep)
     clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR)
     clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR)
 
+    return output_file_path
 
-def concept_drift_complexity_assessment(dataset_key, dataset_info):
+
+def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path):
     print(f"## Running concept drift complexity assessment ##")
 
-    # TODO: Make approach configurable
-    concept_drift_info_path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key / 'results_adwin_j_input_approach.csv'
     concept_drift_info_df = pd.read_csv(concept_drift_info_path)
     
     drift_info_by_id = concept_drift_info_df.set_index('calc_change_id').to_dict(orient='index')
@@ -246,14 +247,16 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info):
 
     print("Drift complexity assessment complete.")
 
-def main_per_dataset(dataset_key, dataset_info, only_complexity=False):
+def main_per_dataset(dataset_key, dataset_info, only_complexity=False, change_point_detector=constants.DEFAULT_CHANGE_POINT_DETECTOR):
     print(f"### Processing dataset: {dataset_key} ###")
-    if not only_complexity:
-        concept_drift_characterization(dataset_key, dataset_info)
-    concept_drift_complexity_assessment(dataset_key, dataset_info)
+    if only_complexity:
+        concept_drift_info_path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key / f'results_{change_point_detector}_input_approach.csv'
+    else:
+        concept_drift_info_path = concept_drift_characterization(dataset_key, dataset_info, change_point_detector)
+    concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path)
     
 
-def main(datasets=None, only_complexity=False):
+def main(datasets=None, only_complexity=False, change_point_detector=constants.DEFAULT_CHANGE_POINT_DETECTOR):
     print(f"#### Starting drift complextity analysis ####")
 
     data_dictionary = helpers.load_data_dictionary(constants.DATA_DICTIONARY_FILE_PATH)
@@ -263,7 +266,7 @@ def main(datasets=None, only_complexity=False):
         data_dictionary = {k: v for k, v in data_dictionary.items() if k in datasets}
 
     for dataset_key, dataset_info in data_dictionary.items():
-        main_per_dataset(dataset_key, dataset_info, only_complexity)
+        main_per_dataset(dataset_key, dataset_info, only_complexity, change_point_detector)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run drift complexity analysis on selected datasets.")
@@ -278,6 +281,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Only run complexity detection, not drift characterization."
     )
+    parser.add_argument(
+        "--change-point-detector",
+        default=constants.DEFAULT_CHANGE_POINT_DETECTOR,
+        help="Defauld change point detection approach. Choose from 'emd', 'prodrift', 'zheng', 'bose_j', 'process_graphs', 'lcdd', 'adwin_j'."
+    )
     args = parser.parse_args()
 
-    main(datasets=args.datasets, only_complexity=args.only_complexity)
+    main(datasets=args.datasets, only_complexity=args.only_complexity, change_point_detector=args.change_point_detector)
