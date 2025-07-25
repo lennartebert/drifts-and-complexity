@@ -162,18 +162,18 @@ def concept_drift_characterization(dataset_key, dataset_info, change_point_detec
         raise
 
     # Copy output to results folder
-    output_file_path = constants.DRIFT_CHARACTERIZATION_DIR / dataset_key / f'results_{change_point_detector}_input_approach.csv'
+    temp_output_file_path = constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR / f'results_{change_point_detector}_input_approach.csv'
+    results_target_file_path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key / f'results_{change_point_detector}_input_approach.csv'
 
-    result_target_dir = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key
-    result_target_dir.mkdir(parents=True, exist_ok=True)
+    results_target_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    shutil.copy(output_file_path, result_target_dir / output_file_path.name)
+    shutil.copy(temp_output_file_path, results_target_file_path)
     
     # Cleanup input/output (preserve .gitkeep)
     clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR)
     clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR)
 
-    return output_file_path
+    return results_target_file_path
 
 
 def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path):
