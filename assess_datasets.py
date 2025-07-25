@@ -151,7 +151,10 @@ def concept_drift_characterization(dataset_key, dataset_info):
             capture_output=True,
             text=True,
             cwd=constants.DRIFT_CHARACTERIZATION_DIR
-    )
+        )
+
+        print("STDOUT:", result.stdout)
+        print("STDERR:", result.stderr)
     except subprocess.CalledProcessError as e:
         print("Subprocess failed!")
         print("STDOUT:\n", e.stdout)
