@@ -18,13 +18,25 @@ from utils import constants, helpers
 
 ## UTILS
 
-def clean_folder_except_gitkeep(folder: Path):
+def clean_folder_except_gitkeep(folder: Path, delete: bool = False):
+    if not folder.exists():
+        return
+
+    gitkeep_in_dir = False
     for item in folder.iterdir():
         if item.name != ".gitkeep":
             if item.is_file():
                 item.unlink()
             elif item.is_dir():
                 shutil.rmtree(item)
+        else:
+            gitkeep_in_dir = True
+    
+    if not gitkeep_in_dir:
+        try:
+            shutil.rmtree(folder)
+        except Exception:
+            pass
 
 def flatten_measurements(window_results):
     flat_records = []
@@ -131,21 +143,25 @@ def plot_complexity_measures(dataset_key, configuration_name, flat_data, drift_i
 
 def concept_drift_characterization(dataset_key, dataset_info):
     print(f"## Running concept drift characterization ##")
-    dataset_path = Path(dataset_info["path"])
-    dataset_filename = dataset_path.name
-    input_target_path = constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR / dataset_filename
+    local_dataset_path = Path(dataset_info["path"])
+    target_dataset_filename = Path(f"{dataset_key}.xes")
+    drift_characterization_input_file_path = constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR / dataset_key / target_dataset_filename
+    drift_characterization_output_dir_path = constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR / dataset_key
 
     # Clean input and output directories
-    clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR)
-    clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR)
+    clean_folder_except_gitkeep(drift_characterization_input_file_path.parent)
+    clean_folder_except_gitkeep(drift_characterization_output_dir_path)
 
     # Copy dataset to input
-    shutil.copy(dataset_path, input_target_path)
+    drift_characterization_input_file_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(local_dataset_path, drift_characterization_input_file_path)
 
     # Run concept drift characterization
     try:
         result = subprocess.run(
-            ["python", str(constants.DRIFT_CHARACTERIZATION_SCRIPT)],
+            ["python", str(constants.DRIFT_CHARACTERIZATION_SCRIPT),
+             "--input_dir", str(drift_characterization_input_file_path.parent.relative_to(constants.DRIFT_CHARACTERIZATION_DIR)),
+             "--output_dir", str(drift_characterization_output_dir_path.relative_to(constants.DRIFT_CHARACTERIZATION_DIR))],
             check=True,
             capture_output=True,
             text=True,
@@ -160,23 +176,22 @@ def concept_drift_characterization(dataset_key, dataset_info):
         print("STDOUT:\n", e.stdout)
         print("STDERR:\n", e.stderr)
         raise
-
+    
     # Copy output to results folder
-    source_dir = constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR
     target_dir = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
     results_target_file_paths = []
-    for file in source_dir.iterdir():
+    for file in drift_characterization_output_dir_path.iterdir():
         if file.is_file() and file.name != ".gitkeep":
             results_target_file_path = target_dir / file.name
             shutil.copy(file, results_target_file_path)
             results_target_file_paths.append(results_target_file_path)
     
-    # Cleanup input/output (preserve .gitkeep)
-    clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR)
-    clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR)
+    # Clean input and output directories
+    clean_folder_except_gitkeep(drift_characterization_input_file_path.parent, delete=True)
+    clean_folder_except_gitkeep(drift_characterization_output_dir_path, delete=True)
 
     return results_target_file_paths
 
