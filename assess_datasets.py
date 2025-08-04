@@ -35,7 +35,8 @@ def clean_folder_except_gitkeep(folder: Path, delete: bool = False):
     if not gitkeep_in_dir:
         try:
             shutil.rmtree(folder)
-        except Exception:
+        except Exception as e:
+            # print(f"Failed to delete folder {folder}: {e}")
             pass
 
 def flatten_measurements(window_results):
