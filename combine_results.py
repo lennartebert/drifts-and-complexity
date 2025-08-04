@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -10,12 +11,11 @@ drift_type_order = [
     "Sudden (before to after)",
     "Gradual (before to after)",
     "Gradual (before to during)",
-    "Gradual (during to after)",
-    "Incremental (before to after)"
+    "Gradual (during to after)"
 ]
 
-def load_complexity_per_window_dict():
-    all_files = list(Path("results/complexity_assessment").glob("*/complexity_per_window.csv"))
+def load_complexity_per_window_dict(datasets):
+    all_files = [constants.COMPLEXITY_RESULTS_DIR / dataset / "complexity_per_window.csv" for dataset in datasets]
     complexity_per_window_df_dict = {}
     for f in all_files:
         dataset = f.parent.name
@@ -28,56 +28,117 @@ def load_complexity_per_window_dict():
     return complexity_per_window_df_dict
 
 
-def load_drift_info(complexity_per_window_df_dict):
+def load_drift_info(complexity_per_window_df_dict, change_point_detector=constants.DEFAULT_CHANGE_POINT_DETECTOR):
     drift_info_by_dataset = {}
     for dataset in complexity_per_window_df_dict.keys():
-        path = Path("results/drift_detection") / dataset / "results_adwin_j_input_approach.csv"
-        if path.exists():
-            drift_info = pd.read_csv(path)
-            drift_info["calc_change_id"] = drift_info["calc_change_id"].astype("Int64")
-            drift_info_by_dataset[dataset] = drift_info.set_index("calc_change_id").to_dict(orient="index")
+        path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset / f"results_{change_point_detector}_input_approach.csv"
+        drift_info = pd.read_csv(path)
+        drift_info["calc_change_id"] = drift_info["calc_change_id"].astype("Int64")
+        drift_info_by_dataset[dataset] = drift_info.set_index("calc_change_id").to_dict(orient="index")
     return drift_info_by_dataset
 
+def get_drift_info_summary_table(drift_info_by_dataset):
+    drift_info_summary_dict = {}
+
+    for dataset, drift_info_dict in drift_info_by_dataset.items():
+        result = {}
+        sudden_changes = []
+        gradual_changes = []
+
+        # iterate over dict items in order of keys (already sorted)
+        items = list(drift_info_dict.items())
+        for i, (change_id, row) in enumerate(items):
+            change_type = row.get("calc_change_type")
+            change_index = int(row.get("calc_change_index"))
+
+            if change_type == "sudden":
+                sudden_changes.append(change_index)
+
+            if change_type == "gradual_start":
+                start_index = change_index
+                end_index = None
+                # look at next item if exists
+                if i + 1 < len(items):
+                    end_index = int(items[i + 1][1].get("calc_change_index"))
+                gradual_changes.append((start_index, end_index))
+
+        result["# Total Changes"] = len(sudden_changes) + len(gradual_changes)
+        result["# Sudden Changes"] = len(sudden_changes)
+        result["Sudden Change Points"] = ", ".join(map(str, sudden_changes))
+        result["# Gradual Changes"] = len(gradual_changes)
+        result["Gradual Change Points"] = ", ".join(
+            f"({s}, {e})" for s, e in gradual_changes
+        )
+
+        drift_info_summary_dict[dataset] = result
+
+    # convert dict to DataFrame
+    drift_info_summary_df = pd.DataFrame.from_dict(drift_info_summary_dict, orient="index")
+
+    # add total row
+    total_row = {
+        '# Total Changes': drift_info_summary_df["# Total Changes"].sum(),
+        "# Sudden Changes": drift_info_summary_df["# Sudden Changes"].sum(),
+        "Sudden Change Points": "",
+        "# Gradual Changes": drift_info_summary_df["# Gradual Changes"].sum(),
+        "Gradual Change Points": "",
+    }
+    drift_info_summary_df.loc["Total"] = total_row
+
+    return drift_info_summary_df
 
 def compute_complexity_deltas(window_dict, drift_info_by_dataset):
     results = []
-    for dataset, df in window_dict.items():
+    for dataset, window_df in window_dict.items():
         drift_info = drift_info_by_dataset.get(dataset, {})
-        measure_columns = [col for col in df.columns if col.startswith("measure_")]
+        measure_columns = [col for col in window_df.columns if col.startswith("measure_")]
+
         for change_id, info in drift_info.items():
             change_type = info["calc_change_type"]
-            prev_row = df[df["end_change_id"] == change_id - 1]
-            curr_row = df[df["end_change_id"] == change_id]
-            next_row = df[df["end_change_id"] == change_id + 1]
+            window_before_change_point = window_df[window_df["end_change_id"] == change_id].iloc[0]
+            window_after_change_point = window_df[window_df["start_change_id"] == change_id].iloc[0]
+
+            # Assert that window_before_change and window_after_change are not empty - there always needs to be a window before/after a change point
+            assert not window_before_change_point.empty, f"window_before_change is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
+            assert not window_after_change_point.empty, f"window_after_change is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
 
             if change_type == "sudden":
-                if not prev_row.empty and not curr_row.empty:
-                    deltas = (curr_row.iloc[0][measure_columns] - prev_row.iloc[0][measure_columns]).to_dict()
-                    results.append({"change_type": "Sudden (before to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
+                deltas = (window_after_change_point[measure_columns] - window_before_change_point[measure_columns]).to_dict()
+                results.append({"change_type": "Sudden (before to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
 
             elif change_type == "gradual_start":
-                if not prev_row.empty and not curr_row.empty:
-                    deltas = (curr_row.iloc[0][measure_columns] - prev_row.iloc[0][measure_columns]).to_dict()
-                    results.append({"change_type": "Gradual (before to during)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
+                deltas = (window_after_change_point[measure_columns] - window_before_change_point[measure_columns]).to_dict()
+                results.append({"change_type": "Gradual (before to during)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
+
+                # also record the before to after change
+                window_after_gradual_end = window_df[window_df["start_change_id"] == change_id + 1].iloc[0]
+                assert not window_after_gradual_end.empty, f"window_after_gradual_end is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
+                deltas = (window_after_gradual_end[measure_columns] - window_before_change_point[measure_columns]).to_dict()
+                results.append({"change_type": "Gradual (before to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
 
             elif change_type == "gradual_end":
-                during_row = df[df["end_change_id"] == change_id - 1]
-                after_row = df[df["end_change_id"] == change_id]
-                if not during_row.empty and not after_row.empty and not prev_row.empty:
-                    before = prev_row.iloc[0][measure_columns]
-                    during = during_row.iloc[0][measure_columns]
-                    after = after_row.iloc[0][measure_columns]
-
-                    results.append({"change_type": "Gradual (before to after)", **{k.replace("measure_", ""): v for k, v in (after - before).items()}})
-                    results.append({"change_type": "Gradual (during to after)", **{k.replace("measure_", ""): v for k, v in (after - during).items()}})
-            
-            elif change_type == "incremental":
-                if not prev_row.empty and not curr_row.empty:
-                    deltas = (curr_row.iloc[0][measure_columns] - prev_row.iloc[0][measure_columns]).to_dict()
-                    results.append({"change_type": "Incremental (before to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
+                deltas = (window_after_change_point[measure_columns] - window_before_change_point[measure_columns]).to_dict()
+                results.append({"change_type": "Gradual (during to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
+                       
+            else: 
+                raise ValueError("Unknown change type")
 
     return pd.DataFrame(results)
 
+
+def format_number(x, include_plus=False):
+    # Use scientific notation if abs(x) >= 1000, otherwise fixed-point
+    if abs(x) >= 1000:
+        if include_plus:
+            return f"{x:+.1e}"  # scientific notation
+        else: 
+            return f"{x:.1e}"  # scientific notation
+    else:
+        if include_plus:
+            return f"{x:+.2f}"  # fixed-point with 2 decimals
+        else:
+            return f"{x:.2f}"  # fixed-point with 2 decimals
+    
 
 def save_aggregated_table(results_df):
     results_df_clean = results_df.dropna()
@@ -124,7 +185,7 @@ def save_simple_aggregated_table(aggregated_table_df):
                 if measure in subset.index:
                     mean = subset.loc[measure]["mean"]
                     std = subset.loc[measure]["std"]
-                    formatted = f"{mean:+.3f} ({std:.3f})"
+                    formatted = f"{format_number(mean, include_plus=True)} ({format_number(std, include_plus=False)})"
                     row[measure] = formatted
                 else:
                     row[measure] = ""
@@ -162,15 +223,28 @@ def save_boxplots(results_df):
         plt.close()
 
 
-def main():
+def main(datasets=None, change_point_detector=constants.DEFAULT_CHANGE_POINT_DETECTOR):
     print("#### Starting to combine drift analysis results ####")
-    window_dict = load_complexity_per_window_dict()
+    if datasets is None:
+        # Get all folder names (1st level child) under folder results/complexity_assessment
+        datasets = [
+            d.name for d in (constants.COMPLEXITY_RESULTS_DIR).iterdir()
+            if d.is_dir()
+        ]
+
+    window_dict = load_complexity_per_window_dict(datasets)
     if not window_dict:
         print("No datasets with complexity_per_window.csv found.")
         return
-    drift_info_by_dataset = load_drift_info(window_dict)
+    drift_info_by_dataset = load_drift_info(window_dict, change_point_detector)
+
+    # get summary of drift info
+    drift_info_summary_table_df = get_drift_info_summary_table(drift_info_by_dataset=drift_info_by_dataset)
+    drift_info_summary_table_df.to_csv(constants.COMBINED_RESULTS_TABLE_DIR / "drift_info_summary.csv")
+
+
     results_df = compute_complexity_deltas(window_dict, drift_info_by_dataset)
-    save_boxplots(results_df)
+    # save_boxplots(results_df)
 
     aggregated_table = save_aggregated_table(results_df)
     print(aggregated_table)
@@ -178,4 +252,20 @@ def main():
     print(simple_aggregated_table)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Combine drift complexity analysis detection results.")
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        default=None,
+        help="Optional list of dataset keys to include. If not set, all datasets are used."
+    )
+    parser.add_argument(
+        "--change-point-detector",
+        default=constants.DEFAULT_CHANGE_POINT_DETECTOR,
+        help="Defauld change point detection approach. Choose from 'emd', 'prodrift', 'zheng', 'bose_j', 'process_graphs', 'lcdd', 'adwin_j'."
+    )
+
+    args = parser.parse_args()
+
+    main(datasets=args.datasets, change_point_detector=args.change_point_detector)
+

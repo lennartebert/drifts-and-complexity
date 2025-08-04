@@ -48,13 +48,13 @@ def flatten_measurements(window_results):
 
     return flat_records
 
-def save_complexity_csv(dataset_key, flat_data):
-    target_dir = constants.COMPLEXITY_RESULTS_DIR / dataset_key
+def save_complexity_csv(dataset_key, configuration_name, flat_data):
+    target_dir = constants.COMPLEXITY_RESULTS_DIR / dataset_key / configuration_name
     target_dir.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(flat_data)
     df.to_csv(target_dir / "complexity_per_window.csv", index=False)
 
-def plot_complexity_measures(dataset_key, flat_data, drift_info_by_id):
+def plot_complexity_measures(dataset_key, configuration_name, flat_data, drift_info_by_id):
     import matplotlib.pyplot as plt
     import pandas as pd
     from pathlib import Path
@@ -121,7 +121,7 @@ def plot_complexity_measures(dataset_key, flat_data, drift_info_by_id):
         plt.grid(True)
         plt.tight_layout()
 
-        output_path = constants.COMPLEXITY_RESULTS_DIR / dataset_key / f"{measure_name}_over_time.png"
+        output_path = constants.COMPLEXITY_RESULTS_DIR / dataset_key / configuration_name / f"{measure_name}_over_time.png"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(output_path, dpi=600)
         plt.close()
@@ -129,16 +129,15 @@ def plot_complexity_measures(dataset_key, flat_data, drift_info_by_id):
 
 ## MAIN FUNCTIONS
 
-def concept_drift_characterization(dataset_key, dataset_info, change_point_detector=constants.DEFAULT_CHANGE_POINT_DETECTOR):
+def concept_drift_characterization(dataset_key, dataset_info):
     print(f"## Running concept drift characterization ##")
     dataset_path = Path(dataset_info["path"])
     dataset_filename = dataset_path.name
     input_target_path = constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR / dataset_filename
 
-    # Clean input ando output directories
+    # Clean input and output directories
     clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR)
     clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR)
-
 
     # Copy dataset to input
     shutil.copy(dataset_path, input_target_path)
@@ -146,11 +145,12 @@ def concept_drift_characterization(dataset_key, dataset_info, change_point_detec
     # Run concept drift characterization
     try:
         result = subprocess.run(
-            ["python", str(constants.DRIFT_CHARACTERIZATION_SCRIPT), '--step-1-methods', change_point_detector],
+            ["python", str(constants.DRIFT_CHARACTERIZATION_SCRIPT)],
             check=True,
             capture_output=True,
             text=True,
-            cwd=constants.DRIFT_CHARACTERIZATION_DIR
+            cwd=constants.DRIFT_CHARACTERIZATION_DIR,
+            encoding="utf-8"
         )
 
         print("STDOUT:", result.stdout)
@@ -162,24 +162,30 @@ def concept_drift_characterization(dataset_key, dataset_info, change_point_detec
         raise
 
     # Copy output to results folder
-    temp_output_file_path = constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR / f'results_{change_point_detector}_input_approach.csv'
-    results_target_file_path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key / f'results_{change_point_detector}_input_approach.csv'
+    source_dir = constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR
+    target_dir = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key
 
-    results_target_file_path.parent.mkdir(parents=True, exist_ok=True)
+    target_dir.mkdir(parents=True, exist_ok=True)
 
-    shutil.copy(temp_output_file_path, results_target_file_path)
+    results_target_file_paths = []
+    for file in source_dir.iterdir():
+        if file.is_file() and file.name != ".gitkeep":
+            results_target_file_path = target_dir / file.name
+            shutil.copy(file, results_target_file_path)
+            results_target_file_paths.append(results_target_file_path)
     
     # Cleanup input/output (preserve .gitkeep)
     clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR)
     clean_folder_except_gitkeep(constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR)
 
-    return results_target_file_path
+    return results_target_file_paths
 
 
 def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path):
     print(f"## Running concept drift complexity assessment ##")
 
     concept_drift_info_df = pd.read_csv(concept_drift_info_path)
+    configuration_name = concept_drift_info_path.stem.split("_")[-1]
     
     drift_info_by_id = concept_drift_info_df.set_index('calc_change_id').to_dict(orient='index')
 
@@ -242,21 +248,23 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
         window_id += 1
 
     flat_measurements_per_window = flatten_measurements(window_complexity_results)
-    save_complexity_csv(dataset_key, flat_measurements_per_window)
-    plot_complexity_measures(dataset_key, flat_measurements_per_window, drift_info_by_id)
+    save_complexity_csv(dataset_key, configuration_name, flat_measurements_per_window)
+    plot_complexity_measures(dataset_key, configuration_name, flat_measurements_per_window, drift_info_by_id)
 
     print("Drift complexity assessment complete.")
 
-def main_per_dataset(dataset_key, dataset_info, only_complexity=False, change_point_detector=constants.DEFAULT_CHANGE_POINT_DETECTOR):
+def main_per_dataset(dataset_key, dataset_info, mode='all'):
     print(f"### Processing dataset: {dataset_key} ###")
-    if only_complexity:
-        concept_drift_info_path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key / f'results_{change_point_detector}_input_approach.csv'
+    if mode == 'all' or mode == 'detection_only':
+        concept_drift_info_paths = concept_drift_characterization(dataset_key, dataset_info)
     else:
-        concept_drift_info_path = concept_drift_characterization(dataset_key, dataset_info, change_point_detector)
-    concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path)
-    
+        concept_drift_info_paths = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key / f'results_input_approach.csv' # TODO fix path
 
-def main(datasets=None, only_complexity=False, change_point_detector=constants.DEFAULT_CHANGE_POINT_DETECTOR):
+    if mode == 'all' or mode == 'complexity_only':
+        for concept_drift_info_path in concept_drift_info_paths:
+            concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path)
+
+def main(datasets=None, mode='all'):
     print(f"#### Starting drift complextity analysis ####")
 
     data_dictionary = helpers.load_data_dictionary(constants.DATA_DICTIONARY_FILE_PATH)
@@ -266,7 +274,7 @@ def main(datasets=None, only_complexity=False, change_point_detector=constants.D
         data_dictionary = {k: v for k, v in data_dictionary.items() if k in datasets}
 
     for dataset_key, dataset_info in data_dictionary.items():
-        main_per_dataset(dataset_key, dataset_info, only_complexity, change_point_detector)
+        main_per_dataset(dataset_key, dataset_info, mode)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run drift complexity analysis on selected datasets.")
@@ -277,15 +285,11 @@ if __name__ == "__main__":
         help="Optional list of dataset keys to include. If not set, all datasets are used."
     )
     parser.add_argument(
-        "-oc", "--only-complexity",
-        action="store_true",
-        help="Only run complexity detection, not drift characterization."
-    )
-    parser.add_argument(
-        "--change-point-detector",
-        default=constants.DEFAULT_CHANGE_POINT_DETECTOR,
-        help="Defauld change point detection approach. Choose from 'emd', 'prodrift', 'zheng', 'bose_j', 'process_graphs', 'lcdd', 'adwin_j'."
+        "--mode",
+        type=str,
+        default='all',
+        help="What parts of the script to run. Choose from 'all', 'detection_only', 'complexity_only'"
     )
     args = parser.parse_args()
 
-    main(datasets=args.datasets, only_complexity=args.only_complexity, change_point_detector=args.change_point_detector)
+    main(datasets=args.datasets, mode=args.mode)
