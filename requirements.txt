@@ -16,3 +16,4 @@ pulp~=3.2.1
 argparse
 BitVector
 lempel_ziv_complexity
+pyyaml
