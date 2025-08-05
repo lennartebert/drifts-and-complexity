@@ -4,3 +4,6 @@
 [submodule "process-complexity"]
 	path = process-complexity
 	url = https://github.com/lennartebert/process-complexity.git
+[submodule "cdrift-evaluation"]
+	path = cdrift-evaluation
+	url = https://github.com/lennartebert/cdrift-evaluation
