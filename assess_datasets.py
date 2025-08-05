@@ -36,7 +36,7 @@ def clean_folder_except_gitkeep(folder: Path, delete: bool = False):
         try:
             shutil.rmtree(folder)
         except Exception as e:
-            # print(f"Failed to delete folder {folder}: {e}")
+            # prin  t(f"Failed to delete folder {folder}: {e}")
             pass
 
 def flatten_measurements(window_results):
@@ -129,6 +129,7 @@ def plot_complexity_measures(dataset_key, configuration_name, flat_data, drift_i
 
         # Axis formatting
         plt.xlabel("Time")
+        plt.ylim(bottom=0)
         plt.ylabel(measure_name)
         plt.xticks(rotation=45)
         plt.grid(True)
