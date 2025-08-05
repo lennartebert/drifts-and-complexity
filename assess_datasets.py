@@ -275,7 +275,9 @@ def main_per_dataset(dataset_key, dataset_info, mode='all'):
     if mode == 'all' or mode == 'detection_only':
         concept_drift_info_paths = concept_drift_characterization(dataset_key, dataset_info)
     else:
-        concept_drift_info_paths = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key / f'results_input_approach.csv' # TODO fix path
+        # search for all csvs in input folder
+        input_folder = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key
+        concept_drift_info_paths = list(input_folder.glob("*.csv"))
 
     if mode == 'all' or mode == 'complexity_only':
         for concept_drift_info_path in concept_drift_info_paths:
