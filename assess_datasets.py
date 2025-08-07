@@ -146,7 +146,7 @@ def plot_complexity_measures(dataset_key, configuration_name, flat_data, drift_i
 def concept_drift_characterization(dataset_key, dataset_info):
     print(f"## Running concept drift characterization ##")
     local_dataset_path = Path(dataset_info["path"])
-    target_dataset_filename = Path(f"{dataset_key}.xes")
+    target_dataset_filename = Path(f"{dataset_key}.xes.gz")
     drift_characterization_input_file_path = constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR / dataset_key / target_dataset_filename
     drift_characterization_output_dir_path = constants.DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR / dataset_key
 
