@@ -47,12 +47,6 @@ def flatten_measurements(window_results):
 
         meas = w["measurements"].copy()
 
-        if "Trace length" in meas and isinstance(meas["Trace length"], dict):
-            tl = meas.pop("Trace length")
-            meas["Trace length min"] = tl.get("min", None)
-            meas["Trace length avg"] = tl.get("avg", None)
-            meas["Trace length max"] = tl.get("max", None)
-
         # Prefix remaining measurement keys with "measure_"
         meas = {f"measure_{k}": v for k, v in meas.items()}
 
@@ -198,6 +192,27 @@ def concept_drift_characterization(dataset_key, dataset_info):
     return results_target_file_paths
 
 
+def get_measures_for_traces(traces):
+    log = generate_log(traces, verbose=False)
+    pa = build_graph(log, verbose=False, accepting=False)
+    measurements = perform_measurements('all', log, traces, pa, quiet=True, verbose=False)
+    var_ent = graph_complexity(pa)
+    seq_ent = log_complexity(pa)
+    measurements['Variant Entropy'] = var_ent[0]
+    measurements['Normalized Variant Entropy'] = var_ent[1]
+    measurements['Trace Entropy'] = seq_ent[0]
+    measurements['Normalized Trace Entropy'] = seq_ent[1]
+
+    # fix trace length
+    if "Trace length" in measurements and isinstance(measurements["Trace length"], dict):
+        tl = measurements.pop("Trace length")
+        measurements["Trace length min"] = tl.get("min", None)
+        measurements["Trace length avg"] = tl.get("avg", None)
+        measurements["Trace length max"] = tl.get("max", None)
+    
+    return measurements
+
+
 def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path):
     print(f"## Running concept drift complexity assessment ##")
 
@@ -239,15 +254,8 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
 
         # Build window and compute complexity
         window_traces = traces_sorted[start_index:end_index]
-        log = generate_log(window_traces, verbose=False)
-        pa = build_graph(log, verbose=False, accepting=False)
-        measurements = perform_measurements('all', log, window_traces, pa, quiet=True, verbose=False)
-        var_ent = graph_complexity(pa)
-        seq_ent = log_complexity(pa)
-        measurements['Variant Entropy'] = var_ent[0]
-        measurements['Normalized Variant Entropy'] = var_ent[1]
-        measurements['Trace Entropy'] = seq_ent[0]
-        measurements['Normalized Trace Entropy'] = seq_ent[1]
+
+        measurements = get_measures_for_traces(window_traces)
 
         window_complexity_results.append({
             "window_id": window_id,

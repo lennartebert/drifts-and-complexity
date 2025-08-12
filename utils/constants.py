@@ -22,4 +22,4 @@ COMPLEXITY_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 COMBINED_RESULTS_TABLE_DIR.mkdir(parents=True, exist_ok=True)
 COMBINED_RESULTS_BOXPLOT_DIR.mkdir(parents=True, exist_ok=True)
 
-DEFAULT_CHANGE_POINT_DETECTOR = 'adwin_j'
+DEFAULT_CHANGE_POINT_PARAMETER_SETTING = 'processGraphsPDefaultWDefault'

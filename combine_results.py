@@ -5,6 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from utils import constants 
+import os
+from typing import Dict
+from scipy.stats import pearsonr
 
 # Define drift type order
 drift_type_order = [
@@ -14,24 +17,26 @@ drift_type_order = [
     "Gradual (during to after)"
 ]
 
-def load_complexity_per_window_dict(datasets):
-    all_files = [constants.COMPLEXITY_RESULTS_DIR / dataset / "complexity_per_window.csv" for dataset in datasets]
+def load_complexity_per_window_dict(datasets, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING):
+    dataset_file_dict = {dataset: constants.COMPLEXITY_RESULTS_DIR / dataset / cp_parameter_setting / "complexity_per_window.csv" for dataset in datasets}
     complexity_per_window_df_dict = {}
-    for f in all_files:
-        dataset = f.parent.name
+    for dataset, f in dataset_file_dict.items():
+        if not f.exists() or not f.is_file():
+            continue
         df = pd.read_csv(f)
         df["dataset"] = dataset
         df["start_change_id"] = df["start_change_id"].astype("Int64")
         df["end_change_id"] =  df["end_change_id"].astype("Int64")
+        df["n_traces"] = df["end_index"] - df["start_index"]
         df["window_id"] = df["window_id"].astype(int)
         complexity_per_window_df_dict[dataset] = df
     return complexity_per_window_df_dict
 
 
-def load_drift_info(complexity_per_window_df_dict, change_point_detector=constants.DEFAULT_CHANGE_POINT_DETECTOR):
+def load_drift_info(complexity_per_window_df_dict, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING):
     drift_info_by_dataset = {}
     for dataset in complexity_per_window_df_dict.keys():
-        path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset / f"results_{change_point_detector}_input_approach.csv"
+        path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset / f"results_{dataset}_{cp_parameter_setting}.csv"
         drift_info = pd.read_csv(path)
         drift_info["calc_change_id"] = drift_info["calc_change_id"].astype("Int64")
         drift_info_by_dataset[dataset] = drift_info.set_index("calc_change_id").to_dict(orient="index")
@@ -140,7 +145,7 @@ def format_number(x, include_plus=False):
             return f"{x:.2f}"  # fixed-point with 2 decimals
     
 
-def save_aggregated_table(results_df):
+def save_aggregated_table(results_df, cp_parameter_setting):
     results_df_clean = results_df.dropna()
     change_types = results_df_clean["change_type"].unique()
 
@@ -162,10 +167,13 @@ def save_aggregated_table(results_df):
     summary_df = pd.DataFrame(records)
     summary_df.set_index(["measure", "change_type"], inplace=True)
     summary_df = summary_df.reorder_levels(["change_type", "measure"]).sort_index()
-    summary_df.to_csv(constants.COMBINED_RESULTS_TABLE_DIR / "complexity_delta_aggregated.csv")
+    # Ensure the output directory exists
+    output_dir = constants.COMBINED_RESULTS_TABLE_DIR / cp_parameter_setting
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary_df.to_csv(output_dir / "complexity_delta_aggregated.csv")
     return summary_df
 
-def save_simple_aggregated_table(aggregated_table_df):
+def save_simple_aggregated_table(aggregated_table_df, cp_parameter_setting):
     # Ensure index is MultiIndex
     if not isinstance(aggregated_table_df.index, pd.MultiIndex):
         raise ValueError("Expected MultiIndex with levels (change_type, measure)")
@@ -199,12 +207,12 @@ def save_simple_aggregated_table(aggregated_table_df):
     # Create DataFrame and save
     final_df = pd.DataFrame(rows)
     final_df.set_index("Change Type", inplace=True)
-    final_df.to_csv(constants.COMBINED_RESULTS_TABLE_DIR / "complexity_delta_simple.csv")
+    final_df.to_csv(constants.COMBINED_RESULTS_TABLE_DIR / cp_parameter_setting / "complexity_delta_simple.csv")
 
     return final_df
 
 
-def save_boxplots(results_df):
+def save_boxplots(results_df, cp_parameter_setting):
     measure_names = [col for col in results_df.columns if col != "change_type"]
 
     for measure in measure_names:
@@ -219,11 +227,133 @@ def save_boxplots(results_df):
         plt.ylabel(measure.replace("_", " ").title())
         plt.xticks(rotation=25, ha="right")
         plt.tight_layout()
-        plt.savefig(constants.COMBINED_RESULTS_BOXPLOT_DIR / f"{measure}_boxplot.png", dpi=300)
+        # Ensure the output directory exists
+        output_dir = constants.COMBINED_RESULTS_BOXPLOT_DIR / cp_parameter_setting
+        output_dir.mkdir(parents=True, exist_ok=True)
+        plt.savefig(output_dir / f"{measure}_boxplot.png", dpi=300)
         plt.close()
 
 
-def main(datasets=None, change_point_detector=constants.DEFAULT_CHANGE_POINT_DETECTOR):
+
+def compute_and_save_correlation_analysis(
+    complexity_per_window_df_dict: Dict[str, pd.DataFrame],
+    cp_parameter_setting: str,
+    out_dir: str = "results/combined_results/correlation_anlaysis",
+) -> pd.DataFrame:
+    """
+    Compute ONE Pearson correlation per measure across ALL datasets combined.
+    Output has one row per measure. If measure_trace_length_avg is present,
+    save a scatter plot of n_traces vs. trace_length_avg by dataset as PNG.
+    """
+    # create out path
+    os.makedirs(out_dir, exist_ok=True)
+
+    # --- Combine all datasets ---
+    dfs = []
+    for dataset_name, df in complexity_per_window_df_dict.items():
+        if df is None or df.empty:
+            continue
+        df = df.copy()
+        if "dataset" not in df.columns:
+            df["dataset"] = dataset_name
+        dfs.append(df)
+
+    if not dfs:
+        result_df = pd.DataFrame(
+            columns=[
+                "measure", "column", "n_rows_used", "n_datasets_used",
+                "pearson_r", "p_value_two_sided",
+                "significant_0.10","significant_0.05","significant_0.01","significant_0.001",
+                "direction"
+            ]
+        )
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f"{cp_parameter_setting}_correlation_analysis.csv")
+        result_df.to_csv(out_path, index=False)
+        return result_df
+
+    combined = pd.concat(dfs, ignore_index=True, sort=False)
+
+    if "n_traces" not in combined.columns:
+        raise KeyError("Expected column 'n_traces' missing in combined data.")
+    if "dataset" not in combined.columns:
+        combined["dataset"] = "unknown"
+
+    measure_cols = [c for c in combined.columns if isinstance(c, str) and c.startswith("measure_")]
+    n_traces_all = pd.to_numeric(combined["n_traces"], errors="coerce")
+
+    rows = []
+    for col in measure_cols:
+        measure_vals = pd.to_numeric(combined[col], errors="coerce")
+
+        pair = pd.DataFrame({
+            "x": measure_vals,
+            "y": n_traces_all,
+            "dataset": combined["dataset"],
+        }).replace([pd.NA, pd.NaT, np.inf, -np.inf], np.nan).dropna(subset=["x", "y"])
+
+        n_rows_used = int(len(pair))
+        n_datasets_used = int(pair["dataset"].nunique()) if n_rows_used > 0 else 0
+
+        # Guards for pearsonr
+        if n_rows_used < 2 or pair["x"].nunique() < 2 or pair["y"].nunique() < 2:
+            r, p = np.nan, np.nan
+        else:
+            r, p = pearsonr(pair["x"].to_numpy(dtype=float), pair["y"].to_numpy(dtype=float))
+
+        measure_name = col[len("measure_"):]
+        sig_10  = (p <= 0.10) if np.isfinite(p) else False
+        sig_05  = (p <= 0.05) if np.isfinite(p) else False
+        sig_01  = (p <= 0.01) if np.isfinite(p) else False
+        sig_001 = (p <= 0.001) if np.isfinite(p) else False
+
+        direction = (
+            "positive" if np.isfinite(r) and r > 0
+            else "negative" if np.isfinite(r) and r < 0
+            else "zero/undefined"
+        )
+
+        rows.append({
+            "measure": measure_name,
+            "column": col,
+            "n_rows_used": n_rows_used,
+            "n_datasets_used": n_datasets_used,
+            "pearson_r": r,
+            "p_value_two_sided": p,
+            "significant_0.10": sig_10,
+            "significant_0.05": sig_05,
+            "significant_0.01": sig_01,
+            "significant_0.001": sig_001,
+            "direction": direction,
+        })
+
+        # --- Plot for trace_length_avg ---
+        if col == "measure_Trace length avg" and n_rows_used > 0:
+            plt.figure(figsize=(8, 6))
+            sns.scatterplot(
+                data=pair, x="y", y="x",
+                hue="dataset", alpha=0.7, edgecolor="black", linewidth=0.5, s=10
+            )
+
+            # Overall regression line
+            sns.regplot(
+                data=pair, x="y", y="x",
+                scatter=False, color="black", line_kws={"linestyle": "--", "label": "Overall trend"}
+            )
+
+            plt.xlabel("Number of Traces (n_traces)")
+            plt.ylabel("Average Trace Length (trace_length_avg)")
+            plt.title("n_traces vs. trace_length_avg by Dataset")
+            plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+            plt.tight_layout()
+            plt.savefig(os.path.join(out_dir, f"{cp_parameter_setting}_trace_length_avg_scatter.png"), dpi=600)
+
+    result_df = pd.DataFrame(rows).sort_values(["measure"]).reset_index(drop=True)
+    out_path = os.path.join(out_dir, f"{cp_parameter_setting}_correlation_analysis.csv")
+    result_df.to_csv(out_path, index=False)
+    return result_df
+
+def main(datasets=None, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING):
     print("#### Starting to combine drift analysis results ####")
     if datasets is None:
         # Get all folder names (1st level child) under folder results/complexity_assessment
@@ -232,24 +362,29 @@ def main(datasets=None, change_point_detector=constants.DEFAULT_CHANGE_POINT_DET
             if d.is_dir()
         ]
 
-    window_dict = load_complexity_per_window_dict(datasets)
+    window_dict = load_complexity_per_window_dict(datasets, cp_parameter_setting)
     if not window_dict:
-        print("No datasets with complexity_per_window.csv found.")
+        print(f"No datasets with complexity_per_window.csv for {cp_parameter_setting} found.")
         return
-    drift_info_by_dataset = load_drift_info(window_dict, change_point_detector)
+    drift_info_by_dataset = load_drift_info(window_dict, cp_parameter_setting)
 
     # get summary of drift info
     drift_info_summary_table_df = get_drift_info_summary_table(drift_info_by_dataset=drift_info_by_dataset)
-    drift_info_summary_table_df.to_csv(constants.COMBINED_RESULTS_TABLE_DIR / "drift_info_summary.csv")
-
+    # Ensure the output directory exists
+    output_dir = constants.COMBINED_RESULTS_TABLE_DIR / cp_parameter_setting
+    output_dir.mkdir(parents=True, exist_ok=True)
+    drift_info_summary_table_df.to_csv(output_dir / "drift_info_summary.csv")
 
     results_df = compute_complexity_deltas(window_dict, drift_info_by_dataset)
-    # save_boxplots(results_df)
+    save_boxplots(results_df, cp_parameter_setting)
 
-    aggregated_table = save_aggregated_table(results_df)
+    aggregated_table = save_aggregated_table(results_df, cp_parameter_setting)
     print(aggregated_table)
-    simple_aggregated_table = save_simple_aggregated_table(aggregated_table)
+    simple_aggregated_table = save_simple_aggregated_table(aggregated_table, cp_parameter_setting)
     print(simple_aggregated_table)
+
+    correlation_analysis = compute_and_save_correlation_analysis(window_dict, cp_parameter_setting)
+    print(correlation_analysis)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Combine drift complexity analysis detection results.")
@@ -260,12 +395,12 @@ if __name__ == "__main__":
         help="Optional list of dataset keys to include. If not set, all datasets are used."
     )
     parser.add_argument(
-        "--change-point-detector",
-        default=constants.DEFAULT_CHANGE_POINT_DETECTOR,
-        help="Defauld change point detection approach. Choose from 'emd', 'prodrift', 'zheng', 'bose_j', 'process_graphs', 'lcdd', 'adwin_j'."
+        "--cp-parameter-setting",
+        default=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING,
+        help="Name of change point parameter setting (e.g., processGraphsPDefaultWDefault)"
     )
 
     args = parser.parse_args()
 
-    main(datasets=args.datasets, change_point_detector=args.change_point_detector)
+    main(datasets=args.datasets, cp_parameter_setting=args.cp_parameter_setting)
 
