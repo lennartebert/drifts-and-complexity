@@ -1,0 +1,83 @@
+# -----------------------------------------------------------------------------
+# WINDOWING CONFIG – HOW TO USE
+#
+# AVAILABLE APPROACH TYPES
+# 1) change_point_windows
+#    - Description: Split the log at detected change points. If the drift CSV
+#      contains a row with calc_change_id == "na", we treat it as "no drift" and
+#      return a single full-log window.
+#    - Params: {}
+#    - Example:
+#        - name: cp_default
+#          type: change_point_windows
+#          params: {}
+#
+# 2) fixed_size_windows
+#    - Description: Slide fixed-size windows across the log.
+#    - Params:
+#        window_size: int   # number of traces per window (>=1)
+#        offset:      int   # step size in traces between successive windows (>=1)
+#    - Examples:
+#        - name: fixed_w200_o100
+#          type: fixed_size_windows
+#          params:
+#            window_size: 200
+#            offset: 100
+#        - name: fixed_w500_o500   # non-overlapping
+#          type: fixed_size_windows
+#          params:
+#            window_size: 500
+#            offset: 500
+#
+# 3) window_comparison
+#    - Description: Produce PAIRS of windows for comparison.
+#    - Params:
+#        window_1_size: int  # length of first window (>=1)
+#        window_2_size: int  # length of second window (>=1)
+#        offset:       int   # start of window 2 relative to window 1 start (>=0)
+#        step:         int   # step in traces to move both window starts (>=1)
+#    - Examples:
+#        - name: compare_w100_vs_150_o20_s10
+#          type: window_comparison
+#          params:
+#            window_1_size: 100
+#            window_2_size: 150
+#            offset: 20
+#            step: 10
+#        - name: add_one_100_s10   # “add-one” is just a parameterization
+#          type: window_comparison
+#          params:
+#            window_1_size: 100
+#            window_2_size: 101
+#            offset: 0
+#            step: 10
+# -----------------------------------------------------------------------------
+
+
+approaches:
+  - name: cp_default
+    type: change_point_windows
+    params: {}
+
+  - name: fixed_w200_o100
+    type: fixed_size_windows
+    params:
+      window_size: 200
+      offset: 100
+  
+  # - name: compare_w100_vs_150_o20_s10
+  #   type: window_comparison
+  #   params:
+  #     window_1_size: 100
+  #     window_2_size: 150
+  #     offset: 20
+  #     step: 10
+
+  # add-one is just a special case of window_comparison
+  - name: add_one_100_s10
+    type: window_comparison
+    params:
+      window_1_size: 100
+      window_2_size: 101
+      offset: 0
+      step: 10

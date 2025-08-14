@@ -1,20 +1,23 @@
 import argparse
-import json
 import shutil
 import subprocess
 import pandas as pd
 from pathlib import Path
-import matplotlib.pyplot as plt
-from pathlib import Path
-from datetime import datetime
-import sys
-from pathlib import Path
-# Add the process-complexity folder to the Python path
-sys.path.append(str(Path(__file__).resolve().parent / "process-complexity"))
-from Complexity import generate_log, build_graph, perform_measurements, graph_complexity, log_complexity
-from pm4py.objects.log.importer.xes import importer as xes_importer
-
 from utils import constants, helpers
+
+import argparse
+from pathlib import Path
+from utils.windowing.loader import load_window_config
+from utils.drift_io import (
+    drift_info_to_dict, load_xes_log
+)
+from utils.complexity_assessors import (
+    assess_complexity_via_change_point_split,
+    assess_complexity_via_fixed_sized_windows,
+    assess_complexity_via_window_comparison
+)
+from utils.plotting.complexity import plot_complexity_measures, plot_delta_measures
+
 
 ## UTILS
 
@@ -54,85 +57,6 @@ def flatten_measurements(window_results):
         flat_records.append(flat_record)
 
     return flat_records
-
-def save_complexity_csv(dataset_key, configuration_name, flat_data):
-    target_dir = constants.COMPLEXITY_RESULTS_DIR / dataset_key / configuration_name
-    target_dir.mkdir(parents=True, exist_ok=True)
-    df = pd.DataFrame(flat_data)
-    df.to_csv(target_dir / "complexity_per_window.csv", index=False)
-
-def plot_complexity_measures(dataset_key, configuration_name, flat_data, drift_info_by_id):
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    from pathlib import Path
-
-    df = pd.DataFrame(flat_data)
-    df["start_time"] = pd.to_datetime(df["start_time"])
-    df["end_time"] = pd.to_datetime(df["end_time"])
-
-    label_map = {
-        "sudden": "Sudden",
-        "gradual_start": "Gradual start",
-        "gradual_end": "Gradual end",
-        "start": "Start",
-        "end": "End"
-    }
-
-    measure_columns = [col for col in df.columns if col.startswith("measure_")]
-
-    for measure_column in measure_columns:
-        measure_name = measure_column.removeprefix("measure_")
-        plt.figure(figsize=(12, 5))
-
-        y_min, y_max = df[measure_column].min(), df[measure_column].max()
-
-        for _, row in df.iterrows():
-            plt.plot(
-                [row["start_time"], row["end_time"]],
-                [row[measure_column], row[measure_column]],
-                color='blue'
-            )
-            # Trace count
-            mid_time = row["start_time"] + (row["end_time"] - row["start_time"]) / 2
-            y_pos = row[measure_column] + 0.002 * (y_max - y_min)
-            trace_label = f'N={int(row["measure_Support"])}' if "measure_Support" in row else ""
-            plt.text(mid_time, y_pos, trace_label, fontsize=7, ha='center', va='bottom')
-
-        label_y_offset = (y_max - y_min) * 0.08  # 8% above the plot
-
-        # Add start line and label
-        x_start = df["start_time"].min()
-        plt.axvline(x_start, color='black', linestyle='--', linewidth=1)
-        plt.text(x_start, y_max + label_y_offset, label_map["start"], fontsize=8,
-                 ha='left', va='bottom', rotation=45)
-
-        # Add end line and label
-        x_end = df["end_time"].max()
-        plt.axvline(x_end, color='black', linestyle='--', linewidth=1)
-        plt.text(x_end, y_max + label_y_offset, label_map["end"], fontsize=8,
-                 ha='left', va='bottom', rotation=45)
-
-        # Add change point lines and beautified labels
-        for cid, info in drift_info_by_id.items():
-            x = pd.to_datetime(info["calc_change_moment"])
-            change_type = info["calc_change_type"]
-            change_label = label_map.get(change_type, change_type)
-            plt.axvline(x=x, color='red', linestyle='--', alpha=0.5)
-            plt.text(x, y_max + label_y_offset, change_label, rotation=45,
-                     fontsize=8, ha='left', va='bottom')
-
-        # Axis formatting
-        plt.xlabel("Time")
-        plt.ylim(bottom=0)
-        plt.ylabel(measure_name)
-        plt.xticks(rotation=45)
-        plt.grid(True)
-        plt.tight_layout()
-
-        output_path = constants.COMPLEXITY_RESULTS_DIR / dataset_key / configuration_name / f"{measure_name}_over_time.png"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(output_path, dpi=600)
-        plt.close()
 
 
 ## MAIN FUNCTIONS
@@ -192,89 +116,28 @@ def concept_drift_characterization(dataset_key, dataset_info):
     return results_target_file_paths
 
 
-def get_measures_for_traces(traces):
-    log = generate_log(traces, verbose=False)
-    pa = build_graph(log, verbose=False, accepting=False)
-    measurements = perform_measurements('all', log, traces, pa, quiet=True, verbose=False)
-    var_ent = graph_complexity(pa)
-    seq_ent = log_complexity(pa)
-    measurements['Variant Entropy'] = var_ent[0]
-    measurements['Normalized Variant Entropy'] = var_ent[1]
-    measurements['Trace Entropy'] = seq_ent[0]
-    measurements['Normalized Trace Entropy'] = seq_ent[1]
-
-    # fix trace length
-    if "Trace length" in measurements and isinstance(measurements["Trace length"], dict):
-        tl = measurements.pop("Trace length")
-        measurements["Trace length min"] = tl.get("min", None)
-        measurements["Trace length avg"] = tl.get("avg", None)
-        measurements["Trace length max"] = tl.get("max", None)
-    
-    return measurements
-
-
 def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path):
     print(f"## Running concept drift complexity assessment ##")
 
-    concept_drift_info_df = pd.read_csv(concept_drift_info_path)
+    approaches = load_window_config(constants.WINDOW_CONFIG_FILE_PATH)
+    drift_df = pd.read_csv(concept_drift_info_path)
+    drift_info_by_id = drift_info_to_dict(drift_df)
     configuration_name = concept_drift_info_path.stem.split("_")[-1]
-    
-    drift_info_by_id = concept_drift_info_df.set_index('calc_change_id').to_dict(orient='index')
 
-    # calc_change_id == 'na', there is no drift
-    if 'na' in drift_info_by_id.keys():
-        print("No drifts in dataset. Cannot assess drift.") # this is not entirely true - we could still plot the complexity from start to end. However, this would require major updates for this edge case.
-        return None
-    
-    log_path = Path(dataset_info["path"])
-    pm4py_log = xes_importer.apply(str(log_path))
-    traces_sorted = sorted(pm4py_log, key=lambda trace: trace[0]['time:timestamp'])
-
-    window_complexity_results = []
-    window_id = 0
-
-    sorted_change_ids = sorted(drift_info_by_id.keys())
-
-    for i, end_change_id in enumerate(sorted_change_ids + [None]):
-        if end_change_id is None:
-            # final window: after last change
-            start_change_id = sorted_change_ids[-1]
-            start_index = drift_info_by_id[start_change_id]['calc_change_index']
-            end_index = len(traces_sorted)
-            start_time = pd.to_datetime(drift_info_by_id[start_change_id]['calc_change_moment'])
-            end_time = traces_sorted[-1][-1]['time:timestamp']
-            window_change = 'stable'
+    traces_sorted = load_xes_log(Path(dataset_info["path"]))
+    for apc in approaches:
+        name, typ, p = apc["name"], apc["type"], apc.get("params", {}) or {}
+        if typ == "change_point_windows":
+            df = assess_complexity_via_change_point_split(traces_sorted, drift_info_by_id, dataset_key, configuration_name, name)
+            plot_complexity_measures(dataset_key, f"{configuration_name}__{name}", df, drift_info_by_id)
+        elif typ == "fixed_size_windows":
+            df = assess_complexity_via_fixed_sized_windows(traces_sorted, int(p["window_size"]), int(p["offset"]), dataset_key, configuration_name, name, drift_info_by_id)
+            plot_complexity_measures(dataset_key, f"{configuration_name}__{name}", df, drift_info_by_id)
+        elif typ == "window_comparison":
+            df = assess_complexity_via_window_comparison(traces_sorted, int(p["window_1_size"]), int(p["window_2_size"]), int(p["offset"]), int(p["step"]), dataset_key, configuration_name, name)
+            plot_delta_measures(dataset_key, f"{configuration_name}__{name}", df, drift_info_by_id)
         else:
-            start_change_id = None if i == 0 else sorted_change_ids[i - 1]
-            start_index = 0 if i == 0 else drift_info_by_id[start_change_id]['calc_change_index']
-            end_index = drift_info_by_id[end_change_id]['calc_change_index']
-            start_time = traces_sorted[0][0]['time:timestamp'] if i == 0 else pd.to_datetime(drift_info_by_id[start_change_id]['calc_change_moment'])
-            end_time = pd.to_datetime(drift_info_by_id[end_change_id]['calc_change_moment'])
-            window_change = 'gradual' if drift_info_by_id[end_change_id]['calc_change_type'] == 'gradual_end' else 'stable'
-
-        # Build window and compute complexity
-        window_traces = traces_sorted[start_index:end_index]
-
-        measurements = get_measures_for_traces(window_traces)
-
-        window_complexity_results.append({
-            "window_id": window_id,
-            "start_index": start_index,
-            "end_index": end_index,
-            "start_time": pd.to_datetime(start_time).tz_convert(None),
-            "end_time": pd.to_datetime(end_time).tz_convert(None),
-            "start_change_id": start_change_id,
-            "end_change_id": end_change_id,
-            "window_change": window_change,
-            'traces_in_window': end_index - start_index,
-            "measurements": measurements
-        })
-
-        window_id += 1
-
-    flat_measurements_per_window = flatten_measurements(window_complexity_results)
-    save_complexity_csv(dataset_key, configuration_name, flat_measurements_per_window)
-    plot_complexity_measures(dataset_key, configuration_name, flat_measurements_per_window, drift_info_by_id)
+            raise ValueError(f"Unknown approach type: {typ}")
 
     print("Drift complexity assessment complete.")
 

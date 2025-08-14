@@ -1,25 +1,27 @@
 from pathlib import Path
 
-DATA_DICTIONARY_FILE_PATH = Path('configuration/data_dictionary.json')
+### DIRECTORIES
 
-DRIFT_CHARACTERIZATION_DIR = Path("concept-drift-characterization/")
-DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR = DRIFT_CHARACTERIZATION_DIR / "input"
-DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR = DRIFT_CHARACTERIZATION_DIR / "output"
-DRIFT_CHARACTERIZATION_SCRIPT = Path("main.py")
-DRIFT_CHARACTERIZATION_RESULTS_DIR = Path("results/drift_detection")
+ROOT = Path(__file__).resolve().parents[1]
 
-COMPLEXITY_RESULTS_DIR = Path("results/complexity_assessment")
+# configs
+CONFIG_DIR = ROOT / 'configuration'
+DATA_DICTIONARY_FILE_PATH = CONFIG_DIR / 'data_dictionary.json'
+WINDOW_CONFIG_FILE_PATH = CONFIG_DIR / 'window_config.yml'
 
-COMBINED_RESULTS_DIR = Path("results/combined_results")
+# drift characterization
+DRIFT_CHARACTERIZATION_DIR = ROOT / 'concept-drift-characterization'
+DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR = DRIFT_CHARACTERIZATION_DIR / 'input'
+DRIFT_CHARACTERIZATION_TEMP_OUTPUT_DIR = DRIFT_CHARACTERIZATION_DIR / 'output'
+DRIFT_CHARACTERIZATION_SCRIPT = Path("main.py") # relative to DRIFT_CHARACTERIZATION_DIR
 
-COMBINED_RESULTS_TABLE_DIR = COMBINED_RESULTS_DIR / "tables"
-COMBINED_RESULTS_BOXPLOT_DIR = COMBINED_RESULTS_DIR / "boxplots"
+# results
+RESULTS_DIR = ROOT / 'results'
+DRIFT_CHARACTERIZATION_RESULTS_DIR = RESULTS_DIR / 'drift_detection'
+COMPLEXITY_RESULTS_DIR = RESULTS_DIR / 'complexity_assessment'
+COMBINED_RESULTS_DIR = RESULTS_DIR / 'combined_results'
+COMBINED_RESULTS_TABLE_DIR = COMBINED_RESULTS_DIR / 'tables'
+COMBINED_RESULTS_BOXPLOT_DIR = COMBINED_RESULTS_DIR / 'boxplots'
 
-# create all directories
-DRIFT_CHARACTERIZATION_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-COMPLEXITY_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-COMPLEXITY_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-COMBINED_RESULTS_TABLE_DIR.mkdir(parents=True, exist_ok=True)
-COMBINED_RESULTS_BOXPLOT_DIR.mkdir(parents=True, exist_ok=True)
-
+### CONSTANT CONFIGURATIONS
 DEFAULT_CHANGE_POINT_PARAMETER_SETTING = 'processGraphsPDefaultWDefault'
