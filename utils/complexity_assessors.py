@@ -54,7 +54,8 @@ def assess_complexity_via_window_comparison(traces_sorted, window_1_size:int, wi
     pairs = split_log_into_fixed_comparable_windows(traces_sorted, window_1_size, window_2_size, offset, step)
     rows=[]; pid=0
     for w1, w2 in pairs:
-        m1 = get_measures_for_traces(w1.traces); m2 = get_measures_for_traces(w2.traces)
+        m1 = get_measures_for_traces(w1.traces)
+        m2 = get_measures_for_traces(w2.traces)
         row = {
             "pair_id": pid,
             "w1_id": w1.id, "w2_id": w2.id,
@@ -68,7 +69,8 @@ def assess_complexity_via_window_comparison(traces_sorted, window_1_size:int, wi
         for k in keys:
             v1, v2 = m1.get(k), m2.get(k)
             row[f"w1_{k}"]=v1; row[f"w2_{k}"]=v2
-            row[f"delta_{k}"]=None if (v1 is None or v2 is None) else (v2 - v1)
+            if k.startswith('meausure_'):
+                    row[f"delta_{k}"]=None if (v1 is None or v2 is None) else (v2 - v1)
         rows.append(row); pid+=1
     df = pd.DataFrame(rows)
     cfg = _cfg_name(configuration_name, approach_name)

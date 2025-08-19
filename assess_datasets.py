@@ -159,6 +159,7 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
             df = assess_complexity_via_change_point_split(
                 traces_sorted, drift_info_by_id, dataset_key, configuration_name, name
             )
+
             plot_complexity_via_change_point_split(
                 dataset_key,
                 cfg_with_approach,
@@ -166,7 +167,7 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
                 drift_info_by_id,
                 y_log=y_log,
                 fig_format=fig_format,
-                headroom=headroom,
+                headroom=0.2,
                 title=title,
             )
 
