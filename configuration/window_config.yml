@@ -56,10 +56,12 @@
 
 approaches:
   - name: cp_default
+    title: Windows per Change Point
     type: change_point_windows
     params: {}
 
   - name: fixed_w200_o100
+    title: Fixed Sized Windows with Size 200, Offset 100
     type: fixed_size_windows
     params:
       window_size: 200
@@ -74,10 +76,11 @@ approaches:
   #     step: 10
 
   # add-one is just a special case of window_comparison
-  - name: add_one_100_s10
+  - name: add_one_99_s10
+    title: Windows of 99 vs. 100 (Same Window with One Additional Trace)
     type: window_comparison
     params:
-      window_1_size: 100
-      window_2_size: 101
+      window_1_size: 99
+      window_2_size: 100
       offset: 0
       step: 10

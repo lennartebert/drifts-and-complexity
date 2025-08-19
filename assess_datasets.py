@@ -16,7 +16,12 @@ from utils.complexity_assessors import (
     assess_complexity_via_fixed_sized_windows,
     assess_complexity_via_window_comparison
 )
-from utils.plotting.complexity import plot_complexity_measures, plot_delta_measures
+
+from utils.plotting.complexity import (
+    plot_complexity_via_change_point_split,
+    plot_complexity_via_fixed_sized_windows,
+    plot_delta_measures,
+)
 
 
 ## UTILS
@@ -117,25 +122,97 @@ def concept_drift_characterization(dataset_key, dataset_info):
 
 
 def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path):
-    print(f"## Running concept drift complexity assessment ##")
+    """
+    Orchestrator:
+    - loads window approaches from YAML
+    - computes complexity per approach
+    - renders approach-specific plots
+    """
+    print("## Running concept drift complexity assessment ##")
 
+    # Load approaches & drift info
     approaches = load_window_config(constants.WINDOW_CONFIG_FILE_PATH)
     drift_df = pd.read_csv(concept_drift_info_path)
     drift_info_by_id = drift_info_to_dict(drift_df)
+
+    # Used for output subfolder names
     configuration_name = concept_drift_info_path.stem.split("_")[-1]
 
+    # Load and sort the log once
     traces_sorted = load_xes_log(Path(dataset_info["path"]))
+
     for apc in approaches:
-        name, typ, p = apc["name"], apc["type"], apc.get("params", {}) or {}
+        name = apc["name"]
+        typ = apc["type"]
+        title = apc.get("title", None)
+        p = apc.get("params", {}) or {}
+
+        # Optional plotting knobs from YAML (fallbacks keep old behavior)
+        y_log = bool(p.get("y_log", False))
+        fig_format = p.get("fig_format", "png")
+        headroom = float(p.get("headroom", 0.10))
+        point_position = p.get("point_position", "end_w2")  # for window_comparison plots
+
+        cfg_with_approach = f"{configuration_name}__{name}"
+
         if typ == "change_point_windows":
-            df = assess_complexity_via_change_point_split(traces_sorted, drift_info_by_id, dataset_key, configuration_name, name)
-            plot_complexity_measures(dataset_key, f"{configuration_name}__{name}", df, drift_info_by_id)
+            df = assess_complexity_via_change_point_split(
+                traces_sorted, drift_info_by_id, dataset_key, configuration_name, name
+            )
+            plot_complexity_via_change_point_split(
+                dataset_key,
+                cfg_with_approach,
+                df,
+                drift_info_by_id,
+                y_log=y_log,
+                fig_format=fig_format,
+                headroom=headroom,
+                title=title,
+            )
+
         elif typ == "fixed_size_windows":
-            df = assess_complexity_via_fixed_sized_windows(traces_sorted, int(p["window_size"]), int(p["offset"]), dataset_key, configuration_name, name, drift_info_by_id)
-            plot_complexity_measures(dataset_key, f"{configuration_name}__{name}", df, drift_info_by_id)
+            window_size = int(p["window_size"])
+            offset = int(p["offset"])
+
+            df = assess_complexity_via_fixed_sized_windows(
+                traces_sorted, window_size, offset, dataset_key, configuration_name, name, drift_info_by_id
+            )
+            plot_complexity_via_fixed_sized_windows(
+                dataset_key,
+                cfg_with_approach,
+                df,
+                drift_info_by_id,
+                window_size=window_size,
+                offset=offset,
+                y_log=y_log,
+                fig_format=fig_format,
+                headroom=headroom,
+                title=title,
+            )
+
         elif typ == "window_comparison":
-            df = assess_complexity_via_window_comparison(traces_sorted, int(p["window_1_size"]), int(p["window_2_size"]), int(p["offset"]), int(p["step"]), dataset_key, configuration_name, name)
-            plot_delta_measures(dataset_key, f"{configuration_name}__{name}", df, drift_info_by_id)
+            df = assess_complexity_via_window_comparison(
+                traces_sorted,
+                int(p["window_1_size"]),
+                int(p["window_2_size"]),
+                int(p["offset"]),
+                int(p["step"]),
+                dataset_key,
+                configuration_name,
+                name,
+            )
+            plot_delta_measures(
+                dataset_key,
+                cfg_with_approach,
+                df,
+                drift_info_by_id,
+                point_position=point_position,
+                y_log=y_log,
+                fig_format=fig_format,
+                headroom=headroom,
+                title=title,
+            )
+
         else:
             raise ValueError(f"Unknown approach type: {typ}")
 

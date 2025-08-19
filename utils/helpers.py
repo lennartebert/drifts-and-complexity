@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 import json, yaml
 import pandas as pd
-from .constants import RESULTS_DIR
+from .constants import COMPLEXITY_RESULTS_DIR
 
 def to_naive_ts(x):
     if x is None: return None
@@ -14,7 +14,7 @@ def to_naive_ts(x):
     except Exception: return ts
 
 def save_complexity_csv(dataset_key: str, configuration_name: str, df: pd.DataFrame) -> Path:
-    out_dir = RESULTS_DIR / dataset_key / configuration_name
+    out_dir = COMPLEXITY_RESULTS_DIR / dataset_key / configuration_name
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "complexity.csv"
     df.to_csv(out, index=False)
