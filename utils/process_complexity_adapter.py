@@ -35,11 +35,57 @@ from typing import List, Dict, Any
 import pandas as pd
 
 # Our modules
-from utils.population_estimates import estimate_populations
+from utils.population_estimates import estimate_populations, estimate_populations_same_coverage
 from utils.complexity_from_populations import measures_from_population_estimates
 
 
 # ---------- Public API ----------
+
+def get_measures_for_windows(windows):
+    # get values with unified coverage
+
+    # get measures per window (windows are isolated)
+    full_population_and_sample_measures = {i: get_measures_for_traces(window) for i, window in enumerate(windows)} 
+    
+    # get measures across windows
+    # 1) Get same coverage population estimates
+    pop_df_list = estimate_populations_same_coverage(
+        windows = windows,
+        species = ("activities", "dfg_edges", "trace_variants"),
+        estimator = "Chao1",
+        q_orders = (0, 1, 2),
+        nboot = 200,
+        conf = 0.95,
+        window_ids= None
+    )
+
+    same_coverage_population_information = {}
+
+    for i, windows in enumerate(windows):
+        pop_df = pop_df_list[i]
+        same_coverage_population_information[i] = {}
+        # include same coverage population information in all return data (prefix: same_coverage)
+        pop_columns = pop_df.columns
+        for _, row in pop_df.iterrows():
+            species = row['species']
+            for column in pop_columns:
+                if str(column) == 'species': continue
+                same_coverage_population_information[i][f'same_coverage_{species}_{str(column)}'] = row[column]
+    
+    same_coverage_measures = {}
+    for i, windows in enumerate(windows):
+        pop_df = pop_df_list[i]
+        same_coverage_measures[i] = measures_from_population_estimates(pop_df, population_colum='q0', coverage_string='Same Coverage')
+
+    dictionaries_all_windows = []
+    for i in range(len(windows)):
+        window_dict = full_population_and_sample_measures[i]
+        window_dict.update(same_coverage_population_information[i])
+        window_dict.update({
+            f'measure_{measure_name} (Own)': value for measure_name, value in same_coverage_population_information[i].items()
+        })
+
+    return dictionaries_all_windows
 
 def get_measures_for_traces(
     traces,
@@ -77,7 +123,7 @@ def get_measures_for_traces(
             all_return_data[f'population_{species}_{str(column)}'] = row[column]
 
     # 2) Compose accessible-named measures (sample + population + Pentland)
-    population_estimate_measures: Dict[str, Any] = measures_from_population_estimates(traces, pop_df)
+    population_estimate_measures: Dict[str, Any] = measures_from_population_estimates(pop_df, population_column='S_hat_inf', coverage_string='Full coverage')
 
     # add prefix and postfix to population estimate measures
     all_return_data.update({

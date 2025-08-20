@@ -59,16 +59,15 @@ def _pentland_complexity(e: int, v: int):
 
 
 def measures_from_population_estimates(
-    traces: List[List[str]],
     pop_df: pd.DataFrame,
+    population_column: str = 'S_hat_inf',
+    coverage_string: str = 'Full Coverage'
 ) -> Dict[str, float]:
     """
-    Measure outputs from sample + population estimates.
+    Measure outputs from population estimates.
 
     Parameters
     ----------
-    traces : list[list[str]]
-        Window/sample traces.
     pop_df : pd.DataFrame
         Output of utils.population_upsampling. Must contain rows with
         species in {"activities","dfg_edges","trace_variants"} and column "S_hat_inf".
@@ -77,45 +76,27 @@ def measures_from_population_estimates(
     -------
     dict[str, float]
         Flat mapping of measure names to values.
-    dict[str, float]
-        Population information.
     """
     measures: Dict[str, float] = {}
 
     # Helper to get s_obs and S_hat_inf by species (default to 0.0 if missing)
     def _s_hat(sp: str) -> float:
         row = pop_df.loc[pop_df["species"] == sp]
-        return float(row["S_hat_inf"].iloc[0]) if not row.empty else 0.0
-    def _s_obs(sp: str) -> float:
-        row = pop_df.loc[pop_df["species"] == sp]
-        return float(row["s_obs"].iloc[0]) if not row.empty else 0.0
+        return float(row[population_column].iloc[0]) if not row.empty else 0.0
     
-    # --- Sample counts ---
-    trace_count_obs = len(traces)
-    magnitude_obs = _count_events(traces)
-
-    v_obs = _s_obs("activities")
+    
     v_hat = _s_hat("activities")
-
-    e_obs = _s_obs("dfg_edges")
     e_hat = _s_hat("dfg_edges")
-    
-    trace_variants_obs = _s_obs("trace_variants")
     trace_variants_hat = _s_hat("trace_variants")
 
     # --- Distinct traces (variants) ---
-    measures["Distinct traces (sample)"] = float(trace_variants_obs)
-    measures["Distinct traces (full population est.)"] = float(trace_variants_hat)
+    measures[f"Distinct traces ({coverage_string})"] = float(trace_variants_hat)
 
     # --- Variety (activities) ---
-    measures["Variety (sample)"] = float(v_obs)
-    measures["Variety (full population est.)"] = float(v_hat)
+    measures[f"Variety {coverage_string})"] = float(v_hat)
 
     # --- Pentland’s Process Complexity ---
-    measures["Pentland Process Complexity (sample)"] = _pentland_complexity(
-        e=e_obs, v=v_obs
-    )
-    measures["Pentland Process Complexity (full population est.)"] = _pentland_complexity(
+    measures[f"Pentland process complexity ({coverage_string})"] = _pentland_complexity(
         e=int(round(e_hat)), v=int(round(v_hat))
     )
 
