@@ -275,7 +275,7 @@ if __name__ == "__main__":
         "--mode",
         type=str,
         default='all',
-        help="Choose from 'all', 'detection_only', 'complexity_only'"
+        help="Choose from 'all', 'detection-only', 'complexity-only'"
     )
     # NEW: plot coverage curves for change-point windows
     parser.add_argument(

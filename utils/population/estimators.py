@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Iterable, Dict, List, Any
+import numpy as np
 import pandas as pd
 from collections import Counter
 from typing import Mapping, Tuple as TTuple
@@ -111,15 +112,15 @@ def estimate_populations_inext(
                 method=tmp.at[wid, "method"],
                 n_ref=tmp.at[wid, "n_ref"],
                 extrapolation_factor=tmp.at[wid, "extrapolation_factor"],
-                q0     = _safe_nested_get(tmp, "q0", wid),
-                q0_LCL = _safe_nested_get(tmp, "q0_LCL", wid),
-                q0_UCL = _safe_nested_get(tmp, "q0_UCL", wid),
-                q1     = _safe_nested_get(tmp, "q1", wid),
-                q1_LCL = _safe_nested_get(tmp, "q1_LCL", wid),
-                q1_UCL = _safe_nested_get(tmp, "q1_UCL", wid),
-                q2     = _safe_nested_get(tmp, "q2", wid),
-                q2_LCL = _safe_nested_get(tmp, "q2_LCL", wid),
-                q2_UCL = _safe_nested_get(tmp, "q2_UCL", wid)
+                q0     = _safe_at(tmp, wid, "q0"),
+                q0_LCL = _safe_at(tmp, wid, "q0_LCL"),
+                q0_UCL = _safe_at(tmp, wid, "q0_UCL"),
+                q1     = _safe_at(tmp, wid, "q1"),
+                q1_LCL = _safe_at(tmp,  wid, "q1_LCL"),
+                q1_UCL = _safe_at(tmp, wid, "q1_UCL"),
+                q2     = _safe_at(tmp, wid, "q2"),
+                q2_LCL = _safe_at(tmp, wid, "q2_LCL"),
+                q2_UCL = _safe_at(tmp, wid, "q2_UCL"),
             )
             per[wid].append(row)
 
@@ -127,12 +128,11 @@ def estimate_populations_inext(
                "q0","q0_LCL","q0_UCL","q1","q1_LCL","q1_UCL","q2","q2_LCL","q2_UCL"]
     return {wid: pd.DataFrame(per[wid])[ordered] for wid in window_ids}
 
-def _safe_nested_get(d: dict, outer: str, inner: str, default=pd.NA):
-    """
-    Safely get d[outer][inner] if both exist and d[outer] is dict-like.
-    Otherwise return default.
-    """
-    val = d.get(outer)
-    if isinstance(val, dict):
-        return val.get(inner, default)
-    return default
+def _safe_at(df: pd.DataFrame, row, col, default=np.nan):
+    """Safely get df.at[row, col], return default if column or row missing."""
+    if col not in df.columns:
+        return default
+    try:
+        return df.at[row, col]
+    except KeyError:
+        return default
