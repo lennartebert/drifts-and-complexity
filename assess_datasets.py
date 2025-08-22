@@ -3,18 +3,17 @@ import shutil
 import subprocess
 import pandas as pd
 from pathlib import Path
-from utils import constants, helpers
 
-import argparse
-from pathlib import Path
+from utils import constants, helpers
+from utils.plotting.coverage_curves import plot_coverage_curves_for_cp_windows
 from utils.windowing.loader import load_window_config
-from utils.drift_io import (
-    drift_info_to_dict, load_xes_log
-)
-from utils.complexity_assessors import (
+from utils.drift_io import drift_info_to_dict, load_xes_log
+
+# NEW: assessor import (singular)
+from utils.complexity.assessors import (
     assess_complexity_via_change_point_split,
     assess_complexity_via_fixed_sized_windows,
-    assess_complexity_via_window_comparison
+    assess_complexity_via_window_comparison,
 )
 
 from utils.plotting.complexity import (
@@ -23,8 +22,16 @@ from utils.plotting.complexity import (
     plot_delta_measures,
 )
 
+# pm4py extractors for building abundances per species
+from pm4py.util import xes_constants as xes
+from pm4py.statistics.attributes.log import get as attributes_get
+from pm4py.algo.discovery.dfg import algorithm as dfg_discovery
+from pm4py.algo.filtering.log.variants import variants_filter
 
-## UTILS
+from utils.windowing.windowing import split_log_into_windows_by_change_points
+
+
+# ------------------- UTILS -------------------
 
 def clean_folder_except_gitkeep(folder: Path, delete: bool = False):
     if not folder.exists():
@@ -39,32 +46,15 @@ def clean_folder_except_gitkeep(folder: Path, delete: bool = False):
                 shutil.rmtree(item)
         else:
             gitkeep_in_dir = True
-    
+
     if not gitkeep_in_dir:
         try:
             shutil.rmtree(folder)
-        except Exception as e:
-            # prin  t(f"Failed to delete folder {folder}: {e}")
+        except Exception:
             pass
 
-def flatten_measurements(window_results):
-    flat_records = []
-    for w in window_results:
-        flat_record = w.copy()
-        del flat_record["measurements"]
 
-        meas = w["measurements"].copy()
-
-        # Prefix remaining measurement keys with "measure_"
-        meas = {f"measure_{k}": v for k, v in meas.items()}
-
-        flat_record.update(meas)
-        flat_records.append(flat_record)
-
-    return flat_records
-
-
-## MAIN FUNCTIONS
+# ------------------- MAIN ORCHESTRATION -------------------
 
 def concept_drift_characterization(dataset_key, dataset_info):
     print(f"## Running concept drift characterization ##")
@@ -101,10 +91,9 @@ def concept_drift_characterization(dataset_key, dataset_info):
         print("STDOUT:\n", e.stdout)
         print("STDERR:\n", e.stderr)
         raise
-    
+
     # Copy output to results folder
     target_dir = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key
-
     target_dir.mkdir(parents=True, exist_ok=True)
 
     results_target_file_paths = []
@@ -113,7 +102,7 @@ def concept_drift_characterization(dataset_key, dataset_info):
             results_target_file_path = target_dir / file.name
             shutil.copy(file, results_target_file_path)
             results_target_file_paths.append(results_target_file_path)
-    
+
     # Clean input and output directories
     clean_folder_except_gitkeep(drift_characterization_input_file_path.parent, delete=True)
     clean_folder_except_gitkeep(drift_characterization_output_dir_path, delete=True)
@@ -121,7 +110,7 @@ def concept_drift_characterization(dataset_key, dataset_info):
     return results_target_file_paths
 
 
-def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path):
+def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path, plot_coverage_curves: bool):
     """
     Orchestrator:
     - loads window approaches from YAML
@@ -147,7 +136,7 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
         title = apc.get("title", None)
         p = apc.get("params", {}) or {}
 
-        # Optional plotting knobs from YAML (fallbacks keep old behavior)
+        # Optional plotting knobs from YAML
         y_log = bool(p.get("y_log", False))
         fig_format = p.get("fig_format", "png")
         headroom = float(p.get("headroom", 0.10))
@@ -156,8 +145,11 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
         cfg_with_approach = f"{configuration_name}__{name}"
 
         if typ == "change_point_windows":
+            # --- Run both population adapters (simple + iNEXT) (+ vidgof if desired) ---
+            adapter_names = ["vidgof_sample", "population_simple", "population_inext"]
+
             df = assess_complexity_via_change_point_split(
-                traces_sorted, drift_info_by_id, dataset_key, configuration_name, name
+                traces_sorted, drift_info_by_id, dataset_key, configuration_name, name, adapter_names
             )
 
             plot_complexity_via_change_point_split(
@@ -171,13 +163,31 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
                 title=title,
             )
 
+            # --- Optionally plot coverage curves (iNEXT) ---
+            if plot_coverage_curves:
+                # Rebuild CP windows (same logic as in assessor)
+                cp_info = {k: v for k, v in drift_info_by_id.items() if k != "na"}
+                cps = [(cp_info[i]["calc_change_index"], i, cp_info[i]["calc_change_type"]) for i in sorted(cp_info.keys())] if cp_info else []
+                windows = split_log_into_windows_by_change_points(traces_sorted, cps)
+                
+                # save next to other complexity plots
+                out_dir = constants.COMPLEXITY_PLOTS_DIR / dataset_key / cfg_with_approach / "coverage_curves"
+                plot_coverage_curves_for_cp_windows(windows, out_dir, q_orders=(0,), xlim=(0, 1.0))
+
         elif typ == "fixed_size_windows":
+            # --- Only simple population adapter here (+ vidgof if desired) ---
+            adapter_names = ["vidgof_sample", "population_simple"]
+
             window_size = int(p["window_size"])
             offset = int(p["offset"])
 
             df = assess_complexity_via_fixed_sized_windows(
-                traces_sorted, window_size, offset, dataset_key, configuration_name, name, drift_info_by_id
+                traces_sorted, window_size, offset,
+                dataset_key, configuration_name, name,
+                adapter_names=adapter_names,
+                drift_info_by_id=drift_info_by_id,
             )
+            
             plot_complexity_via_fixed_sized_windows(
                 dataset_key,
                 cfg_with_approach,
@@ -192,6 +202,9 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
             )
 
         elif typ == "window_comparison":
+            # --- Only simple population adapter here (+ vidgof if desired) ---
+            adapter_names = ["vidgof_sample", "population_simple"]
+
             df = assess_complexity_via_window_comparison(
                 traces_sorted,
                 int(p["window_1_size"]),
@@ -201,7 +214,9 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
                 dataset_key,
                 configuration_name,
                 name,
+                adapter_names=adapter_names,
             )
+
             plot_delta_measures(
                 dataset_key,
                 cfg_with_approach,
@@ -213,13 +228,13 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
                 headroom=headroom,
                 title=title,
             )
-
         else:
             raise ValueError(f"Unknown approach type: {typ}")
 
     print("Drift complexity assessment complete.")
 
-def main_per_dataset(dataset_key, dataset_info, mode='all'):
+
+def main_per_dataset(dataset_key, dataset_info, mode='all', plot_coverage_curves: bool = False):
     print(f"### Processing dataset: {dataset_key} ###")
     if mode == 'all' or mode == 'detection_only':
         concept_drift_info_paths = concept_drift_characterization(dataset_key, dataset_info)
@@ -230,10 +245,13 @@ def main_per_dataset(dataset_key, dataset_info, mode='all'):
 
     if mode == 'all' or mode == 'complexity_only':
         for concept_drift_info_path in concept_drift_info_paths:
-            concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift_info_path)
+            concept_drift_complexity_assessment(
+                dataset_key, dataset_info, concept_drift_info_path,
+                plot_coverage_curves=plot_coverage_curves
+            )
 
-def main(datasets=None, mode='all'):
-    print(f"#### Starting drift complextity analysis ####")
+def main(datasets=None, mode='all', plot_coverage_curves: bool = False):
+    print(f"#### Starting drift complexity analysis ####")
 
     data_dictionary = helpers.load_data_dictionary(constants.DATA_DICTIONARY_FILE_PATH)
 
@@ -242,7 +260,8 @@ def main(datasets=None, mode='all'):
         data_dictionary = {k: v for k, v in data_dictionary.items() if k in datasets}
 
     for dataset_key, dataset_info in data_dictionary.items():
-        main_per_dataset(dataset_key, dataset_info, mode)
+        main_per_dataset(dataset_key, dataset_info, mode, plot_coverage_curves)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run drift complexity analysis on selected datasets.")
@@ -256,8 +275,14 @@ if __name__ == "__main__":
         "--mode",
         type=str,
         default='all',
-        help="What parts of the script to run. Choose from 'all', 'detection_only', 'complexity_only'"
+        help="Choose from 'all', 'detection_only', 'complexity_only'"
+    )
+    # NEW: plot coverage curves for change-point windows
+    parser.add_argument(
+        "--plot-coverage-curves",
+        action="store_true",
+        help="If set, saves iNEXT coverage curves for change-point windows."
     )
     args = parser.parse_args()
 
-    main(datasets=args.datasets, mode=args.mode)
+    main(datasets=args.datasets, mode=args.mode, plot_coverage_curves=args.plot_coverage_curves)

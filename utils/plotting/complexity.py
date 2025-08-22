@@ -118,7 +118,7 @@ def plot_delta_measures(
     df = pd.DataFrame(paired_df).copy()
     for c in ["w1_start_moment", "w1_end_moment", "w2_start_moment", "w2_end_moment"]:
         if c in df.columns:
-            df[c] = pd.to_datetime(df[c])
+            df[c] = pd.to_datetime(df[c], utc=True)
 
     # derive plotting time per pair
     if point_position == "end_w2":

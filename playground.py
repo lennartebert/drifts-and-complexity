@@ -1,11 +1,16 @@
 from pathlib import Path
-from utils import helpers, inext_adapter, constants
+from utils import helpers, constants
 
+from utils.complexity.assessor import assess_complexity_via_fixed_sized_windows
 from utils.drift_io import (
     drift_info_to_dict, load_xes_log
 )
-from utils.population_estimates import estimate_populations, plot_coverage_curves
+from utils.population import inext_adapter
 from utils.windowing.windowing import split_log_into_fixed_windows
+from utils.complexity.assessor import (
+    assess_complexity_via_fixed_sized_windows,
+)
+from utils.windowing.windowing import Window
 
 def main():
     print('iNEXT Adapter test')
@@ -41,24 +46,25 @@ def main():
     
     # get BPIC12
     pm4py_log = load_xes_log(data_dict['BPIC12']['path'])
+    
+    adapter_names = ["vidgof_sample", "population_simple"] # , "population_inext"]
 
-    # split log into windows
-    windows = split_log_into_fixed_windows(pm4py_log, 1000, 1000)
+    df = assess_complexity_via_fixed_sized_windows(
+        pm4py_log=pm4py_log,
+        window_size=2,
+        offset=2,
+        dataset_key='BPIC12',
+        configuration_name="cfg",
+        approach_name="quickcheck",
+        adapter_names=adapter_names,
+        add_prefix=True,
+        include_adapter_name=True,
+    )
 
-    # only keep first 5 windows for now
-    windows = windows[0:5]
+    print("=== Output DataFrame ===")
+    print(df.columns)
+    print(df.head())
 
-    # get measure:
-    get_measures_for_windows
-
-
-    # calculate the population estimates 
-    population_estimates_full_coverage = estimate_populations(windows)
-    print(population_estimates_full_coverage) # -> this is a list of dataframes, one per window
-
-    # try to do some plotting
-    # get the abundance list for all species
-    plot_coverage_curves(windows, out_dir='results/') # creates one plot per species
 
 if __name__ == "__main__":
     main()
