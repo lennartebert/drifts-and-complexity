@@ -111,18 +111,28 @@ def estimate_populations_inext(
                 method=tmp.at[wid, "method"],
                 n_ref=tmp.at[wid, "n_ref"],
                 extrapolation_factor=tmp.at[wid, "extrapolation_factor"],
-                q0=tmp.get("q0", pd.NA).get(wid, pd.NA),
-                q0_LCL=tmp.get("q0_LCL", pd.NA).get(wid, pd.NA),
-                q0_UCL=tmp.get("q0_UCL", pd.NA).get(wid, pd.NA),
-                q1=tmp.get("q1", pd.NA).get(wid, pd.NA),
-                q1_LCL=tmp.get("q1_LCL", pd.NA).get(wid, pd.NA),
-                q1_UCL=tmp.get("q1_UCL", pd.NA).get(wid, pd.NA),
-                q2=tmp.get("q2", pd.NA).get(wid, pd.NA),
-                q2_LCL=tmp.get("q2_LCL", pd.NA).get(wid, pd.NA),
-                q2_UCL=tmp.get("q2_UCL", pd.NA).get(wid, pd.NA),
+                q0     = _safe_nested_get(tmp, "q0", wid),
+                q0_LCL = _safe_nested_get(tmp, "q0_LCL", wid),
+                q0_UCL = _safe_nested_get(tmp, "q0_UCL", wid),
+                q1     = _safe_nested_get(tmp, "q1", wid),
+                q1_LCL = _safe_nested_get(tmp, "q1_LCL", wid),
+                q1_UCL = _safe_nested_get(tmp, "q1_UCL", wid),
+                q2     = _safe_nested_get(tmp, "q2", wid),
+                q2_LCL = _safe_nested_get(tmp, "q2_LCL", wid),
+                q2_UCL = _safe_nested_get(tmp, "q2_UCL", wid)
             )
             per[wid].append(row)
 
     ordered = ["species","coverage","m","method","n_ref","extrapolation_factor",
                "q0","q0_LCL","q0_UCL","q1","q1_LCL","q1_UCL","q2","q2_LCL","q2_UCL"]
     return {wid: pd.DataFrame(per[wid])[ordered] for wid in window_ids}
+
+def _safe_nested_get(d: dict, outer: str, inner: str, default=pd.NA):
+    """
+    Safely get d[outer][inner] if both exist and d[outer] is dict-like.
+    Otherwise return default.
+    """
+    val = d.get(outer)
+    if isinstance(val, dict):
+        return val.get(inner, default)
+    return default
