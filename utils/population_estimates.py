@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 from collections import Counter
+from pathlib import Path
 from typing import Iterable, List, Literal, Tuple, Optional, Dict, Any
 import pandas as pd
 from collections import Counter
@@ -24,8 +25,10 @@ from pm4py.algo.discovery.dfg import algorithm as dfg_discovery
 from pm4py.algo.filtering.log.variants import variants_filter
 from utils.inext_adapter import (
     to_r_abundance_list,
-    estimateD_common_coverage,
+    iNEXT_estimateD,
+    iNEXT_plot_coverage_curves
 )
+from utils.windowing.windowing import Window
 
 SpeciesID = Literal["activities", "dfg_edges", "trace_variants"]
 
@@ -95,60 +98,60 @@ def _chao1_from_abundances(counts: Counter) -> Tuple[int, int, int, float, Tuple
 
 # ---------- Public API ----------
 
+# def estimate_populations(
+#     traces,
+#     species: Iterable[SpeciesID] = ("activities", "dfg_edges", "trace_variants"),
+#     estimator: Literal["Chao1"] = "Chao1",
+# ) -> pd.DataFrame:
+#     """
+#     Run richness estimation per species using abundance-based Chao1.
+
+#     Parameters
+#     ----------
+#     traces : 
+#         Window/sample: pm4py EventLog
+#     species : iterable of SpeciesID
+#         Which species to estimate (“activities”, “dfg_edges”, “variants”).
+#     estimator : "Chao1"
+#         Currently only Chao1 is implemented.
+
+#     Returns
+#     -------
+#     pd.DataFrame
+#         Columns: species, Estimator, s_obs, f1_or_Q1, f2_or_Q2, S_hat_inf, CI_low, CI_high, notes
+#     """
+#     rows = []
+#     for sp in species:
+#         extractor = _EXTRACTORS[sp]
+#         abund = extractor(traces)
+
+#         if estimator == "Chao1":
+#             s_obs, f1, f2, s_hat, ci, note = _chao1_from_abundances(abund)
+#             rows.append(
+#                 {
+#                     "species": sp,
+#                     "Estimator": "Chao1",
+#                     "s_obs": s_obs,
+#                     "f1_or_Q1": f1,
+#                     "f2_or_Q2": f2,
+#                     "S_hat_inf": s_hat,
+#                     "CI_low": None if not ci else ci[0],
+#                     "CI_high": None if not ci else ci[1],
+#                     "notes": note,
+#                 }
+#             )
+#         else:
+#             raise NotImplementedError(f"Estimator {estimator} not implemented.")
+#     return pd.DataFrame(rows)
+
 def estimate_populations(
-    traces: List[List[str]],
+    windows: List[Window],
     species: Iterable[SpeciesID] = ("activities", "dfg_edges", "trace_variants"),
-    estimator: Literal["Chao1"] = "Chao1",
-) -> pd.DataFrame:
-    """
-    Run richness estimation per species using abundance-based Chao1.
-
-    Parameters
-    ----------
-    traces : list[list[str]]
-        Window/sample: list of traces, each a list of activity labels.
-    species : iterable of SpeciesID
-        Which species to estimate (“activities”, “dfg_edges”, “variants”).
-    estimator : "Chao1"
-        Currently only Chao1 is implemented.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: species, Estimator, s_obs, f1_or_Q1, f2_or_Q2, S_hat_inf, CI_low, CI_high, notes
-    """
-    rows = []
-    for sp in species:
-        extractor = _EXTRACTORS[sp]
-        abund = extractor(traces)
-
-        if estimator == "Chao1":
-            s_obs, f1, f2, s_hat, ci, note = _chao1_from_abundances(abund)
-            rows.append(
-                {
-                    "species": sp,
-                    "Estimator": "Chao1",
-                    "s_obs": s_obs,
-                    "f1_or_Q1": f1,
-                    "f2_or_Q2": f2,
-                    "S_hat_inf": s_hat,
-                    "CI_low": None if not ci else ci[0],
-                    "CI_high": None if not ci else ci[1],
-                    "notes": note,
-                }
-            )
-        else:
-            raise NotImplementedError(f"Estimator {estimator} not implemented.")
-    return pd.DataFrame(rows)
-
-def estimate_populations_same_coverage(
-    windows: List[List[List[str]]],
-    species: Iterable[SpeciesID] = ("activities", "dfg_edges", "trace_variants"),
+    coverage_level: float = None,
     estimator: Literal["Chao1"] = "Chao1",     # kept for API continuity
     q_orders: Tuple[int, int, int] = (0, 1, 2),
     nboot: int = 200,
     conf: float = 0.95,
-    window_ids: Optional[List[str]] = None,
 ) -> List[pd.DataFrame]:
     """
     Standardize all windows to a *shared sample coverage* for each species using iNEXT.
@@ -157,13 +160,13 @@ def estimate_populations_same_coverage(
 
     Parameters
     ----------
-    windows : list of samples; each sample is a list of traces (each trace a list of activities)
+    pm4py_trace_windows : list of samples; each sample is a list of traces (each trace a list of activities)
     species : iterable of species IDs (keys in _EXTRACTORS)
+    coverage_level: float = None - if None, coverage is auto-aligned. Else, coverage is at level supplied.
     estimator : kept for API continuity (iNEXT handles q-diversity)
     q_orders : Hill numbers to report (typ. 0,1,2)
     nboot : bootstrap replicates for CIs
     conf : confidence level
-    window_ids : optional explicit names for windows; default "W1", "W2", ...
 
     Returns
     -------
@@ -172,8 +175,8 @@ def estimate_populations_same_coverage(
         ['coverage','m','method','n_ref','extrapolation_factor',
          'q0','q0_LCL','q0_UCL','q1','q1_LCL','q1_UCL','q2','q2_LCL','q2_UCL']
     """
-    if window_ids is None:
-        window_ids = [f"W{i+1}" for i in range(len(windows))]
+    window_ids = [window.id for window in windows]
+    window_id_map = {window.id: window for window in windows}
 
     # prepare per-window accumulator: window_id -> list[row dict]
     per_window_rows: Dict[str, List[Dict[str, Any]]] = {wid: [] for wid in window_ids}
@@ -181,12 +184,11 @@ def estimate_populations_same_coverage(
     for sp in species:
         # 1) build abundance dicts per window
         extractor = _EXTRACTORS[sp]
-        abund_all = [extractor(traces) for traces in windows]
-        n_ref_map = {wid: int(sum(c.values())) for wid, c in zip(window_ids, abund_all)}
 
+        abund_all = [{window.id: extractor(window.traces)} for window in windows]
         # 2) to R list, run iNEXT at common coverage for this species
-        r_list = to_r_abundance_list(abund_all, assemblage_names=window_ids)
-        est = estimateD_common_coverage(r_list, q_orders=q_orders, nboot=nboot, conf=conf)
+        r_list = to_r_abundance_list(abund_all)
+        est = iNEXT_estimateD(r_list, coverage_level=coverage_level, q_orders=q_orders, nboot=nboot, conf=conf)
 
         # Expect columns like: Assemblage, SC, m, Method, Order.q, qD, qD.LCL, qD.UCL
         base_cols = ["Assemblage", "SC", "m", "Method"]
@@ -213,7 +215,7 @@ def estimate_populations_same_coverage(
 
         tmp = meta.join(wide)
         # add reference sample size and extrapolation factor
-        tmp["n_ref"] = [n_ref_map[idx] for idx in tmp.index]
+        tmp["n_ref"] = [window_id_map[idx].size for idx in tmp.index]
         tmp["extrapolation_factor"] = tmp["m"] / tmp["n_ref"].replace(0, pd.NA)
 
         # rename to clean, prefix-free analytic names
@@ -276,10 +278,46 @@ def estimate_populations_same_coverage(
         *(["q2", "q2_LCL", "q2_UCL"] if 2 in q_orders else []),
     ]
 
-    per_window_dfs: List[pd.DataFrame] = []
+    per_window_dfs = {}
     for wid in window_ids:
         df = pd.DataFrame(per_window_rows[wid])[ordered_cols]
         df.insert(0, "window_id", wid)  # optional, handy when concatenating later
-        per_window_dfs.append(df)
+        per_window_dfs[wid] = df
 
     return per_window_dfs
+
+
+def plot_coverage_curves(
+    windows: List[Window],
+    out_dir: str,
+    species: Iterable[SpeciesID] = ("activities", "dfg_edges", "trace_variants"),
+    coverage_level: float = None,
+    estimator: Literal["Chao1"] = "Chao1",     # kept for API continuity
+    q_orders: Tuple[int, int, int] = (0, 1, 2),
+    nboot: int = 200,
+    conf: float = 0.95,
+) -> List[pd.DataFrame]:
+    """
+    TODO create docstring
+    """
+    window_ids = [window.id for window in windows]
+    window_id_map = {window.id: window for window in windows}
+
+    # prepare per-window accumulator: window_id -> list[row dict]
+    per_window_rows: Dict[str, List[Dict[str, Any]]] = {wid: [] for wid in window_ids}
+
+    for sp in species:
+        # 1) build abundance dicts per window
+        extractor = _EXTRACTORS[sp]
+
+        abund_all = [{window.id: extractor(window.traces)} for window in windows]
+        # 2) to R list, run iNEXT at common coverage for this species
+        r_list = to_r_abundance_list(abund_all)
+        
+        out_path = Path(out_dir) / f'{sp}.png'
+        df_list, ggplot_obj, path = iNEXT_plot_coverage_curves(
+            r_list,
+            q_orders=[0],
+            xlim=(0, 1.0),
+            outfile=str(out_path),
+        )

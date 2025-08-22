@@ -1,14 +1,3 @@
-# Compose measure outputs from:
-#   - sample (computed directly from traces)
-#   - full-population estimates (from population_upsampling.py)
-#
-# Implements:
-#   Distinct traces                 (sample + full population estimate)
-#   Variety (activities)            (sample + full population estimate)
-#   Magnitude (events)              (sample + same value under population name)
-#   Trace count (traces)            (sample + same value under population name)
-#   Pentland’s Process Complexity   (sample + full population estimate)
-
 from __future__ import annotations
 from collections import Counter
 from typing import List, Dict
@@ -18,29 +7,6 @@ import math, sys
 # Precompute max log once at import time
 _MAX_LOG10 = math.log10(sys.float_info.max)  # ca. 308.2547155599
 
-
-def _count_dfg_edges(traces: List[List[str]]) -> int:
-    """Number of distinct directly-follows edges in the sample."""
-    edges = set()
-    for t in traces:
-        for i in range(len(t) - 1):
-            edges.add((t[i], t[i + 1]))
-    return len(edges)
-
-
-def _count_activities(traces: List[List[str]]) -> int:
-    """Number of distinct activities (vertices) in the sample."""
-    return len({a for t in traces for a in t})
-
-
-def _count_trace_variants(traces: List[List[str]]) -> int:
-    """Number of distinct trace variants in the sample."""
-    return len({tuple(t) for t in traces})
-
-
-def _count_events(traces: List[List[str]]) -> int:
-    """Total number of events (Magnitude) in the sample."""
-    return sum(len(t) for t in traces)
 
 def _pentland_complexity(e: int, v: int):
     """

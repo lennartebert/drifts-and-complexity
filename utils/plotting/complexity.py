@@ -25,14 +25,14 @@ def plot_complexity_via_change_point_split(
 ) -> None:
     """Plot complexity for *change-point windows* as HORIZONTAL segments.
 
-    - Draw one horizontal blue segment per window over [start_time, end_time].
-    - Write N (from 'traces_in_window') above each segment.
+    - Draw one horizontal blue segment per window over [start_moment, end_moment].
+    - Write N (from 'size') above each segment.
     - Start/End vertical lines are grey; change-points are red dashed.
     - Add extra headroom at the top; optional log scale (if values > 0).
     - Save one figure per `measure_*` column.
     """
     df = _prepare_df(flat_data)
-    _require_columns(df, ["traces_in_window"])  # N labels
+    _require_columns(df, ["size"])  # N labels
 
     measure_columns = _get_measure_columns(df)
     for mcol in measure_columns:
@@ -116,23 +116,23 @@ def plot_delta_measures(
     - If data include non-positive values and y_log=True, we fall back to linear.
     """
     df = pd.DataFrame(paired_df).copy()
-    for c in ["w1_start_time", "w1_end_time", "w2_start_time", "w2_end_time"]:
+    for c in ["w1_start_moment", "w1_end_moment", "w2_start_moment", "w2_end_moment"]:
         if c in df.columns:
             df[c] = pd.to_datetime(df[c])
 
     # derive plotting time per pair
     if point_position == "end_w2":
-        df["plot_time"] = df["w2_end_time"]
+        df["plot_time"] = df["w2_end_moment"]
     elif point_position == "mid_union":
-        start_union = df[["w1_start_time", "w2_start_time"]].min(axis=1)
-        end_union = df[["w1_end_time", "w2_end_time"]].max(axis=1)
+        start_union = df[["w1_start_moment", "w2_start_moment"]].min(axis=1)
+        end_union = df[["w1_end_moment", "w2_end_moment"]].max(axis=1)
         df["plot_time"] = start_union + (end_union - start_union) / 2
     else:
         raise ValueError("point_position must be 'end_w2' or 'mid_union'")
 
     # also useful for vertical start/end lines
-    df["start_time"] = df[["w1_start_time", "w2_start_time"]].min(axis=1)
-    df["end_time"] = df[["w1_end_time", "w2_end_time"]].max(axis=1)
+    df["start_moment"] = df[["w1_start_moment", "w2_start_moment"]].min(axis=1)
+    df["end_moment"] = df[["w1_end_moment", "w2_end_moment"]].max(axis=1)
 
     delta_cols = [c for c in df.columns if c.startswith("delta_")]
     for dcol in delta_cols:
@@ -188,10 +188,10 @@ def _plot_single_cp_segments(
         val = row.get(measure_column)
         if pd.isna(val):
             continue
-        ax.plot([row["start_time"], row["end_time"]], [val, val], color="blue", linewidth=1.5)
+        ax.plot([row["start_moment"], row["end_moment"]], [val, val], color="blue", linewidth=1.5)
         # N label
-        n = int(row["traces_in_window"])  # guaranteed by caller
-        mid = row["start_time"] + (row["end_time"] - row["start_time"]) / 2
+        n = int(row["size"])  # guaranteed by caller
+        mid = row["start_moment"] + (row["end_moment"] - row["start_moment"]) / 2
         if y_log and val and val > 0:
             y_pos = float(val) * 1.005
         else:
@@ -199,7 +199,7 @@ def _plot_single_cp_segments(
         ax.text(mid, y_pos, f"N={n}", fontsize=7, ha="center", va="bottom")
 
     _apply_y_scale_and_headroom(ax, y_series, y_log=y_log, headroom=headroom)
-    _draw_start_end_and_cps(ax, df["start_time"].min(), df["end_time"].max(), drift_info_by_id)
+    _draw_start_end_and_cps(ax, df["start_moment"].min(), df["end_moment"].max(), drift_info_by_id)
 
     _finalize_and_save(ax, dataset_key, configuration_name, f"{mname}_over_time.{fig_format}")
 
@@ -224,8 +224,8 @@ def _plot_single_fixed_line(
     assert fig_format in {"png", "pdf"}
     mname = measure_column.removeprefix("measure_")
 
-    # Sort by end_time to ensure monotonic x for line plot
-    d = df[["end_time", "start_time", measure_column]].sort_values("end_time").copy()
+    # Sort by end_moment to ensure monotonic x for line plot
+    d = df[["end_moment", "start_moment", measure_column]].sort_values("end_moment").copy()
 
     fig, ax = plt.subplots(figsize=(12, 5))
     if title:
@@ -237,12 +237,12 @@ def _plot_single_fixed_line(
         return
 
     # line + points
-    ax.plot(d["end_time"], d[measure_column], color="blue", linewidth=1.5, marker="o", markersize=3)
+    ax.plot(d["end_moment"], d[measure_column], color="blue", linewidth=1.5, marker="o", markersize=3)
     # Pretty y-label for fixed-size charts
     ax.set_ylabel(_format_measure_label(mname))
 
     _apply_y_scale_and_headroom(ax, y_series, y_log=y_log, headroom=headroom)
-    _draw_start_end_and_cps(ax, d["start_time"].min(), d["end_time"].max(), drift_info_by_id)
+    _draw_start_end_and_cps(ax, d["start_moment"].min(), d["end_moment"].max(), drift_info_by_id)
 
     _finalize_and_save(ax, dataset_key, configuration_name, f"{mname}_over_time.{fig_format}")
 
@@ -267,7 +267,7 @@ def _plot_single_delta_line(
     dname = delta_column.removeprefix("delta_measure_")
 
     # Sort by plot_time to get a chronological line
-    d = df[["plot_time", "start_time", "end_time", delta_column]].dropna(subset=["plot_time"]).sort_values("plot_time")
+    d = df[["plot_time", "start_moment", "end_moment", delta_column]].dropna(subset=["plot_time"]).sort_values("plot_time")
 
     fig, ax = plt.subplots(figsize=(12, 5))
     if title:
@@ -288,7 +288,7 @@ def _plot_single_delta_line(
     ax.plot(d["plot_time"], d[delta_column], color="blue", linewidth=1.5, marker="o", markersize=3)
 
     _apply_y_scale_and_headroom(ax, y_series, y_log=use_log, headroom=headroom)
-    _draw_start_end_and_cps(ax, d["start_time"].min(), d["end_time"].max(), drift_info_by_id)
+    _draw_start_end_and_cps(ax, d["start_moment"].min(), d["end_moment"].max(), drift_info_by_id)
 
     _finalize_and_save(ax, dataset_key, configuration_name, f"delta_{dname}_over_time.{fig_format}")
 
@@ -305,8 +305,8 @@ def _format_measure_label(name: str) -> str:
 
 def _prepare_df(flat_data: Any) -> pd.DataFrame:
     df = pd.DataFrame(flat_data).copy()
-    df["start_time"] = pd.to_datetime(df["start_time"])  # required
-    df["end_time"] = pd.to_datetime(df["end_time"])      # required
+    df["start_moment"] = pd.to_datetime(df["start_moment"], utc=True)  # required
+    df["end_moment"] = pd.to_datetime(df["end_moment"], utc=True)      # required
     return df
 
 
