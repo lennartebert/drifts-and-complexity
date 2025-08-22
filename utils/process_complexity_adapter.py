@@ -20,18 +20,6 @@ from Complexity import (
     log_complexity,
 )
 
-# Public entry point: get_measures_for_traces(traces)
-#
-# What it does:
-#  1) Computes sample measures with accessible names.
-#  2) Computes population upsampling (Chao1) on activities, DFG edges, trace variants.
-#  3) Composes full-population measures and Pentland complexity.
-#  4) Optionally (and privately) calls Vidgof’s module to add his metrics
-#     (entropy etc.). Vidgof-specific objects (PA/LOG) are *not* reused
-#     anywhere else—kept inside a private helper.
-#
-# All output keys are prefixed with "measure_" to match your plotting pipeline.
-
 from typing import List, Dict, Any
 
 import pandas as pd
@@ -43,7 +31,7 @@ from utils.complexity_from_populations import measures_from_population_estimates
 
 # ---------- Public API ----------
 
-def get_measures_for_windows(windows: List[Window]):
+def get_measures_and_info_for_windows(windows: List[Window]):
     """
         Returns a dictionary of windows with their according measures and additional information.
     """
@@ -123,6 +111,44 @@ def _get_flat_measures_from_population_per_window(pop_df_dict, windows, coverage
 
     return population_measures_per_window
 
+# ---------- Private: Vidgof integration (sandboxed) ----------
+
+def _vidgof_sample_measures(traces: List[List[str]]) -> Dict[str, Any]:
+    """
+    Return measure keys with accessible names.
+    """
+  
+    # Build Vidgof internals (kept private to this function)
+    log = generate_log(traces, verbose=False)
+    pa = build_graph(log, verbose=False, accepting=False)
+
+    # Base measurements
+    base = perform_measurements('all', log, traces, pa, quiet=True, verbose=False)
+
+    # Entropies
+    var_ent = graph_complexity(pa)  # (entropy, normalized_entropy)
+    seq_ent = log_complexity(pa)    # (entropy, normalized_entropy)
+
+    # Attach with explicit names
+    base["Variant Entropy"] = var_ent[0]
+    base["Normalized Variant Entropy"] = var_ent[1]
+    base["Trace Entropy"] = seq_ent[0]
+    base["Normalized Trace Entropy"] = seq_ent[1]
+
+    # Trace length fields may be a dict; expand MIN/AVG/MAX
+    if isinstance(base.get("Trace length"), dict):
+        tl = base.pop("Trace length")
+        base["Trace length min"] = tl.get("min")
+        base["Trace length avg"] = tl.get("avg")
+        base["Trace length max"] = tl.get("max")
+
+    # Always include support (= number of traces in the window)
+    base["Support"] = len(traces)
+
+    measures_out = {f'{measure_name} (sample)': value for measure_name, value in base.items()}
+
+    return measures_out
+
 # def get_measures_for_traces(
 #     traces,
 # ) -> Dict[str, Any]:
@@ -174,41 +200,3 @@ def _get_flat_measures_from_population_per_window(pop_df_dict, windows, coverage
 
 #     return all_return_data
 
-
-# ---------- Private: Vidgof integration (sandboxed) ----------
-
-def _vidgof_sample_measures(traces: List[List[str]]) -> Dict[str, Any]:
-    """
-    Return measure keys with accessible names.
-    """
-  
-    # Build Vidgof internals (kept private to this function)
-    log = generate_log(traces, verbose=False)
-    pa = build_graph(log, verbose=False, accepting=False)
-
-    # Base measurements
-    base = perform_measurements('all', log, traces, pa, quiet=True, verbose=False)
-
-    # Entropies
-    var_ent = graph_complexity(pa)  # (entropy, normalized_entropy)
-    seq_ent = log_complexity(pa)    # (entropy, normalized_entropy)
-
-    # Attach with explicit names
-    base["Variant Entropy"] = var_ent[0]
-    base["Normalized Variant Entropy"] = var_ent[1]
-    base["Trace Entropy"] = seq_ent[0]
-    base["Normalized Trace Entropy"] = seq_ent[1]
-
-    # Trace length fields may be a dict; expand MIN/AVG/MAX
-    if isinstance(base.get("Trace length"), dict):
-        tl = base.pop("Trace length")
-        base["Trace length min"] = tl.get("min")
-        base["Trace length avg"] = tl.get("avg")
-        base["Trace length max"] = tl.get("max")
-
-    # Always include support (= number of traces in the window)
-    base["Support"] = len(traces)
-
-    measures_out = {f'{measure_name} (sample)': value for measure_name, value in base.items()}
-
-    return measures_out

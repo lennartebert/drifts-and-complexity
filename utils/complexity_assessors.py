@@ -6,7 +6,7 @@ from .windowing.windowing import (
     split_log_into_fixed_comparable_windows,
 )
 from utils.helpers import to_naive_ts, flatten_measurements, save_complexity_csv
-from utils.process_complexity_adapter import get_measures_for_windows
+from utils.process_complexity_adapter import get_measures_and_info_for_windows
 
 def _cfg_name(base_cfg: str, approach: str) -> str:
     return f"{base_cfg}__{approach}"
@@ -17,7 +17,7 @@ def assess_complexity_via_change_point_split(pm4py_log, drift_info_by_id: Dict, 
     windows = split_log_into_windows_by_change_points(pm4py_log, cps)
 
     # get measures per window
-    measures_per_window_dict = get_measures_for_windows(windows)
+    measures_per_window_dict = get_measures_and_info_for_windows(windows)
 
     results=[]
     for w in windows:
@@ -35,7 +35,7 @@ def assess_complexity_via_change_point_split(pm4py_log, drift_info_by_id: Dict, 
 def assess_complexity_via_fixed_sized_windows(traces_sorted, window_size:int, offset:int, dataset_key:str, configuration_name:str, approach_name:str, drift_info_by_id: Optional[Dict]=None):
     windows = split_log_into_fixed_windows(traces_sorted, window_size, offset)
     # get measures per window
-    measures_per_window_dict = get_measures_for_windows(windows)
+    measures_per_window_dict = get_measures_and_info_for_windows(windows)
 
     results=[]
     for w in windows:
@@ -60,19 +60,19 @@ def assess_complexity_via_window_comparison(traces_sorted, window_1_size:int, wi
         all_windows.append(w2)
 
     # calcuate measures
-    measures_per_window_dict = get_measures_for_windows(all_windows)
+    measures_per_window_dict = get_measures_and_info_for_windows(all_windows)
 
     rows=[]
     for pid, (w1, w2) in enumerate(pairs):
         w1_measures = {f'w1_{key}': value for key, value in measures_per_window_dict[w1.id].items()}
-        w2_measures = {f'w2_{key}': value for key, value in measures_per_window_dict[w2].items()}
+        w2_measures = {f'w2_{key}': value for key, value in measures_per_window_dict[w2.id].items()}
 
         w1_info = {f'w1_{key}': value for key, value in w1.to_dict().items()}
         w2_info = {f'w2_{key}': value for key, value in w2.to_dict().items()}
         
         # get delta measures
         delta_measures = {}
-        for measure_name in w1_measures.keys:
+        for measure_name in w1_measures.keys():
             if measure_name.startswith('measure_'):
                 delta_measure_name = 'delta_' + measure_name.removeprefix('measure_')
                 delta_measure_value = w2_measures[measure_name] - w1_measures[measure_name]
