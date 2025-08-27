@@ -17,18 +17,19 @@ drift_type_order = [
     "Gradual (during to after)"
 ]
 
-def load_complexity_per_window_dict(datasets, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING):
-    dataset_file_dict = {dataset: constants.COMPLEXITY_RESULTS_DIR / dataset / cp_parameter_setting / "complexity_per_window.csv" for dataset in datasets}
+def load_complexity_per_window_dict(datasets, complexity_window_string):
+    """"""
+    dataset_file_dict = {dataset: constants.COMPLEXITY_RESULTS_DIR / dataset / complexity_window_string / "complexity.csv" for dataset in datasets}
     complexity_per_window_df_dict = {}
     for dataset, f in dataset_file_dict.items():
         if not f.exists() or not f.is_file():
             continue
         df = pd.read_csv(f)
         df["dataset"] = dataset
-        df["start_change_id"] = df["start_change_id"].astype("Int64")
-        df["end_change_id"] =  df["end_change_id"].astype("Int64")
-        df["n_traces"] = df["end_index"] - df["start_index"]
-        df["window_id"] = df["window_id"].astype(int)
+        df["start_change_point"] = df["start_change_point"].astype("Int64")
+        df["end_change_point"] =  df["end_change_point"].astype("Int64")
+        df["n_traces"] = df["last_index"] - df["first_index"]
+        df["id"] = df["id"].astype(int)
         complexity_per_window_df_dict[dataset] = df
     return complexity_per_window_df_dict
 
@@ -38,6 +39,10 @@ def load_drift_info(complexity_per_window_df_dict, cp_parameter_setting=constant
     for dataset in complexity_per_window_df_dict.keys():
         path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset / f"results_{dataset}_{cp_parameter_setting}.csv"
         drift_info = pd.read_csv(path)
+        # drift info may be empty for some datasets
+        if drift_info.empty or drift_info["calc_change_id"].eq("na").all():
+            drift_info_by_dataset[dataset] = {}
+            continue
         drift_info["calc_change_id"] = drift_info["calc_change_id"].astype("Int64")
         drift_info_by_dataset[dataset] = drift_info.set_index("calc_change_id").to_dict(orient="index")
     return drift_info_by_dataset
@@ -46,6 +51,7 @@ def get_drift_info_summary_table(drift_info_by_dataset):
     drift_info_summary_dict = {}
 
     for dataset, drift_info_dict in drift_info_by_dataset.items():
+        if drift_info_dict == {}: continue
         result = {}
         sudden_changes = []
         gradual_changes = []
@@ -100,8 +106,8 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
 
         for change_id, info in drift_info.items():
             change_type = info["calc_change_type"]
-            window_before_change_point = window_df[window_df["end_change_id"] == change_id].iloc[0]
-            window_after_change_point = window_df[window_df["start_change_id"] == change_id].iloc[0]
+            window_before_change_point = window_df[window_df["end_change_point"] == change_id].iloc[0]
+            window_after_change_point = window_df[window_df["start_change_point"] == change_id].iloc[0]
 
             # Assert that window_before_change and window_after_change are not empty - there always needs to be a window before/after a change point
             assert not window_before_change_point.empty, f"window_before_change is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
@@ -116,7 +122,7 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
                 results.append({"change_type": "Gradual (before to during)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
 
                 # also record the before to after change
-                window_after_gradual_end = window_df[window_df["start_change_id"] == change_id + 1].iloc[0]
+                window_after_gradual_end = window_df[window_df["start_change_point"] == change_id + 1].iloc[0]
                 assert not window_after_gradual_end.empty, f"window_after_gradual_end is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
                 deltas = (window_after_gradual_end[measure_columns] - window_before_change_point[measure_columns]).to_dict()
                 results.append({"change_type": "Gradual (before to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
@@ -353,7 +359,7 @@ def compute_and_save_correlation_analysis(
     result_df.to_csv(out_path, index=False)
     return result_df
 
-def main(datasets=None, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING):
+def main(datasets=None, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING, complexity_window_setting=constants.DEFAULT_COMPLEXITY_WINDOW_SETTING):
     print("#### Starting to combine drift analysis results ####")
     if datasets is None:
         # Get all folder names (1st level child) under folder results/complexity_assessment
@@ -361,8 +367,10 @@ def main(datasets=None, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARA
             d.name for d in (constants.COMPLEXITY_RESULTS_DIR).iterdir()
             if d.is_dir()
         ]
+    
+    complexity_window_string = f'{cp_parameter_setting}__{complexity_window_setting}'
 
-    window_dict = load_complexity_per_window_dict(datasets, cp_parameter_setting)
+    window_dict = load_complexity_per_window_dict(datasets, complexity_window_string)
     if not window_dict:
         print(f"No datasets with complexity_per_window.csv for {cp_parameter_setting} found.")
         return
@@ -371,19 +379,19 @@ def main(datasets=None, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARA
     # get summary of drift info
     drift_info_summary_table_df = get_drift_info_summary_table(drift_info_by_dataset=drift_info_by_dataset)
     # Ensure the output directory exists
-    output_dir = constants.COMBINED_RESULTS_TABLE_DIR / cp_parameter_setting
+    output_dir = constants.COMBINED_RESULTS_TABLE_DIR / complexity_window_string
     output_dir.mkdir(parents=True, exist_ok=True)
     drift_info_summary_table_df.to_csv(output_dir / "drift_info_summary.csv")
 
     results_df = compute_complexity_deltas(window_dict, drift_info_by_dataset)
-    save_boxplots(results_df, cp_parameter_setting)
+    save_boxplots(results_df, complexity_window_string)
 
-    aggregated_table = save_aggregated_table(results_df, cp_parameter_setting)
+    aggregated_table = save_aggregated_table(results_df, complexity_window_string)
     print(aggregated_table)
-    simple_aggregated_table = save_simple_aggregated_table(aggregated_table, cp_parameter_setting)
+    simple_aggregated_table = save_simple_aggregated_table(aggregated_table, complexity_window_string)
     print(simple_aggregated_table)
 
-    correlation_analysis = compute_and_save_correlation_analysis(window_dict, cp_parameter_setting)
+    correlation_analysis = compute_and_save_correlation_analysis(window_dict, complexity_window_string)
     print(correlation_analysis)
 
 if __name__ == "__main__":
@@ -399,8 +407,13 @@ if __name__ == "__main__":
         default=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING,
         help="Name of change point parameter setting (e.g., processGraphsPDefaultWDefault)"
     )
+    parser.add_argument(
+        "--complexity-window-setting",
+        default=constants.DEFAULT_COMPLEXITY_WINDOW_SETTING,
+        help="Name of complexity window setting (e.g., cp_default)"
+    )
 
     args = parser.parse_args()
 
-    main(datasets=args.datasets, cp_parameter_setting=args.cp_parameter_setting)
+    main(datasets=args.datasets, cp_parameter_setting=args.cp_parameter_setting, complexity_window_setting=args.complexity_window_setting)
 

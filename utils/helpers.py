@@ -28,9 +28,34 @@ def flatten_measurements(window_rows: List[Dict[str, Any]]) -> pd.DataFrame:
         rows.append(base)
     return pd.DataFrame(rows)
 
-def load_data_dictionary(path: Path) -> Dict[str, Any]:
+def load_data_dictionary(path: Path, get_real: bool = True, get_synthetic: bool = False) -> Dict[str, Any]:
+    """
+    Load a JSON data dictionary and filter entries by their 'type' field.
+
+    Args:
+        path: Path to the JSON file.
+        get_real: Include entries where type == "real".
+        get_synthetic: Include entries where type == "synthetic".
+
+    Returns:
+        A dict filtered to the requested types. If both flags are False, returns {}.
+    """
+    # Determine which types to keep
+    allowed_types = set()
+    if get_real:
+        allowed_types.add("real")
+    if get_synthetic:
+        allowed_types.add("synthetic")
+
     with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data_dictionary: Dict[str, Any] = json.load(f)
+
+    # If nothing is requested, return empty dict
+    if not allowed_types:
+        return {}
+
+    # Keep only entries whose 'type' is in the allowed set
+    return {k: v for k, v in data_dictionary.items() if v.get("type") in allowed_types}
 
 def load_yaml(path: Path) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:

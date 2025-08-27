@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict, Iterable, Any, Literal
 
@@ -14,8 +15,48 @@ from utils import constants, helpers
 from utils.complexity.assessors import run_adapters
 from utils.windowing.windowing import Window
 
+def sample_random_traces_with_replacement(
+    event_log: Iterable[Any],
+    sizes: Iterable[int] = range(10, 501, 50),
+    samples_per_size: int = 10,
+    random_state: Optional[int] = None
+) -> List[Tuple[int, str, List[Any]]]:
+    """
+    Sample random trace sets WITH replacement across the whole log.
 
-def _sample_random_trace_sets_no_replacement(
+    For each sample_id in [0, samples_per_size), and for each requested window sizes,
+    draw 'sizes' indices *with replacement* from the event_log and collect those traces.
+
+    Returns
+    -------
+    list[tuple[int, str, list]]
+        Tuples of (window_size, sample_id, trace_list).
+    """
+    # Materialize for len/index while accepting general iterables
+    event_log = list(event_log)
+    n_traces = len(event_log)
+
+    # Quick exits
+    if n_traces == 0 or samples_per_size <= 0:
+        return []
+
+    sizes = [s for s in sizes if s > 0]
+    if not sizes:
+        return []
+
+    rng = np.random.default_rng(seed=random_state)
+    results: List[Tuple[int, str, List[Any]]] = []
+
+    for sample_id in range(samples_per_size):
+        for s in sizes:
+            # draw indices with replacement; s may exceed n_traces
+            idxs = rng.integers(low=0, high=n_traces, size=int(s)).tolist()
+            chosen_traces = [event_log[i] for i in idxs]
+            results.append((int(s), str(sample_id), chosen_traces))
+
+    return results
+
+def sample_random_trace_sets_no_replacement(
     event_log: Iterable[Any],
     min_size: int = 10,
     max_size: Optional[int] = 500,
@@ -96,6 +137,39 @@ def _sample_random_trace_sets_no_replacement(
 
     return results
 
+def compute_metrics_for_samples(
+    samples: List[Tuple[int, str, List[Any]]],
+    adapters: List[str]) -> pd.DataFrame:
+
+    # Prepare windows for the adapters
+    windows_map: Dict[str, Window] = {
+        str(idx): Window(id=str(idx), size=size, traces=traces)
+        for idx, (size, _sid, traces) in enumerate(samples)
+    }
+
+    # Compute measures via adapters (returns dict keyed by window.id)
+    dictionaries_all_windows = run_adapters(windows_map.values(), adapters)
+
+    # Flatten into rows
+    rows: List[Dict[str, Any]] = []
+    for win_id, measures_dict in dictionaries_all_windows.items():
+        # keep only measure_* keys, strip prefix
+        clean_measures = {
+            k.removeprefix("measure_"): v
+            for k, v in measures_dict.items()
+            if k.startswith("measure_")
+        }
+        rows.append(
+            {
+                **clean_measures,
+                "window_size": windows_map[win_id].size,
+                "sample_id": windows_map[win_id].id,
+            }
+        )
+
+    df = pd.DataFrame(rows)
+    return df
+
 
 def _get_measures_per_sample_per_dataset(
     data_dictionary: Dict[str, Dict[str, Any]],
@@ -120,35 +194,9 @@ def _get_measures_per_sample_per_dataset(
         pm4py_log = xes_importer.apply(str(log_path))
 
         # Sample trace sets
-        samples = _sample_random_trace_sets_no_replacement(pm4py_log, random_state=random_state)
+        samples = sample_random_trace_sets_no_replacement(pm4py_log, random_state=random_state)
 
-        # Prepare windows for the adapters
-        windows_map: Dict[str, Window] = {
-            str(idx): Window(id=str(idx), size=size, traces=traces)
-            for idx, (size, _sid, traces) in enumerate(samples)
-        }
-
-        # Compute measures via adapters (returns dict keyed by window.id)
-        dictionaries_all_windows = run_adapters(windows_map.values(), adapters)
-
-        # Flatten into rows
-        rows: List[Dict[str, Any]] = []
-        for win_id, measures_dict in dictionaries_all_windows.items():
-            # keep only measure_* keys, strip prefix
-            clean_measures = {
-                k.removeprefix("measure_"): v
-                for k, v in measures_dict.items()
-                if k.startswith("measure_")
-            }
-            rows.append(
-                {
-                    **clean_measures,
-                    "window_size": windows_map[win_id].size,
-                    "sample_id": windows_map[win_id].id,
-                }
-            )
-
-        df = pd.DataFrame(rows)
+        df = compute_metrics_for_samples(samples, adapters)
         out[dataset] = df
 
         if debug_first_only:
@@ -158,11 +206,13 @@ def _get_measures_per_sample_per_dataset(
 
 
 def _test_measures_for_correlation(
-    measures_per_sample_per_dataset: Dict[str, pd.DataFrame]
+    measures_per_sample_per_dataset: Dict[str, pd.DataFrame],
+    constant_policy = "nan",  # implemnets "nan" or "zero"
 ) -> Dict[str, pd.DataFrame]:
     """
     For each dataset, compute Pearson r between each numeric measure and window_size.
-    Returns a dict of DataFrames with columns: measure, n, pearson_r, p_value.
+    Returns a dict of DataFrames with columns: measure, n, pearson_r, p_value, status.
+    status ∈ {"ok","insufficient_n","constant_x","constant_y","constant_both"}.
     """
     results: Dict[str, pd.DataFrame] = {}
 
@@ -170,49 +220,74 @@ def _test_measures_for_correlation(
         if "window_size" not in df.columns:
             raise KeyError(f"'window_size' missing for dataset {dataset}")
 
-        # Identify numeric measure columns (exclude identifiers)
         measure_cols = [
-            c
-            for c in df.columns
+            c for c in df.columns
             if c not in {"window_size", "sample_id"} and pd.api.types.is_numeric_dtype(df[c])
         ]
 
         ws = pd.to_numeric(df["window_size"], errors="coerce")
-        rows: List[Dict[str, Any]] = []
 
+        rows: List[Dict[str, Any]] = []
         for col in measure_cols:
             x = pd.to_numeric(df[col], errors="coerce")
-
             pair = (
                 pd.DataFrame({"x": x, "y": ws})
                 .replace([np.inf, -np.inf], np.nan)
                 .dropna()
             )
+            n = len(pair)
 
-            if len(pair) < 2 or pair["x"].nunique() < 2 or pair["y"].nunique() < 2:
-                r, p = np.nan, np.nan
-                n = len(pair)
-            else:
-                r, p = pearsonr(pair["x"].to_numpy(), pair["y"].to_numpy())
-                n = len(pair)
+            if n < 2:
+                rows.append({
+                    "measure": col, "n": n,
+                    "pearson_r": np.nan, "p_value": np.nan,
+                    "status": "insufficient_n",
+                })
+                continue
 
-            rows.append({"measure": col, "n": n, "pearson_r": r, "p_value": p})
+            x_unique = pair["x"].nunique()
+            y_unique = pair["y"].nunique()
+
+            if x_unique < 2 or y_unique < 2:
+                if x_unique < 2 and y_unique < 2:
+                    status = "constant_both"
+                elif x_unique < 2:
+                    status = "constant_x"
+                else:
+                    status = "constant_y"
+
+                if constant_policy == "nan":
+                    r, p = np.nan, np.nan
+                else:  # "zero": explicit fallback, but keep p undefined
+                    r, p = 0.0, np.nan
+
+                rows.append({
+                    "measure": col, "n": n,
+                    "pearson_r": r, "p_value": p,
+                    "status": status,
+                })
+                continue
+
+            # Regular case
+            r, p = pearsonr(pair["x"].to_numpy(), pair["y"].to_numpy())
+            rows.append({
+                "measure": col, "n": n,
+                "pearson_r": r, "p_value": p,
+                "status": "ok",
+            })
 
         results[dataset] = (
-            pd.DataFrame(rows).sort_values("measure").reset_index(drop=True)
+            pd.DataFrame(rows)
+            .sort_values(["status", "measure"])
+            .reset_index(drop=True)
         )
 
     return results
 
-
-def plot_correlation_results(
-    correlation_results: Dict[str, pd.DataFrame],
-    out_path: Path,
-) -> None:
+def _flatten_correlation_results(correlation_results: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """
-    Pure-matplotlib boxplot of Pearson r per measure across datasets.
+    Flatten correlation results across datasets into a single DataFrame.
     """
-    # Flatten
     records: List[Dict[str, Any]] = []
     for dataset, df in correlation_results.items():
         for _, row in df.iterrows():
@@ -220,22 +295,80 @@ def plot_correlation_results(
                 {
                     "dataset": dataset,
                     "measure": row["measure"],
+                    "n": row["n"],
                     "pearson_r": row["pearson_r"],
+                    "p_value": row["p_value"],
+                    "status": row["status"],
                 }
             )
-    corr_df = pd.DataFrame(records)
-    if corr_df.empty:
-        print("No correlation results to plot.")
-        return
+    return pd.DataFrame(records)
 
-    measures = sorted(corr_df["measure"].unique())
-    data_by_measure = [corr_df.loc[corr_df["measure"] == m, "pearson_r"].dropna().values for m in measures]
+
+def plot_correlation_results(
+    flat_correlation_results: pd.DataFrame,
+    out_path: Path,
+    plot_type: str = "box",  # "box" or "dot"
+) -> None:
+    """
+    Plot Pearson r per measure across datasets.
+
+    Parameters
+    ----------
+    flat_correlation_results : pd.DataFrame
+        Must contain columns ["measure", "pearson_r", "dataset"].
+    out_path : Path
+        Path where the figure will be saved.
+    plot_type : str, optional
+        Type of plot: "box" (default) or "dot".
+    """
+
+    measures = sorted(flat_correlation_results["measure"].unique())
+    datasets = sorted(flat_correlation_results["dataset"].unique())
+    cmap = plt.get_cmap("tab10")  # categorical color map
+    dataset_colors = {ds: cmap(i % 10) for i, ds in enumerate(datasets)}
 
     plt.figure(figsize=(20, 10))
-    plt.boxplot(data_by_measure, labels=measures, showfliers=False)
-    plt.axhline(0, linewidth=0.8)
-    plt.xticks(rotation=90)
+
+    if plot_type == "box":
+        # --- Boxplot ---
+        data_by_measure = [
+            flat_correlation_results.loc[
+                flat_correlation_results["measure"] == m, "pearson_r"
+            ].dropna().values
+            for m in measures
+        ]
+        plt.boxplot(data_by_measure, labels=measures, showfliers=False)
+
+    elif plot_type == "dot":
+        # --- Dot plot with dataset colors ---
+        added_labels = set()  # track which datasets already got a legend label
+        for i, m in enumerate(measures, start=1):
+            df_m = flat_correlation_results.loc[
+                flat_correlation_results["measure"] == m
+            ]
+            for ds in datasets:
+                values = df_m.loc[df_m["dataset"] == ds, "pearson_r"].dropna().values
+                if len(values) == 0:
+                    continue
+                x_jittered = np.random.normal(loc=i, scale=0.05, size=len(values))
+                plt.scatter(
+                    x_jittered,
+                    values,
+                    alpha=0.7,
+                    color=dataset_colors[ds],
+                    label=ds if ds not in added_labels else None,
+                )
+                added_labels.add(ds)  # mark dataset as labeled
+        plt.xticks(range(1, len(measures) + 1), measures, rotation=90)
+        plt.legend(title="Dataset", loc="upper right")
+
+    else:
+        raise ValueError(f"Invalid plot_type '{plot_type}'. Use 'box' or 'dot'.")
+
+    # Common formatting
+    plt.axhline(0, linewidth=0.8, color="grey")
     plt.ylabel("Pearson r")
+    plt.xticks(rotation=45)
     plt.xlabel("Measure")
     plt.title("Distribution of Pearson r Across Datasets by Measure")
     plt.tight_layout()
@@ -302,30 +435,63 @@ def summarize_correlation_results(
     return summary_df
 
 
-def main() -> None:
-    DEBUG = False
+def main(analysis_name=constants.DEFAULT_CORRELATION_ANLAYSIS_NAME, include_real=False, exclude_synthetic=False, debug_first_only=False) -> None:
+    if not include_real and exclude_synthetic:
+        print("No datasets selected for analysis (both real and synthetic excluded). Exiting.")
+        return
 
     # Load data dictionary
-    data_dictionary = helpers.load_data_dictionary(constants.DATA_DICTIONARY_FILE_PATH)
+    data_dictionary = helpers.load_data_dictionary(constants.DATA_DICTIONARY_FILE_PATH, get_real=include_real, get_synthetic=(not exclude_synthetic))
 
     # Compute measures per sample per dataset (debug: only first dataset by default)
     measures = _get_measures_per_sample_per_dataset(
         data_dictionary=data_dictionary,
         adapters=["vidgof_sample", "population_inext", "population_simple"],
         random_state=0,
-        debug_first_only=DEBUG,
+        debug_first_only=debug_first_only,
     )
 
     # Correlation tests
     correlation_results = _test_measures_for_correlation(measures)
+    flat_correlation_results = _flatten_correlation_results(correlation_results)
 
     # Outputs
-    out_dir = Path(constants.CORRELATION_RESULTS_DIR)
-    plot_correlation_results(correlation_results, out_dir / "correlation_results.png")
+    out_dir = Path(constants.CORRELATION_RESULTS_DIR) / analysis_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # save flat complexity_results
+    flat_correlation_results.to_csv(out_dir / "correlation_results_detailed.csv", index=False)
+
+    plot_correlation_results(flat_correlation_results, out_dir / "correlation_results_box.png", 'box')
+    plot_correlation_results(flat_correlation_results, out_dir / "correlation_results_dot.png", 'dot')
     summarize_correlation_results(
         correlation_results, out_dir / "correlation_results_summarized.csv"
     )
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Analyze correlations of complexity figures to sample size.")
+    parser.add_argument(
+        "--analysis-name",
+        default=constants.DEFAULT_CORRELATION_ANLAYSIS_NAME,
+        help=f"Name of analysis. Default '{constants.DEFAULT_CORRELATION_ANLAYSIS_NAME}'."
+    )
+    parser.add_argument(
+        "--include-real",
+        action="store_true",
+        help="If set, includes real datasets from analysis."
+    )
+    parser.add_argument(
+        "--exclude-synthetic",
+        action="store_true",
+        help="If set, excludes synthetic datasets from analysis."
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="If set, only analysis one dataset."
+    )
+
+    args = parser.parse_args()
+
+    main(analysis_name=args.analysis_name, include_real=args.include_real, exclude_synthetic=args.exclude_synthetic, debug_first_only=args.debug)
