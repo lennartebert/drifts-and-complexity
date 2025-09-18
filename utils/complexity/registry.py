@@ -8,6 +8,7 @@ from .adapters.population_simple import PopulationSimpleAdapter
 _BUILTIN: Dict[str, ComplexityAdapter] = {
     "vidgof_sample": VidgofSampleAdapter(),
     "population_inext": PopulationInextAdapter(),   # supports nboot/conf/auto-coverage
+    "population_inext_same_coverage": PopulationInextAdapter(),   # supports nboot/conf/auto-coverage
     "population_simple": PopulationSimpleAdapter(), # coverage=1.0 only
 }
 

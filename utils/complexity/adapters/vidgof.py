@@ -33,11 +33,11 @@ class VidgofSampleAdapter(ComplexityAdapter):
         base["Trace Entropy"] = seq_ent[0]
         base["Normalized Trace Entropy"] = seq_ent[1]
 
-        if isinstance(base.get("Trace length"), dict):
-            tl = base.pop("Trace length")
-            base["Trace length min"] = tl.get("min")
-            base["Trace length avg"] = tl.get("avg")
-            base["Trace length max"] = tl.get("max")
+        if isinstance(base.get("Trace Length"), dict):
+            tl = base.pop("Trace Length")
+            base["Min. Trace Length"] = tl.get("min")
+            base["Avg. Trace Length"] = tl.get("avg")
+            base["Max. Trace Length"] = tl.get("max")
 
         metrics: Metrics = {k: float(v) if isinstance(v, (int, float)) else v
                             for k, v in base.items()}

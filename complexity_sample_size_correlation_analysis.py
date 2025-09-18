@@ -15,127 +15,153 @@ from utils import constants, helpers
 from utils.complexity.assessors import run_adapters
 from utils.windowing.windowing import Window
 
-def sample_random_traces_with_replacement(
+ReplacementPolicy = Literal[
+    "within_and_across",  # (1) full replacement: duplicates allowed within a sample and across samples
+    "within_only",        # (2) no duplicates within a sample; samples are independent (replacement across samples)
+    "none"                # (3) no replacement at all across all samples; each trace used at most once globally
+]
+
+def sample_random_traces(
     event_log: Iterable[Any],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
+    policy: ReplacementPolicy = "within_and_across",
     random_state: Optional[int] = None
 ) -> List[Tuple[int, str, List[Any]]]:
     """
-    Sample random trace sets WITH replacement across the whole log.
+    Sample random trace sets from an event log under different replacement policies.
 
-    For each sample_id in [0, samples_per_size), and for each requested window sizes,
-    draw 'sizes' indices *with replacement* from the event_log and collect those traces.
+    Parameters
+    ----------
+    event_log
+        Iterable of traces (will be materialized to a list).
+    sizes
+        Iterable of positive integers indicating sample sizes to draw.
+    samples_per_size
+        Number of samples to draw per size.
+    policy
+        Replacement policy:
+          - "within_and_across": draw with replacement for each sample (duplicates allowed within & across samples).
+          - "within_only":        draw without replacement within a sample, but with replacement across samples
+                                  (i.e., each sample is an independent no-replacement draw from the full log).
+          - "none":               draw without replacement globally across all samples and sizes.
+    random_state
+        Seed for reproducible sampling.
 
     Returns
     -------
-    list[tuple[int, str, list]]
-        Tuples of (window_size, sample_id, trace_list).
+    List[Tuple[int, str, List[Any]]]
+        List of (window_size, sample_id, trace_list).
     """
-    # Materialize for len/index while accepting general iterables
+    # Materialize and validate
     event_log = list(event_log)
     n_traces = len(event_log)
 
-    # Quick exits
     if n_traces == 0 or samples_per_size <= 0:
         return []
 
-    sizes = [s for s in sizes if s > 0]
+    sizes = [int(s) for s in sizes if int(s) > 0]
     if not sizes:
         return []
 
     rng = np.random.default_rng(seed=random_state)
     results: List[Tuple[int, str, List[Any]]] = []
 
-    for sample_id in range(samples_per_size):
-        for s in sizes:
-            # draw indices with replacement; s may exceed n_traces
-            idxs = rng.integers(low=0, high=n_traces, size=int(s)).tolist()
-            chosen_traces = [event_log[i] for i in idxs]
-            results.append((int(s), str(sample_id), chosen_traces))
+    if policy == "within_and_across":
+        # (1) Full replacement: allow repeats within a sample and across samples.
+        for sample_id in range(samples_per_size):
+            for s in sizes:
+                idxs = rng.integers(low=0, high=n_traces, size=s).tolist()
+                chosen_traces = [event_log[i] for i in idxs]
+                results.append((s, str(sample_id), chosen_traces))
+        return results
 
-    return results
+    if policy == "within_only":
+        # (2) No replacement within a sample; across samples independent.
+        #     Each sample requires s <= n_traces.
+        max_s = max(sizes)
+        if max_s > n_traces:
+            raise ValueError(
+                f"Requested size {max_s} exceeds number of traces {n_traces} for policy 'within_only'."
+            )
+        indices = np.arange(n_traces)
+        for sample_id in range(samples_per_size):
+            for s in sizes:
+                # independent sample each time, without replacement
+                idxs = rng.choice(indices, size=s, replace=False).tolist()
+                chosen_traces = [event_log[i] for i in idxs]
+                results.append((s, str(sample_id), chosen_traces))
+        return results
 
-def sample_random_trace_sets_no_replacement(
+    if policy == "none":
+        # (3) Global no replacement across all samples and sizes.
+        total_needed = int(samples_per_size) * int(sum(sizes))
+        if total_needed > n_traces:
+            raise ValueError(
+                f"Insufficient traces ({n_traces}) for global no-replacement sampling "
+                f"of {samples_per_size} * sum(sizes) = {total_needed}."
+            )
+
+        # Shuffle a pool of all indices once, then carve it sequentially per (sample_id, size)
+        pool = rng.permutation(n_traces).tolist()
+        cursor = 0
+        for sample_id in range(samples_per_size):
+            for s in sizes:
+                take = pool[cursor: cursor + s]
+                cursor += s
+                chosen_traces = [event_log[i] for i in take]
+                results.append((s, str(sample_id), chosen_traces))
+        return results
+
+    raise ValueError(f"Unknown policy: {policy!r}")
+
+
+# --- Backwards-compatible wrappers for sampling --------------------------
+
+def sample_random_traces_with_replacement(
     event_log: Iterable[Any],
-    min_size: int = 10,
-    max_size: Optional[int] = 500,
-    num_sizes: int = 10,
+    sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
-    spacing: Literal["linear", "log"] = "linear",
-    random_state: Optional[int] = None,
+    random_state: Optional[int] = None
 ) -> List[Tuple[int, str, List[Any]]]:
-    """
-    Build random, non-consecutive trace sets WITHOUT replacement across the whole log.
+    """(1) Duplicates allowed within and across samples."""
+    return sample_random_traces(
+        event_log=event_log,
+        sizes=sizes,
+        samples_per_size=samples_per_size,
+        policy="within_and_across",
+        random_state=random_state,
+    )
 
-    We first derive a vector of window sizes (linearly or logarithmically spaced)
-    that respects the total "budget" of available traces for the requested number
-    of samples per size. Then, for each sample_id and each size, we sample indices
-    from the remaining pool (without replacement) and collect those traces.
+def sample_random_trace_sets_no_replacement_within_only(
+    event_log: Iterable[Any],
+    sizes: Iterable[int] = range(10, 501, 50),
+    samples_per_size: int = 10,
+    random_state: Optional[int] = None
+) -> List[Tuple[int, str, List[Any]]]:
+    """(2) No duplicates within a sample; samples are independent across runs."""
+    return sample_random_traces(
+        event_log=event_log,
+        sizes=sizes,
+        samples_per_size=samples_per_size,
+        policy="within_only",
+        random_state=random_state,
+    )
 
-    Returns
-    -------
-    list[tuple[int, str, list]]
-        Tuples of (window_size, sample_id, trace_list).
-    """
-    # Wrap in list for len/index while accepting general iterables
-    event_log = list(event_log)
-    n_traces = len(event_log)
-    if n_traces < min_size:
-        return []
-
-    # RNG (avoid touching global state)
-    rng = np.random.default_rng(seed=random_state)
-
-    # Determine max size bound
-    max_size = min(max_size if max_size is not None else n_traces, n_traces)
-
-    # Per-repetition budget
-    if samples_per_size <= 0:
-        return []
-    budget = n_traces // samples_per_size
-    if budget < min_size:
-        return []
-
-    feasible_max_size = min(max_size, budget)
-
-    # Create size grid
-    if num_sizes <= 0:
-        num_sizes = 1
-    if num_sizes == 1 or feasible_max_size <= min_size:
-        sizes = np.array([min_size], dtype=int)
-    else:
-        if spacing == "log":
-            sizes = np.geomspace(min_size, feasible_max_size, num_sizes).astype(int)
-        else:
-            sizes = np.linspace(min_size, feasible_max_size, num_sizes).astype(int)
-
-    sizes = np.clip(sizes, min_size, feasible_max_size)
-    sizes = np.maximum.accumulate(sizes)
-
-    # Ensure budget is not exceeded (very conservative trim)
-    while sizes.sum() > budget and sizes[-1] > min_size:
-        sizes[-1] -= 1
-
-    # Sampling without replacement across the full pool
-    available = list(range(n_traces))
-    results: List[Tuple[int, str, List[Any]]] = []
-
-    for sample_id in range(samples_per_size):
-        for size in sizes:
-            if len(available) < int(size):
-                break
-            idxs = rng.choice(available, size=int(size), replace=False).tolist()
-            # Remove chosen indices from availability
-            chosen_set = set(idxs)
-            available = [i for i in available if i not in chosen_set]
-            chosen_traces = [event_log[i] for i in idxs]
-            results.append((int(size), str(sample_id), chosen_traces))
-
-        if len(available) < min_size:
-            break
-
-    return results
+def sample_random_trace_sets_no_replacement_global(
+    event_log: Iterable[Any],
+    sizes: Iterable[int] = range(10, 501, 50),
+    samples_per_size: int = 10,
+    random_state: Optional[int] = None
+) -> List[Tuple[int, str, List[Any]]]:
+    """(3) No replacement globally across all samples and sizes."""
+    return sample_random_traces(
+        event_log=event_log,
+        sizes=sizes,
+        samples_per_size=samples_per_size,
+        policy="none",
+        random_state=random_state,
+    )
 
 def compute_metrics_for_samples(
     samples: List[Tuple[int, str, List[Any]]],
@@ -212,7 +238,7 @@ def _test_measures_for_correlation(
     """
     For each dataset, compute Pearson r between each numeric measure and window_size.
     Returns a dict of DataFrames with columns: measure, n, pearson_r, p_value, status.
-    status ∈ {"ok","insufficient_n","constant_x","constant_y","constant_both"}.
+    status element of {"ok","insufficient_n","constant_x","constant_y","constant_both"}.
     """
     results: Dict[str, pd.DataFrame] = {}
 
@@ -368,7 +394,7 @@ def plot_correlation_results(
     # Common formatting
     plt.axhline(0, linewidth=0.8, color="grey")
     plt.ylabel("Pearson r")
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=90)
     plt.xlabel("Measure")
     plt.title("Distribution of Pearson r Across Datasets by Measure")
     plt.tight_layout()
