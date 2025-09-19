@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Protocol, Iterable, Dict, Tuple, Optional, Union, List
+from typing import Any, Protocol, Iterable, Dict, Tuple, Optional, Union, List
 from utils.complexity.measures.measure_store import MeasureStore, Measure
 from utils.windowing.window import Window
 
@@ -10,7 +10,7 @@ class MetricsAdapter(Protocol):
     Conventions:
     - Implementations should only write into the provided MeasureStore.
     - They must not erase values written by previous adapters.
-    - They may set meta (e.g., {"source": "local"} or {"source": "sklearn"}) and hidden flags.
+    - They may set meta (e.g., {"source": "local"} or {"source": "sklearn"}).
     """
     name: str
 
@@ -22,12 +22,9 @@ class MetricsAdapter(Protocol):
         self,
         window: "Window",
         measures: Optional[Union[MeasureStore, Dict[str, Measure]]] = None,
-        include: Optional[Iterable[str]] = None,
-        exclude: Optional[Iterable[str]] = None,
     ) -> Tuple[MeasureStore, Dict]:
         """
-        Compute measures for a single window. If include is None -> compute all.
-        Exclude takes precedence over include.
+        Compute measures for a single window. 
         Returns (MeasureStore, info).
         """
         ...
@@ -36,8 +33,6 @@ class MetricsAdapter(Protocol):
         self,
         windows: List["Window"],
         measures_by_id: Optional[Dict[Union[str, int], Union[MeasureStore, Dict[str, Measure]]]] = None,
-        include: Optional[Iterable[str]] = None,
-        exclude: Optional[Iterable[str]] = None,
     ) -> Dict[Union[str, int], Tuple[MeasureStore, Dict[str, Any]]]:
         """
         Default batch implementation: calls `compute_measures_for_window` for each window.
@@ -54,8 +49,6 @@ class MetricsAdapter(Protocol):
             store, info = self.compute_measures_for_window(
                 w,
                 measures=existing,
-                include=include,
-                exclude=exclude,
             )
             out[key] = (store, info)
 

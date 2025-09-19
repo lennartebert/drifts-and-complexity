@@ -1,11 +1,21 @@
 from __future__ import annotations
-import math
-from abc import ABC, abstractmethod
-from typing import Mapping, Dict, Optional, Iterable, List
 
+from utils.complexity.measures.measure_store import MeasureStore
 from utils.normalization.normalizers.normalizer import Normalizer
 
+
 class HideNumberOfTraces(Normalizer):
-    """Do not report Number of Traces (sets it to None)."""
-    def apply(self, metrics: Mapping[str, float]) -> Dict[str, Optional[float]]:
-        return {"Number of Traces": None}
+    """
+    Hide 'Number of Traces' from visible outputs (keeps value, sets hidden=True).
+    """
+
+    KEY = "Number of Traces"
+
+    def apply(self, measures: MeasureStore) -> None:
+        if not measures.has(self.KEY):
+            return
+        m = measures.get(self.KEY)
+        prev_meta = (m.meta if m else {})
+        meta = {**prev_meta, "hidden_by": type(self).__name__}
+        # retain current value, just mark hidden
+        measures.set(self.KEY, m.value if m else None, hidden=True, meta=meta)

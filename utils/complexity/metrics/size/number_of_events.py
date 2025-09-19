@@ -16,4 +16,4 @@ class NumberOfEvents(Metric):
     def compute(self, window: "Window", measures: MeasureStore) -> None:
         if measures.has(self.name):
             return
-        measures.set(self.name, _num_events(window), hidden=False, meta={"bases": "observations"})
+        measures.set(self.name, _num_events(window), hidden=False, meta={"basis": "observation count"})

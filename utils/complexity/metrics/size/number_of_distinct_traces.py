@@ -26,7 +26,7 @@ class NumberOfDistinctTraces(Metric):
         if pd is not None:
             n_vars = getattr(getattr(pd, "trace_variants", object()), "count", None)
             if n_vars is not None:
-                measures.set(self.name, float(n_vars), hidden=False, meta={"bases": "population"})
+                measures.set(self.name, float(n_vars), hidden=False, meta={"basis": "population count"})
                 return
 
-        measures.set(self.name, float(_observed_n_variants(window)), hidden=False, meta={"bases": "observations"})
+        measures.set(self.name, float(_observed_n_variants(window)), hidden=False, meta={"basis": "observation count"})

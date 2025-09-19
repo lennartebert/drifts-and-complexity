@@ -1,34 +1,48 @@
 from __future__ import annotations
 import math
-from abc import ABC, abstractmethod
-from typing import Mapping, Dict, Optional, Iterable, List
 
+from utils.complexity.measures.measure_store import MeasureStore
 from utils.normalization.normalizers.normalizer import Normalizer
 
-# helper
-def _safe_log(x: float) -> Optional[float]:
-    return math.log(x) if (x is not None and isinstance(x, (int, float)) and x > 0) else None
+
+def _safe_log(x: float) -> float | None:
+    try:
+        return math.log(x) if x is not None and x > 0 else None
+    except Exception:
+        return None
+
 
 class NormalizeLZComplexity(Normalizer):
     """
-    Lempel-Ziv normalization (Kaspar & Schuster, 1987):
+    Lempel–Ziv normalization (Kaspar & Schuster, 1987):
         LZ' = LZ / ( N / (log N / log V) )
     where:
-        N = Number of Events
-        V = Number of Distinct Activities
+        LZ = 'Lempel-Ziv Complexity'
+        N  = 'Number of Events'
+        V  = 'Number of Distinct Activities'
     """
+
     KEY = "Lempel-Ziv Complexity"
 
-    def apply(self, metrics: Mapping[str, float]) -> Dict[str, Optional[float]]:
-        lz = metrics.get(self.KEY)
-        N = metrics.get("Number of Events")
-        V = metrics.get("Number of Distinct Activities")
-        val = None
-        if lz is not None and N and V and N > 1 and V > 1:
-            lnN = _safe_log(float(N))
-            lnV = _safe_log(float(V))
-            if lnN and lnV and lnV > 0:
-                denom = float(N) / (lnN / lnV)
-                if denom > 0:
-                    val = float(lz) / denom
-        return {self.KEY: val}
+    def apply(self, measures: MeasureStore) -> None:
+        if not measures.has(self.KEY):
+            return
+        lz = measures.get_value(self.KEY)
+        N = measures.get_value("Number of Events")
+        V = measures.get_value("Number of Distinct Activities")
+        if lz is None or N is None or V is None or N <= 1 or V <= 1:
+            return
+
+        lnN = _safe_log(float(N))
+        lnV = _safe_log(float(V))
+        if not lnN or not lnV or lnV <= 0:
+            return
+
+        denom = float(N) / (lnN / lnV)
+        if denom <= 0:
+            return
+
+        new_val = float(lz) / denom
+        prev_meta = (measures.get(self.KEY).meta if measures.get(self.KEY) else {})
+        meta = {**prev_meta, "normalized_by": type(self).__name__}
+        measures.set(self.KEY, new_val, hidden=False, meta=meta)

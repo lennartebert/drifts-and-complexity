@@ -26,6 +26,6 @@ class TraceLengthStats(Metric):
         else:
             mn = avg = mx = 0.0
 
-        measures.set("Min. Trace Length", mn,  hidden=True, meta={"bases": "observations"})
-        measures.set("Avg. Trace Length", avg, hidden=True, meta={"bases": "observations"})
-        measures.set("Max. Trace Length", mx,  hidden=True, meta={"bases": "observations"})
+        measures.set("Min. Trace Length", mn,  hidden=True, meta={"basis": "observation distribution"})
+        measures.set("Avg. Trace Length", avg, hidden=True, meta={"basis": "observation distribution"})
+        measures.set("Max. Trace Length", mx,  hidden=True, meta={"basis": "observation distribution"})

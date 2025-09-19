@@ -210,7 +210,7 @@ def _build_chao_distribution_from_counts(counts: Counter) -> PopulationDistribut
         probs_obs = []
 
     return PopulationDistribution(
-        observed_labels=labels, oberved_probs=probs_obs, unseen_count=M_unseen, p0=p0, n_samples=N
+        observed_labels=labels, observed_probs=probs_obs, unseen_count=M_unseen, p0=p0, n_samples=N
     )
 
 

@@ -8,7 +8,6 @@ from utils.windowing.helpers import (
     Window
 )
 from utils.helpers import save_complexity_csv
-from .registry import get_adapters
 
 def _cfg_name(base_cfg: str, approach: str) -> str:
     return f"{base_cfg}__{approach}"

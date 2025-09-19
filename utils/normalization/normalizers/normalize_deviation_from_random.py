@@ -1,9 +1,9 @@
 from __future__ import annotations
 import math
-from abc import ABC, abstractmethod
-from typing import Mapping, Dict, Optional, Iterable, List
 
+from utils.complexity.measures.measure_store import MeasureStore
 from utils.normalization.normalizers.normalizer import Normalizer
+
 
 class NormalizeDeviationFromRandom(Normalizer):
     """
@@ -12,16 +12,27 @@ class NormalizeDeviationFromRandom(Normalizer):
     where D = 'Deviation from Random' and V = 'Number of Distinct Activities'.
     Clips to [0,1].
     """
-    def apply(self, metrics: Mapping[str, float]) -> Dict[str, Optional[float]]:
-        D = metrics.get("Deviation from Random")
-        V = metrics.get("Number of Distinct Activities")
-        val = None
-        if D is not None and V and V > 1:
-            denom_inner = 1.0 - 1.0 / (float(V) ** 2)
-            if denom_inner > 0:
-                denom = math.sqrt(denom_inner)
-                if denom > 0:
-                    val = 1.0 - (1.0 - float(D)) / denom
-                    val = max(0.0, min(1.0, val))
-        return {"Deviation from Random": val}
-    
+
+    KEY = "Deviation from Random"
+
+    def apply(self, measures: MeasureStore) -> None:
+        if not measures.has(self.KEY):
+            return
+        D = measures.get_value(self.KEY)
+        V = measures.get_value("Number of Distinct Activities")
+        if D is None or V is None or V <= 1:
+            return
+
+        denom_inner = 1.0 - 1.0 / (float(V) ** 2)
+        if denom_inner <= 0:
+            return
+        denom = math.sqrt(denom_inner)
+        if denom <= 0:
+            return
+
+        new_val = 1.0 - (1.0 - float(D)) / denom
+        new_val = max(0.0, min(1.0, float(new_val)))
+
+        prev_meta = (measures.get(self.KEY).meta if measures.get(self.KEY) else {})
+        meta = {**prev_meta, "normalized_by": type(self).__name__}
+        measures.set(self.KEY, new_val, hidden=False, meta=meta)

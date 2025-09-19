@@ -26,30 +26,11 @@ class LocalMetricsAdapter(MetricsAdapter):
     name: str = "local"
 
     def __init__(self, metrics: Optional[Iterable[str]] = None, *, strict: bool = True):
-        self._default_metrics = tuple(metrics) if metrics else tuple(available_metric_names())
+        self._selected_metric_names = tuple(metrics) if metrics else tuple(available_metric_names())
         self._strict = strict
 
     def available_metrics(self) -> Iterable[str]:
         return tuple(available_metric_names())
-
-    # --- internal helpers ---
-
-    def _resolve_metrics(self, include: Optional[Iterable[str]], exclude: Optional[Iterable[str]]) -> List[Metric]:
-        include_names = tuple(include) if include is not None else self._default_metrics
-        exclude_set = set(exclude) if exclude else set()
-
-        selected: List[Metric] = []
-        for name in include_names:
-            if name in exclude_set:
-                continue
-            try:
-                metric_cls = get_metric_class(name)
-                selected.append(metric_cls())  # instantiate
-            except KeyError:
-                if self._strict:
-                    raise
-                # else: ignore unknown
-        return selected
 
     # --- API ---
 
@@ -57,11 +38,20 @@ class LocalMetricsAdapter(MetricsAdapter):
         self,
         window: Window,
         measures: Optional[Union[MeasureStore, Dict[str, Measure]]] = None,
-        include: Optional[Iterable[str]] = None,
-        exclude: Optional[Iterable[str]] = None,
     ) -> Tuple[MeasureStore, Dict]:
         store = measures if isinstance(measures, MeasureStore) else MeasureStore(measures)
-        metrics = self._resolve_metrics(include, exclude)
+
+        # get metrics instances from names
+        metrics = []
+
+        for name in self._selected_metric_names:
+            try:
+                metric_cls = get_metric_class(name)
+                metrics.append(metric_cls())  # instantiate
+            except KeyError:
+                if self._strict:
+                    raise
+                # else: ignore unknown 
 
         for m in metrics:
             m.compute(window, store)

@@ -27,7 +27,7 @@ class NumberOfDistinctActivities(Metric):
         if pd is not None:
             n_acts = getattr(getattr(pd, "activities", object()), "count", None)
             if n_acts is not None:
-                measures.set(self.name, float(n_acts), hidden=False, meta={"bases": "population"})
+                measures.set(self.name, float(n_acts), hidden=False, meta={"basis": "population count"})
                 return
 
-        measures.set(self.name, float(_observed_n_acts(window)), hidden=False, meta={"bases": "observations"})
+        measures.set(self.name, float(_observed_n_acts(window)), hidden=False, meta={"basis": "observation count"})

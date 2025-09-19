@@ -162,6 +162,58 @@ def sample_random_trace_sets_no_replacement_global(
         random_state=random_state,
     )
 
+# --- Samplers that return windows --------------------------
+
+def sample_random_windows_with_replacement(
+    event_log: Iterable[Any],
+    sizes: Iterable[int] = range(10, 501, 50),
+    samples_per_size: int = 10,
+    random_state: Optional[int] = None
+) -> List[Tuple[int, str, List[Any]]]:
+    """(1) Duplicates allowed within and across samples."""
+    trace_samples = sample_random_traces(
+        event_log=event_log,
+        sizes=sizes,
+        samples_per_size=samples_per_size,
+        policy="within_and_across",
+        random_state=random_state,
+    )
+    window_samples = ((window_size, sample_id, Window(id=sample_id, size=len(trace_list), traces=trace_list)) for window_size, sample_id, trace_list in trace_samples)
+    return window_samples
+
+def sample_random_windows_no_replacement_within_only(
+    event_log: Iterable[Any],
+    sizes: Iterable[int] = range(10, 501, 50),
+    samples_per_size: int = 10,
+    random_state: Optional[int] = None
+) -> List[Tuple[int, str, List[Any]]]:
+    """(2) No duplicates within a sample; samples are independent across runs."""
+    trace_samples = sample_random_traces(
+        event_log=event_log,
+        sizes=sizes,
+        samples_per_size=samples_per_size,
+        policy="within_only",
+        random_state=random_state,
+    )
+    window_samples = ((window_size, sample_id, Window(id=sample_id, size=len(trace_list), traces=trace_list)) for window_size, sample_id, trace_list in trace_samples)
+    return window_samples
+
+def sample_random_windows_no_replacement_global(
+    event_log: Iterable[Any],
+    sizes: Iterable[int] = range(10, 501, 50),
+    samples_per_size: int = 10,
+    random_state: Optional[int] = None
+) -> List[Tuple[int, str, List[Any]]]:
+    """(3) No replacement globally across all samples and sizes."""
+    trace_samples = sample_random_traces(
+        event_log=event_log,
+        sizes=sizes,
+        samples_per_size=samples_per_size,
+        policy="none",
+        random_state=random_state,
+    )
+    window_samples = ((window_size, sample_id, Window(id=sample_id, size=len(trace_list), traces=trace_list)) for window_size, sample_id, trace_list in trace_samples)
+    return window_samples
 
 def compute_metrics_for_samples(
     samples: List[Tuple[int, str, List[Any]]],

@@ -64,8 +64,8 @@ class VidgofMetricsAdapter(MetricsAdapter):
         seq_ent = log_complexity(pa)    # (entropy, normalized_entropy)
         
         metrics = {}
-        metrics["Variant Entropy"] = var_ent[0]
-        metrics["Normalized Variant Entropy"] = var_ent[1]
+        metrics["Sequence Entropy"] = var_ent[0]
+        metrics["Normalized Sequence Entropy"] = var_ent[1]
         metrics["Trace Entropy"] = seq_ent[0]
         metrics["Normalized Trace Entropy"] = seq_ent[1]
 
@@ -88,36 +88,17 @@ class VidgofMetricsAdapter(MetricsAdapter):
         self,
         window: Window,
         measures: Optional[Union[MeasureStore, Dict[str, Measure]]] = None,
-        include: Optional[Iterable[str]] = None,
-        exclude: Optional[Iterable[str]] = None,
     ) -> Tuple[MeasureStore, Dict[str, Any]]:
         store = measures if isinstance(measures, MeasureStore) else MeasureStore(measures)
 
         raw = self._compute_all_from_lib(window)
         floats = self._floatify(raw)
-        
-        include_names = tuple(include) if include is not None else tuple(floats.keys())
-        exclude_set = set(exclude) if exclude else set()
 
-        computed: List[str] = []
-        skipped_existing: List[str] = []
-
-        for name in include_names:
-            if name in exclude_set:
-                continue
-            if name not in floats:
-                continue  # metric not produced by this lib
-            if store.has(name):
-                skipped_existing.append(name)
-                continue
-            store.set(name, floats[name], hidden=False, meta={"source": self.name})
-            computed.append(name)
+        for name, value in floats.items():
+            store.set(name, value, hidden=False, meta={"source": self.name})
 
         info = {
             "adapter": self.name,
-            "computed": computed,
-            "skipped_existing": skipped_existing,
-            "available_now": tuple(sorted(floats.keys())),
             "support": len(window.traces),
         }
         return store, info
