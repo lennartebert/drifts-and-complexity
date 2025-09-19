@@ -2,18 +2,17 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Iterable, Any, Literal
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from pm4py.objects.log.importer.xes import importer as xes_importer
 from scipy.stats import pearsonr
 
-from pm4py.objects.log.importer.xes import importer as xes_importer
-
 from utils import constants, helpers
-from utils.complexity.assessors import run_adapters
-from utils.windowing.windowing import Window
+from utils.complexity.assessors import run_metric_adapters
+from utils.windowing.helpers import Window
 
 ReplacementPolicy = Literal[
     "within_and_across",  # (1) full replacement: duplicates allowed within a sample and across samples
@@ -163,6 +162,7 @@ def sample_random_trace_sets_no_replacement_global(
         random_state=random_state,
     )
 
+
 def compute_metrics_for_samples(
     samples: List[Tuple[int, str, List[Any]]],
     adapters: List[str]) -> pd.DataFrame:
@@ -172,9 +172,9 @@ def compute_metrics_for_samples(
         str(idx): Window(id=str(idx), size=size, traces=traces)
         for idx, (size, _sid, traces) in enumerate(samples)
     }
-
+    
     # Compute measures via adapters (returns dict keyed by window.id)
-    dictionaries_all_windows = run_adapters(windows_map.values(), adapters)
+    dictionaries_all_windows = run_metric_adapters(windows_map.values(), adapters)
 
     # Flatten into rows
     rows: List[Dict[str, Any]] = []

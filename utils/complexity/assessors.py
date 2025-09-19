@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Dict, Optional, Iterable, List, Tuple, Any
 import pandas as pd
-from utils.windowing.windowing import (
+from utils.windowing.helpers import (
     split_log_into_windows_by_change_points,
     split_log_into_fixed_windows,
     split_log_into_fixed_comparable_windows,
@@ -42,7 +42,7 @@ def _flatten_adapter_results(
                 out[w.id].update(info)
     return out
 
-def run_adapters(
+def run_metric_adapters(
     windows: List[Window],
     adapter_names: Iterable[str],
     add_prefix: bool = True,
@@ -71,7 +71,7 @@ def assess_complexity_via_change_point_split(
     cps = [(cp_info[i]["calc_change_index"], i, cp_info[i]["calc_change_type"]) for i in sorted(cp_info.keys())] if cp_info else []
     windows = split_log_into_windows_by_change_points(pm4py_log, cps)
 
-    merged = run_adapters(windows, adapter_names, add_prefix=add_prefix, include_adapter_name=include_adapter_name)
+    merged = run_metric_adapters(windows, adapter_names, add_prefix=add_prefix, include_adapter_name=include_adapter_name)
     df = _materialize_rows(windows, merged)
     save_complexity_csv(dataset_key, _cfg_name(configuration_name, approach_name), df)
     return df
@@ -83,7 +83,7 @@ def assess_complexity_via_fixed_sized_windows(
     add_prefix: bool = True, include_adapter_name: bool = False
 ):
     windows = split_log_into_fixed_windows(pm4py_log, window_size, offset)
-    merged = run_adapters(windows, adapter_names, add_prefix=add_prefix, include_adapter_name=include_adapter_name)
+    merged = run_metric_adapters(windows, adapter_names, add_prefix=add_prefix, include_adapter_name=include_adapter_name)
     df = _materialize_rows(windows, merged)
     save_complexity_csv(dataset_key, _cfg_name(configuration_name, approach_name), df)
     return df
@@ -96,7 +96,7 @@ def assess_complexity_via_window_comparison(
     pairs = split_log_into_fixed_comparable_windows(pm4py_log, window_1_size, window_2_size, offset, step)
     all_windows: List[Window] = [w for pair in pairs for w in pair]
 
-    merged = run_adapters(all_windows, adapter_names, add_prefix=add_prefix, include_adapter_name=include_adapter_name)
+    merged = run_metric_adapters(all_windows, adapter_names, add_prefix=add_prefix, include_adapter_name=include_adapter_name)
 
     rows = []
     for pid, (w1, w2) in enumerate(pairs):

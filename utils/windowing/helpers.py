@@ -1,22 +1,7 @@
-from dataclasses import dataclass, asdict
-from typing import List, Tuple, Optional
-from datetime import datetime
+from typing import List, Tuple
 
-@dataclass
-class Window:
-    id: str
-    size: int
-    traces: list
-    first_index: Optional[int] = None
-    last_index: Optional[int] = None
-    start_moment: Optional[datetime] = None
-    end_moment: Optional[datetime] = None
-    start_change_point: Optional[int] = None
-    start_change_point_type: Optional[str] = None
-    end_change_point: Optional[int] = None
-    end_change_point_type: Optional[str] = None
+from utils.windowing.window import Window
 
-    def to_dict(self): d = asdict(self); d.pop("traces", None); return d
 
 def _trace_start_time(trace):
     if not trace: return None

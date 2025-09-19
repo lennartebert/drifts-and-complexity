@@ -28,7 +28,7 @@ from pm4py.statistics.attributes.log import get as attributes_get
 from pm4py.algo.discovery.dfg import algorithm as dfg_discovery
 from pm4py.algo.filtering.log.variants import variants_filter
 
-from utils.windowing.windowing import split_log_into_windows_by_change_points
+from utils.windowing.helpers import split_log_into_windows_by_change_points
 
 
 # ------------------- UTILS -------------------

@@ -6,11 +6,11 @@ from utils.drift_io import (
     drift_info_to_dict, load_xes_log
 )
 from utils.population import inext_adapter
-from utils.windowing.windowing import split_log_into_fixed_windows
+from utils.windowing.helpers import split_log_into_fixed_windows
 from utils.complexity.assessor import (
     assess_complexity_via_fixed_sized_windows,
 )
-from utils.windowing.windowing import Window
+from utils.windowing.helpers import Window
 
 def main():
     print('iNEXT Adapter test')
