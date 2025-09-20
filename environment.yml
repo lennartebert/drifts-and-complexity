@@ -19,15 +19,6 @@ dependencies:
   - graphviz
   - python-graphviz
 
-  # R (pin to 4.3 line for Windows-friendly rpy2 ABI mode)
-  - r-base=4.3.*
-
-  # R packages from conda-forge (precompiled - no make/sh needed)
-  - r-ggplot2
-  - r-inext
-  - r-rlang
-  - r-tidyselect
-  - r-tibble
 
   # PM4Py (pip-only)
   - pip:
@@ -40,7 +31,3 @@ dependencies:
       - lempel_ziv_complexity
       - mypy
       - python-Levenshtein
-
-
-      # rpy2 via pip (Windows: use ABI mode; this version works w/ R 4.3)
-      - rpy2==3.5.16

@@ -206,11 +206,6 @@ def run_metrics_over_samples(
         all_measure_keys.update(measures.keys())
         all_measure_keys.update(cis.keys())
 
-        # sort measure keys by 'sorted_metrics'
-        ordered_metrics = [key for key in sorted_metrics if key in all_measure_keys]
-        extra_metrics = sorted(all_measure_keys - set(sorted_metrics))
-        all_metrics = ordered_metrics + extra_metrics
-
         base = {"sample_size": window_size, "sample_id": sample_id}
 
         # Measures
@@ -226,6 +221,10 @@ def run_metrics_over_samples(
         rows_ci_low.append(low_row)
         rows_ci_high.append(high_row)
 
+    # sort measure keys by 'sorted_metrics'
+    ordered_metrics = [key for key in sorted_metrics if key in all_measure_keys]
+    extra_metrics = sorted(all_measure_keys - set(sorted_metrics))
+    all_metrics = ordered_metrics + extra_metrics
     ordered_cols = ["sample_size", "sample_id"] + all_metrics
 
     measures_df = pd.DataFrame(rows_measures).reindex(columns=ordered_cols)

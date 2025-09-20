@@ -93,3 +93,104 @@ def get_dataframe_from_drift_detection_results(datasets, cp_configurations):
 
     out = pd.DataFrame(results)
     return out.reset_index(drop=True)
+
+# correlation helpers
+def get_correlations_for_dictionary(sample_metrics_per_log, rename_dictionary_map, metric_columns, base_column='sample_size'):
+    # create a correlation analysis for all measures
+    from pathlib import Path
+
+    import pandas as pd
+    from scipy import stats
+
+    # mapping of your dict keys to desired column names
+    rename_map = rename_dictionary_map
+
+    r_results, p_results = {}, {}
+
+    for key, df in sample_metrics_per_log.items():
+        col_tag = key if rename_map is None else rename_map[key] # apply the rename map if available
+        r_results[col_tag] = {}
+        p_results[col_tag] = {}
+
+        for col in df.columns:
+            if col not in metric_columns:
+                continue
+            # drop missing values pairwise
+            tmp = df[[base_column, col]].dropna()
+            if len(tmp) < 2:
+                r, p = float("nan"), float("nan")
+            else:
+                r, p = stats.pearsonr(tmp[base_column], tmp[col])
+            r_results[col_tag][col] = r
+            p_results[col_tag][col] = p
+
+    # DataFrames: measures as index, P1..P4 as columns
+    corr_df = pd.DataFrame(r_results)
+    pval_df = pd.DataFrame(p_results).reindex(corr_df.index)
+    print("Correlations:")
+    print(corr_df)
+    print()
+    print("P-values:")
+    print(pval_df)
+
+    return corr_df, pval_df
+
+
+# LATEX helpers
+# Create Latex output
+def _stars(p: float) -> str:
+    if pd.isna(p):
+        return ""
+    if p < 0.001:
+        return "***"
+    if p < 0.01:
+        return "**"
+    if p < 0.05:
+        return "*"
+    return ""
+
+def corr_p_to_latex_stars(corr_df: pd.DataFrame, pval_df: pd.DataFrame, out_path: Path, label: str) -> None:
+    # keep P1..P4 order if present
+    cols = [c for c in ["P1", "P2", "P3", "P4"] if c in corr_df.columns]
+    corr = corr_df[cols].copy()
+    pval = pval_df[cols].copy()
+    corr, pval = corr.align(pval, join="outer", axis=0)
+
+    # Build display DataFrame with "+/-r***" format
+    disp = corr.copy().astype(object)
+    for c in cols:
+        out_col = []
+        for r, p in zip(corr[c], pval[c]):
+            if pd.isna(r):
+                out_col.append("")
+            else:
+                out_col.append(f"{r:+.2f}{_stars(p)}")
+        disp[c] = out_col
+
+    latex_body = disp.to_latex(
+        escape=True,
+        na_rep="",
+        index=True,
+        column_format="l" + "c"*len(cols),
+        bold_rows=False
+    )
+
+    wrapped = rf"""
+    \begin{{table}}[htbp]
+    \label{{label}}
+    \centering
+    \caption{{Pearson correlation ($r$) between window size and each measure.}}
+    \scriptsize
+    \setlength{{\tabcolsep}}{{6pt}}
+    \renewcommand{{\arraystretch}}{{1.15}}
+    {latex_body}
+    \vspace{{2pt}}
+    \begin{{minipage}}{{0.95\linewidth}}\footnotesize
+    Stars denote significance: $^*p<0.05$, $^{{**}}p<0.01$, $^{{***}}p<0.001$.
+    \end{{minipage}}
+    \end{{table}}
+    """
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(wrapped)

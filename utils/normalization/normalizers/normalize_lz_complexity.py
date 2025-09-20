@@ -14,7 +14,7 @@ def _safe_log(x: float) -> float | None:
 
 class NormalizeLZComplexity(Normalizer):
     """
-    Lempel–Ziv normalization (Kaspar & Schuster, 1987):
+    Lempel-Ziv normalization (Kaspar & Schuster, 1987):
         LZ' = LZ / ( N / (log N / log V) )
     where:
         LZ = 'Lempel-Ziv Complexity'

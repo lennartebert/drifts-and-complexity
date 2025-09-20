@@ -64,10 +64,10 @@ class VidgofMetricsAdapter(MetricsAdapter):
         seq_ent = log_complexity(pa)    # (entropy, normalized_entropy)
         
         metrics = {}
-        metrics["Sequence Entropy"] = var_ent[0]
-        metrics["Normalized Sequence Entropy"] = var_ent[1]
-        metrics["Trace Entropy"] = seq_ent[0]
-        metrics["Normalized Trace Entropy"] = seq_ent[1]
+        metrics["Variant Entropy"] = var_ent[0]
+        metrics["Normalized Variant Entropy"] = var_ent[1]
+        metrics["Sequence Entropy"] = seq_ent[0]
+        metrics["Normalized Sequence Entropy"] = seq_ent[1]
 
         return metrics
 
