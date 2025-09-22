@@ -7,24 +7,46 @@ from utils.normalization.normalizers.normalizer import Normalizer
 class NormalizePercentageOfDistinctTraces(Normalizer):
     """
     Convert 'Percentage of Distinct Traces' into a COUNT by multiplying with
-    'Number of Traces'. Overwrites 'Percentage of Distinct Traces'.
+    'Number of Traces'.
+    
     - Accepts percentages in [0,1] or [0,100].
-    - If either key is missing/invalid, no-ops.
+    - Does nothing if the base measure is absent.
+    - Raises if 'Number of Traces' is missing.
+    - Stores the normalized COUNT in .value_normalized, keeps raw percentage in .value.
     """
 
     KEY = "Percentage of Distinct Traces"
 
     def apply(self, measures: MeasureStore) -> None:
+        # Require presence of the base measure
         if not measures.has(self.KEY):
             return
-        pct = measures.get_value(self.KEY)
-        nt = measures.get_value("Number of Traces")
+
+        pct_measure = measures.get(self.KEY)
+        if pct_measure is None:
+            return
+
+        pct = pct_measure.value
+
+        nt_key = "Number of Traces"
+        if not measures.has(nt_key):
+            raise Exception("Number of Traces required to normalize Percentage of Distinct Traces")
+
+        nt = measures.get_value(nt_key)
+
+        # Guard rails
         if pct is None or nt is None or nt <= 0:
             return
 
+        # Accept both [0,1] and [0,100] ranges
         p01 = float(pct) / 100.0 if float(pct) > 1.0 else float(pct)
-        new_val = max(0.0, min(float(nt), p01 * float(nt)))
 
-        prev_meta = (measures.get(self.KEY).meta if measures.get(self.KEY) else {})
-        meta = {**prev_meta, "normalized_by": type(self).__name__}
-        measures.set(self.KEY, new_val, hidden=False, meta=meta)
+        # Clamp to valid range
+        norm_val = max(0.0, min(float(nt), p01 * float(nt)))
+
+        # Store normalized value without overwriting raw percentage
+        pct_measure.value_normalized = norm_val
+
+        # Update meta
+        prev_meta = pct_measure.meta or {}
+        pct_measure.meta = {**prev_meta, "normalized_by": type(self).__name__}

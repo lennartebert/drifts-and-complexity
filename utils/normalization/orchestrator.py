@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import List, Dict, Any
 
 from utils.complexity.measures.measure_store import MeasureStore
+from utils.normalization.normalizers.normalize_number_of_traces import NormalizeNumberOfTraces
 from utils.normalization.normalizers.normalizer import Normalizer
 from utils.normalization.normalizers.normalize_number_of_events import NormalizeNumberOfEvents
 from utils.normalization.normalizers.hide_number_of_traces import HideNumberOfTraces
@@ -12,12 +13,12 @@ from utils.normalization.normalizers.normalize_lz_complexity import NormalizeLZC
 
 # Default pipeline (instances, in order)
 DEFAULT_NORMALIZERS: List[Normalizer] = [
-    NormalizeNumberOfEvents(),              # events -> avg trace length
-    HideNumberOfTraces(),                   # hide raw trace count
-    NormalizePercentageOfDistinctTraces(),  # percentage -> count
-    HidePercentageOfDistinctTraces(),       # hide the percentage after conversion
-    NormalizeDeviationFromRandom(),         # replication-invariant D
-    NormalizeLZComplexity(),                # replication-invariant LZ
+    NormalizeNumberOfEvents(),
+    NormalizeNumberOfTraces(),
+    NormalizePercentageOfDistinctTraces(),
+    NormalizePercentageOfDistinctTraces(),
+    NormalizeDeviationFromRandom(),
+    NormalizeLZComplexity(),
 ]
 
 

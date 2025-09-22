@@ -31,6 +31,8 @@ class EstimatedNumberOfAcyclicPaths(Metric):
 
     def compute(self, window: "Window", measures: MeasureStore) -> None:
         if measures.has(self.name): return
+
+        # TODO try to get counts from distributions
         df = _global_df(window)
         e = len(df)
         acts = set()

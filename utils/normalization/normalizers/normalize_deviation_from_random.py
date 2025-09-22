@@ -16,23 +16,32 @@ class NormalizeDeviationFromRandom(Normalizer):
     KEY = "Deviation from Random"
 
     def apply(self, measures: MeasureStore) -> None:
+        # get deviation from random if available - if not, do nothing
         if not measures.has(self.KEY):
             return
-        D = measures.get_value(self.KEY)
-        V = measures.get_value("Number of Distinct Activities")
-        if D is None or V is None or V <= 1:
-            return
+        deviation_from_random_measure = measures.get(self.KEY)
+        deviation_from_random_value = deviation_from_random_measure.value
 
-        denom_inner = 1.0 - 1.0 / (float(V) ** 2)
+        # get deviation from random if available - if not, raise exception
+        nda_key = "Number of Distinct Activities"
+        if not measures.has(nda_key):
+            raise Exception('Number of distinct activities required to normalize devaiation from random')
+        number_distinct_activities_value = measures.get_value(nda_key)
+
+        denom_inner = 1.0 - 1.0 / (float(number_distinct_activities_value) ** 2)
         if denom_inner <= 0:
             return
         denom = math.sqrt(denom_inner)
         if denom <= 0:
             return
+        
+        norm_val = 1.0 - (1.0 - float(deviation_from_random_value)) / denom
+        norm_val = max(0.0, min(1.0, float(norm_val)))
 
-        new_val = 1.0 - (1.0 - float(D)) / denom
-        new_val = max(0.0, min(1.0, float(new_val)))
-
-        prev_meta = (measures.get(self.KEY).meta if measures.get(self.KEY) else {})
+        # add norm value to measure
+        deviation_from_random_measure.value_normalized = norm_val
+        
+        # update meta information
+        prev_meta = deviation_from_random_measure.meta
         meta = {**prev_meta, "normalized_by": type(self).__name__}
-        measures.set(self.KEY, new_val, hidden=False, meta=meta)
+        deviation_from_random_measure.meta = meta

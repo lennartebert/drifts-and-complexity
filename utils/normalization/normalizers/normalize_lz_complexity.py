@@ -25,24 +25,46 @@ class NormalizeLZComplexity(Normalizer):
     KEY = "Lempel-Ziv Complexity"
 
     def apply(self, measures: MeasureStore) -> None:
+        # If the base measure isn't present, do nothing
         if not measures.has(self.KEY):
             return
-        lz = measures.get_value(self.KEY)
-        N = measures.get_value("Number of Events")
-        V = measures.get_value("Number of Distinct Activities")
+
+        # Retrieve the underlying measure object (so we can set .value_normalized)
+        lz_measure = measures.get(self.KEY)
+        if lz_measure is None:
+            return
+
+        lz = lz_measure.value
+
+        # Require N and V explicitly
+        nda_key = "Number of Distinct Activities"
+        ne_key  = "Number of Events"
+
+        if not measures.has(ne_key):
+            raise Exception("Number of Events required to normalize Lempel–Ziv Complexity")
+        if not measures.has(nda_key):
+            raise Exception("Number of Distinct Activities required to normalize Lempel–Ziv Complexity")
+
+        N = measures.get_value(ne_key)
+        V = measures.get_value(nda_key)
+
+        # Guard rails
         if lz is None or N is None or V is None or N <= 1 or V <= 1:
             return
 
         lnN = _safe_log(float(N))
         lnV = _safe_log(float(V))
-        if not lnN or not lnV or lnV <= 0:
+        if lnN is None or lnV is None or lnV <= 0:
             return
 
         denom = float(N) / (lnN / lnV)
         if denom <= 0:
             return
 
-        new_val = float(lz) / denom
-        prev_meta = (measures.get(self.KEY).meta if measures.get(self.KEY) else {})
-        meta = {**prev_meta, "normalized_by": type(self).__name__}
-        measures.set(self.KEY, new_val, hidden=False, meta=meta)
+        # Compute normalized value and store it on the measure (do not overwrite .value)
+        norm_val = float(lz) / denom
+        lz_measure.value_normalized = norm_val
+
+        # Update meta
+        prev_meta = lz_measure.meta or {}
+        lz_measure.meta = {**prev_meta, "normalized_by": type(self).__name__}

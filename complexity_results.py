@@ -40,7 +40,7 @@ sorted_metrics = [
 ]
 
 # set defaults
-SAMPLES_PER_SIZE = 200 # select 200 in final eval
+SAMPLES_PER_SIZE = 50 # select 200 in final eval
 RANDOM_STATE = 123
 BOOTSTRAP_SIZE = 50 # select 50 in final eval
 SIZES = range(50, 501, 50)
@@ -99,7 +99,7 @@ def compute_results(list_of_logs, results_name, out_path, population_extractor=d
                 measures_df, ci_low_df, ci_high_df,
                 out_path=out_dir / f"measures_cis_mean.png",
                 agg="mean",
-                title=f"{log_name} — Aggregated measures with CIs (mean)",
+                title=f"{log_name} - Aggregated measures with CIs (mean)",
                 ncols=3,
             )
 

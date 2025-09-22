@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 @dataclass
@@ -14,3 +14,5 @@ class Measure:
     value: float
     hidden: bool = False
     meta: Dict[str, Any] = field(default_factory=dict)
+    value_normalized: Optional[float] = None # store normalized value separately from non-normalized value
+    
