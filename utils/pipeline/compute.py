@@ -91,6 +91,7 @@ def compute_metrics_and_CIs(
     metric_adapters: Optional[List[MetricsAdapter]] = None,
     bootstrap_sampler: Optional[INextBootstrapSampler] = None,
     normalizers: Optional[List[Normalizer]] = None,
+    sorted_metrics: Optional[Iterable[str]] = None,
 ) -> Dict[str, Any]:
     """
     Full pipeline:
@@ -121,9 +122,9 @@ def compute_metrics_and_CIs(
         window,
     )
 
-    # 3) normalize IN PLACE; get visible normalized measures
+    # 3) normalize and get visible normalized measures
     normalized_store: MeasureStore = apply_normalizers(base_store, normalizers) # apply_normlizer can handle None normalizers
-    normalized_measures: Dict[str, float] = normalized_store.to_visible_dict()
+    normalized_measures: Dict[str, float] = normalized_store.to_visible_dict(get_normalized_if_available = True)
 
     result: Dict[str, Any] = {
         "measures": normalized_measures,
