@@ -6,6 +6,8 @@ from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.metric import Metric
 from utils.complexity.metrics.registry import register_metric
 from utils.windowing.window import Window
+from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
+
 
 from typing import Sequence, Any, Dict, Tuple, Iterable, List, Set
 
@@ -19,7 +21,7 @@ def _df_pairs(seq: Sequence[Any]):
 
 
 @register_metric("Number of Ties in Paths to Goal")
-class NumberOfTiesInPathsToGoal(Metric):
+class NumberOfTiesInPathsToGoal(TraceMetric):
     # pentland-haerem taks complexity is defined as "... all possible paths to each goal of the task and by summing up the number of ties making up these paths..." (Haerem et al. 2015)
 	# ideally, this would be implemented as all paths to the goal through the observed adjacency matrix
 	# However, this would lead to too long run times
@@ -27,10 +29,12 @@ class NumberOfTiesInPathsToGoal(Metric):
 	# Hence, we resort to counting the activity transitions in all unique variants.
 
     name = "Number of Ties in Paths to Goal"
+    requires: list[str] = []
 
-    def compute(self, window: "Window", measures: MeasureStore) -> None:
+
+    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
         if measures.has(self.name): return
-        variants = Counter(tuple(_seq(tr)) for tr in window.traces)
+        variants = Counter(tuple(_seq(tr)) for tr in traces)
         total_ties = 0
         for var_seq in variants.keys():
             total_ties += max(len(var_seq) - 1, 0)

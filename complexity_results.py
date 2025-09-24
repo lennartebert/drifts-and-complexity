@@ -40,9 +40,9 @@ sorted_metrics = [
 ]
 
 # set defaults
-SAMPLES_PER_SIZE = 50 # select 200 in final eval
+SAMPLES_PER_SIZE = 1 # select 200 in final eval
 RANDOM_STATE = 123
-BOOTSTRAP_SIZE = 50 # select 50 in final eval
+BOOTSTRAP_SIZE = 10 # select 50 in final eval
 SIZES = range(50, 501, 50)
 
 default_population_extractor = NaivePopulationExtractor()

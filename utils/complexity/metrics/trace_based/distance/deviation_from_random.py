@@ -1,25 +1,25 @@
 
 from __future__ import annotations
 import math
-from typing import Iterable, Any, Dict, Tuple
+from typing import Iterable, Any
 
 from utils.complexity.measures.measure_store import MeasureStore
-from utils.complexity.metrics.metric import Metric
 from utils.complexity.metrics.registry import register_metric
-from utils.windowing.window import Window
+from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
 
 def _acts(ev): return ev.get("concept:name", ev.get("activity", ev.get("Activity", None)))
 def _seq(trace): return [_acts(ev) for ev in trace]
 def _df_pairs(seq): return [(seq[i], seq[i+1]) for i in range(len(seq)-1)]
 
 @register_metric("Deviation from Random")
-class DeviationFromRandom(Metric):
+class DeviationFromRandom(TraceMetric):
     name = "Deviation from Random"
+    requires: list[str] = []
 
-    def compute(self, window: "Window", measures: MeasureStore) -> None:
+    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
         if measures.has(self.name): return
         counts = {}
-        for tr in window.traces:
+        for tr in traces:
             s = _seq(tr)
             for a,b in _df_pairs(s):
                 counts[(a,b)] = counts.get((a,b), 0) + 1

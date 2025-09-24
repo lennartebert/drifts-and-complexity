@@ -1,23 +1,25 @@
 
 from __future__ import annotations
-from typing import Any, Tuple
+from typing import Any, Iterable, Tuple
 from collections import Counter
 
 from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.metric import Metric
 from utils.complexity.metrics.registry import register_metric
+from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
 from utils.windowing.window import Window
 
 def _sequence(trace):
     return tuple(ev.get("concept:name", ev.get("activity", ev.get("Activity", None))) for ev in trace)
 
 @register_metric("Average Affinity")
-class AverageAffinity(Metric):
+class AverageAffinity(TraceMetric):
     name = "Average Affinity"
+    requires: list[str] = []
 
-    def compute(self, window: "Window", measures: MeasureStore) -> None:
+    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
         if measures.has(self.name): return
-        var_counts = Counter(_sequence(tr) for tr in window.traces)
+        var_counts = Counter(_sequence(tr) for tr in traces)
         if sum(var_counts.values()) < 2:
             measures.set(self.name, float("nan"), hidden=False, meta={"note": "requires >=2 traces"})
             return

@@ -14,7 +14,7 @@ class MetricsAdapter(Protocol):
     """
     name: str
 
-    def available_metrics(self) -> Iterable[str]:
+    def available_metrics(self) -> List[str]:
         """Return canonical metric names that this adapter can produce."""
         ...
 

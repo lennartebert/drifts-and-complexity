@@ -1,24 +1,21 @@
 from __future__ import annotations
+from typing import Any, Iterable
 from utils.complexity.measures.measure_store import MeasureStore
-from utils.complexity.metrics.metric import Metric
-from utils.windowing.window import Window
+from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
 
-def _lens(window: "Window"):
-    return [len(tr) for tr in window.traces]
-
-class TraceLengthStats(Metric):
+class TraceLengthStats(TraceMetric):
     """
     Hidden one-pass aggregator that computes Min/Avg/Max trace length and stores
     them as hidden measures. Public metrics reveal only their own names.
     """
     name = "_TraceLengthStats"
 
-    def compute(self, window: "Window", measures: MeasureStore) -> None:
+    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
         needed = ("Min. Trace Length", "Avg. Trace Length", "Max. Trace Length")
         if all(measures.has(n) for n in needed):
             return
 
-        lens = _lens(window)
+        lens = [len(tr) for tr in traces]
         if lens:
             mn = float(min(lens))
             avg = float(sum(lens) / len(lens))

@@ -42,13 +42,13 @@ class VidgofMetricsAdapter(MetricsAdapter):
     """
     name: str = "vidgof"
 
-    def available_metrics(self) -> Iterable[str]:
-        metric_names = (
+    def available_metrics(self) -> List[str]:
+        metric_names = [
             "Variant Entropy",
             "Normalized Variant Entropy",
             "Trace Entropy",
             "Normalized Trace Entropy"
-        )
+        ]
         return metric_names
 
     # --- internal helpers -----------------------------------------------------

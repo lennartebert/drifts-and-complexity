@@ -1,12 +1,13 @@
 
 from __future__ import annotations
 import math
-from typing import Any, Tuple, List, Dict
+from typing import Any, Iterable, Tuple, List, Dict
 from collections import Counter
 
 from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.metric import Metric
 from utils.complexity.metrics.registry import register_metric
+from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
 from utils.windowing.window import Window
 
 import Levenshtein
@@ -29,11 +30,12 @@ def _encode_trace_activities_as_single_chars(pm4py_log):
     return encoded
 
 @register_metric("Average Edit Distance")
-class AverageEditDistance(Metric):
+class AverageEditDistance(TraceMetric):
     name = "Average Edit Distance"
+    requires: list[str] = []
 
-    def compute(self, window: "Window", measures: MeasureStore) -> None:
-        traces = _encode_trace_activities_as_single_chars(window.traces)
+    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
+        traces = _encode_trace_activities_as_single_chars(traces)
         n = len(traces)
         if n < 2:
             measures.set(self.name, float("nan"), hidden=False, meta={"note": "requires >=2 traces"})

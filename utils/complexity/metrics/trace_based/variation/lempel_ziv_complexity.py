@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import List
+from typing import Any, Iterable, List
 
 from lempel_ziv_complexity import lempel_ziv_complexity as _lz76_impl
 
@@ -9,10 +9,12 @@ from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.metric import Metric
 from utils.complexity.metrics.registry import register_metric
 from utils.windowing.window import Window
+from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
+
 
 
 @register_metric("Lempel-Ziv Complexity")
-class LempelZivComplexity(Metric):
+class LempelZivComplexity(TraceMetric):
     """
     LZ76 phrase-count complexity on a window's event log,
     using Pentland-style row-wise concatenation.
@@ -28,18 +30,20 @@ class LempelZivComplexity(Metric):
     """
 
     name = "Lempel-Ziv Complexity"
+    requires: list[str] = []
+
 
     def __init__(self, normalize: bool = False, padding: bool = True):
         self.normalize = normalize
         self.padding = padding
 
-    def compute(self, window: "Window", measures: MeasureStore) -> None:
+    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
         if measures.has(self.name):
             return
 
         # --- 1) Extract sequences of activity labels
         sequences: List[List[str]] = []
-        for trace in window.traces:
+        for trace in traces:
             seq = [ev["concept:name"] for ev in trace]
             sequences.append(seq)
 

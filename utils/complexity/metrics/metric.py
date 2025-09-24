@@ -14,4 +14,6 @@ class Metric(Protocol):
       - returns None (store is mutated in place)
     """
     name: str
+    requires: list[str] = []
+    
     def compute(self, window: Window, measures: MeasureStore) -> None: ...
