@@ -91,7 +91,6 @@ def compute_metrics_and_CIs(
     metric_adapters: Optional[List[MetricsAdapter]] = None,
     bootstrap_sampler: Optional[INextBootstrapSampler] = None,
     normalizers: Optional[List[Normalizer]] = None,
-    sorted_metrics: Optional[Iterable[str]] = None,
 ) -> Dict[str, Any]:
     """
     Full pipeline:

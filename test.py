@@ -5,6 +5,7 @@ from typing import Any, Iterable, List
 
 # Adapter uses the registry + orchestrator internally
 from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetricsAdapter
+from utils.population.extractors.chao1_population_extractor import Chao1PopulationExtractor
 from utils.population.extractors.naive_population_extractor import NaivePopulationExtractor
 from utils.windowing.window import Window
 from pm4py.objects.log.obj import Event, EventLog, Trace
@@ -58,6 +59,7 @@ sorted_metrics = [
 traces = [
         [{"concept:name": "A"}, {"concept:name": "B"}, {"concept:name": "C"}],
         [{"concept:name": "A"}, {"concept:name": "C"}],
+        [{"concept:name": "A"}, {"concept:name": "C"}],
         [{"concept:name": "B"}, {"concept:name": "C"}],
         [{"concept:name": "A"}, {"concept:name": "B"}],
     ]
@@ -81,7 +83,18 @@ pop_extractor.apply(window)
 
 adapter = LocalMetricsAdapter(strict=True, prefer="auto")
 
-print("=== TRACE-ONLY (no population distribution) ===")
+print("=== Windows with population distributions (naive) ===")
+store1, info1 = adapter.compute_measures_for_window(window, include=sorted_metrics)
+print("  skipped :", info1.get("skipped"))
+print_measures(store1, sorted_metrics)
+
+# get the population distributions via chao
+pop_extractor = Chao1PopulationExtractor()
+pop_extractor.apply(window)
+
+adapter = LocalMetricsAdapter(strict=True, prefer="auto")
+
+print("=== Windows with population distributions (chao 1) ===")
 store1, info1 = adapter.compute_measures_for_window(window, include=sorted_metrics)
 print("  skipped :", info1.get("skipped"))
 print_measures(store1, sorted_metrics)

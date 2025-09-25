@@ -167,7 +167,7 @@ class MetricOrchestrator:
         recursion_guard.add(metric_name)
 
         try:
-            classes = self._order_variants_for_window(window, get_metric_classes(metric_name))
+            classes = self._order_metric_variants_for_window(window, get_metric_classes(metric_name))
         except KeyError:
             if self.strict:
                 raise
@@ -192,9 +192,9 @@ class MetricOrchestrator:
                 # 2) dispatch correct input object based on variant
                 metric: Metric = cls()  # type: ignore
                 if issubclass(cls, PopulationDistributionsMetric):
-                    pd = getattr(window, "population_distribution", None)
+                    pd = window.population_distributions
                     if pd is None:
-                        raise RuntimeError("PopulationDistribution required but missing on window")
+                        raise RuntimeError("PopulationDistributions required but missing on window")
                     metric.compute(pd, store)  # type: ignore[arg-type]
                 elif issubclass(cls, TraceMetric):
                     metric.compute(window.traces, store)  # type: ignore[arg-type]
@@ -202,9 +202,9 @@ class MetricOrchestrator:
                     # Fallback: use 'input_kind' if class doesn't subclass the abstractions
                     kind = getattr(cls, "input_kind", "trace")
                     if kind == "distribution":
-                        pd = getattr(window, "population_distribution", None)
+                        pd = window.population_distributions
                         if pd is None:
-                            raise RuntimeError("PopulationDistribution required but missing on window")
+                            raise RuntimeError("PopulationDistributions required but missing on window")
                         metric.compute(pd, store)  # type: ignore[arg-type]
                     else:
                         metric.compute(window.traces, store)  # type: ignore[arg-type]
@@ -225,7 +225,7 @@ class MetricOrchestrator:
             raise last_err
         return False
 
-    def _order_variants_for_window(self, window: Window, classes: List[Type[Metric]]) -> List[Type[Metric]]:
+    def _order_metric_variants_for_window(self, window: Window, classes: List[Type[Metric]]) -> List[Type[Metric]]:
         """
         Order metric variant classes for a given window according to preference policy.
 
@@ -250,7 +250,7 @@ class MetricOrchestrator:
         - A class counts as distribution/trace if it subclasses the respective
           abstraction base or declares `input_kind` accordingly.
         """
-        has_pd = getattr(window, "population_distribution", None) is not None
+        has_pd = window.population_distributions is not None
         # check that prefer is valid
         if self.prefer not in ("auto", "trace", "distribution"):
             raise ValueError(f"Invalid prefer policy: {self.prefer}")

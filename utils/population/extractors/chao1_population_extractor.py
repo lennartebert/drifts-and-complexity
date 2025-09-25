@@ -103,11 +103,11 @@ def _counts_trace_variants(log) -> Counter[Tuple[str, ...]]:
 # ---- Chao / coverage helpers ----
 def _chao1_S_hat_from_counts(counts: Counter) -> float:
     """
-    Compute the Chao1 richness estimator Ŝ from observed abundances.
+    Compute the Chao1 richness estimator S_hat from observed abundances.
 
     Chao1 estimates the (asymptotic) number of categories as:
-        Ŝ = S_obs + f1^2 / (2 f2), if f2 > 0
-        Ŝ = S_obs + f1 (f1 - 1) / 2, if f2 = 0
+        S_hat = S_obs + f1^2 / (2 f2), if f2 > 0
+        S_hat = S_obs + f1 (f1 - 1) / 2, if f2 = 0
     where f1 is the number of singletons and f2 the number of doubletons.
 
     Parameters
@@ -136,7 +136,7 @@ def _coverage_hat(N: int, f1: int, f2: int) -> float:
     (coverage) as:
         Ĉ = 1 - (f1 / N) * A
     where A is a bias-correction term that depends on f2. For details, see
-    Chao & Jost (2012–2015) on coverage-based rarefaction/extrapolation.
+    Chao & Jost (2012-2015) on coverage-based rarefaction/extrapolation.
 
     Parameters
     ----------
@@ -201,7 +201,7 @@ def _build_chao_distribution_from_counts(counts: Counter) -> PopulationDistribut
     C_hat = _coverage_hat(N, f1, f2)
     p0 = max(0.0, 1.0 - C_hat)
 
-    # Reweight observed categories to sum to Ĉ; if N==0, distribute uniformly
+    # Reweight observed categories to sum to C_hat; if N==0, distribute uniformly
     if N > 0:
         probs_obs = [C_hat * (c / N) for c in obs]
     elif s_obs > 0:
@@ -254,18 +254,15 @@ class Chao1PopulationExtractor(PopulationExtractor):
             - `population_distributions` (activities, dfg_edges, trace_variants)
             - `population_counts` (richness estimates for the same three domains)
         """
-        # Reuse existing fitted distributions if present (idempotent behavior on repeated calls)
-        if window.population_distributions is not None:
-            PD = window.population_distributions
-        else:
-            # Build from traces once (observed abundances -> iNEXT-like model)
-            log = window.traces
-            pd_acts = _build_chao_distribution_from_counts(_counts_activities(log))
-            pd_dfg  = _build_chao_distribution_from_counts(_counts_dfg_edges(log))
-            pd_vars = _build_chao_distribution_from_counts(_counts_trace_variants(log))
-            PD = PopulationDistributions(
-                activities=pd_acts, dfg_edges=pd_dfg, trace_variants=pd_vars
-            )
-            window.population_distributions = PD
+
+        # Build from traces once (observed abundances -> iNEXT-like model)
+        log = window.traces
+        pd_acts = _build_chao_distribution_from_counts(_counts_activities(log))
+        pd_dfg  = _build_chao_distribution_from_counts(_counts_dfg_edges(log))
+        pd_vars = _build_chao_distribution_from_counts(_counts_trace_variants(log))
+        PD = PopulationDistributions(
+            activities=pd_acts, dfg_edges=pd_dfg, trace_variants=pd_vars
+        )
+        window.population_distributions = PD
 
         return window
