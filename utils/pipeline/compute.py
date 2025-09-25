@@ -1,24 +1,25 @@
+# Full compute code with parallel window processing.
+
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, Set, Literal
 
+import os
 import numpy as np
 import pandas as pd
 
-from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import \
-    INextBootstrapSampler
+from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import INextBootstrapSampler
 from utils.complexity.measures.measure_store import Measure, MeasureStore
-from utils.complexity.metrics_adapters.local_metrics_adapter import \
-    LocalMetricsAdapter
+from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetricsAdapter
 from utils.complexity.metrics_adapters.metrics_adapter import MetricsAdapter
 from utils.normalization.normalizers.normalizer import Normalizer
-from utils.normalization.orchestrator import (DEFAULT_NORMALIZERS,
-                                              apply_normalizers)
-from utils.population.extractors.naive_population_extractor import \
-    NaivePopulationExtractor
-from utils.population.extractors.population_extractor import \
-    PopulationExtractor
+from utils.normalization.orchestrator import DEFAULT_NORMALIZERS, apply_normalizers
+from utils.population.extractors.naive_population_extractor import NaivePopulationExtractor
+from utils.population.extractors.population_extractor import PopulationExtractor
 from utils.windowing.window import Window
+
+# NEW: centralized parallel helper
+from utils.parallel import run_parallel
 
 
 def _merge_measures_and_info(
@@ -122,8 +123,8 @@ def compute_metrics_and_CIs(
     )
 
     # 3) normalize and get visible normalized measures
-    normalized_store: MeasureStore = apply_normalizers(base_store, normalizers) # apply_normlizer can handle None normalizers
-    normalized_measures: Dict[str, float] = normalized_store.to_visible_dict(get_normalized_if_available = True)
+    normalized_store: MeasureStore = apply_normalizers(base_store, normalizers)  # handles None
+    normalized_measures: Dict[str, float] = normalized_store.to_visible_dict(get_normalized_if_available=True)
 
     result: Dict[str, Any] = {
         "measures": normalized_measures,
@@ -137,8 +138,8 @@ def compute_metrics_and_CIs(
             },
         },
     }
-    
-    # 4) bootstrap (optional)
+
+    # 4) bootstrap (optional). Keep this SEQUENTIAL within the worker for robustness.
     if bootstrap_sampler is not None:
         reps = bootstrap_sampler.sample(window)
 
@@ -165,6 +166,54 @@ def compute_metrics_and_CIs(
     return result
 
 
+# --------------------------------------------------------------------
+# Top-level worker used by the parallel window loop
+# --------------------------------------------------------------------
+def _compute_one_window_task(args: Tuple[
+    int, int, "Window",
+    Optional["PopulationExtractor"],
+    Optional[List["MetricsAdapter"]],
+    Optional["INextBootstrapSampler"],
+    Optional[List["Normalizer"]],
+]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Set[str]]:
+    """
+    One task = compute metrics + CIs for a single (window_size, sample_id, window).
+    Returns:
+      - measures_row: base columns + normalized measures
+      - ci_low_row:   base columns + CI lows
+      - ci_high_row:  base columns + CI highs
+      - keys:         set of all metric keys seen (to align columns later)
+    """
+    window_size, sample_id, window, population_extractor, metric_adapters, bootstrap_sampler, normalizers = args
+
+    res = compute_metrics_and_CIs(
+        window=window,
+        population_extractor=population_extractor,
+        metric_adapters=metric_adapters,
+        bootstrap_sampler=bootstrap_sampler,
+        normalizers=normalizers,
+    )
+
+    measures: Dict[str, float] = res.get("measures", {}) or {}
+    cis: Dict[str, Dict[str, float]] = res.get("cis", {}) or {}
+
+    keys: Set[str] = set(measures.keys()) | set(cis.keys())
+    base = {"sample_size": window_size, "sample_id": sample_id}
+
+    # Measures row
+    measures_row = {**base, **measures}
+
+    # CI rows
+    low_row = dict(base)
+    high_row = dict(base)
+    for metric, bounds in cis.items():
+        if bounds is not None:
+            low_row[metric] = bounds.get("low")
+            high_row[metric] = bounds.get("high")
+
+    return measures_row, low_row, high_row, keys
+
+
 def run_metrics_over_samples(
     window_samples: Iterable[Tuple[int, int, "Window"]],
     *,
@@ -173,14 +222,21 @@ def run_metrics_over_samples(
     bootstrap_sampler: Optional["INextBootstrapSampler"] = None,
     normalizers: Optional[List[Optional["Normalizer"]]] = None,
     sorted_metrics: Optional[Iterable[str]] = None,
+    # --- Parallel knobs ---
+    parallel_backend: Literal["off", "auto", "processes", "threads"] = "auto",
+    n_jobs: Optional[int] = None,
+    chunksize: Optional[int] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Iterate samples from `sample_random_windows_no_replacement_within_only(...)` and collect:
+    Iterate samples and collect:
       - measures_df:  sample_size, sample_id, [all normalized measures]
       - ci_low_df:    sample_size, sample_id, [CI lows per measure]
       - ci_high_df:   sample_size, sample_id, [CI highs per measure]
 
-    Arguments mirror `compute_metrics_and_CIs` to keep it configurable.
+    Parallelization strategy:
+      * Parallelize over WINDOWS ONLY (best cost/benefit).
+      * Bootstraps remain sequential inside each worker to avoid nested pools.
+      * Default n_jobs uses SLURM_CPUS_PER_TASK when running on Slurm.
 
     Returns:
         (measures_df, ci_low_df, ci_high_df)
@@ -188,40 +244,36 @@ def run_metrics_over_samples(
     rows_measures: List[Dict[str, Any]] = []
     rows_ci_low: List[Dict[str, Any]] = []
     rows_ci_high: List[Dict[str, Any]] = []
-    all_measure_keys: set[str] = set()
+    all_measure_keys: Set[str] = set()
 
-    for window_size, sample_id, window in window_samples:
-        res = compute_metrics_and_CIs(
-            window=window,
-            population_extractor=population_extractor,
-            metric_adapters=metric_adapters,
-            bootstrap_sampler=bootstrap_sampler,
-            normalizers=normalizers,
-        )
+    # Materialize the sample iterable (sampling returns a finite set)
+    items = list(window_samples)
 
-        measures: Dict[str, float] = res.get("measures", {}) or {}
-        cis: Dict[str, Dict[str, float]] = res.get("cis", {}) or {}
+    # Prepare task args once
+    task_args = [
+        (w_size, s_id, win, population_extractor, metric_adapters, bootstrap_sampler, normalizers)
+        for (w_size, s_id, win) in items
+    ]
 
-        # Track all metric keys to align columns later
-        all_measure_keys.update(measures.keys())
-        all_measure_keys.update(cis.keys())
+    # Run tasks (sequential if backend="off" or n_jobs==1)
+    results = run_parallel(
+        task_args,
+        _compute_one_window_task,
+        backend=parallel_backend,
+        n_jobs=n_jobs,         # defaults to SLURM_CPUS_PER_TASK
+        chunksize=chunksize,   # auto for processes; 1 for threads
+        unordered=True,        # faster; order doesn't matter here
+    )
 
-        base = {"sample_size": window_size, "sample_id": sample_id}
-
-        # Measures
-        rows_measures.append({**base, **measures})
-
-        # CIs: pick strict 'low' / 'high'
-        low_row = dict(base)
-        high_row = dict(base)
-        for metric, bounds in cis.items():
-            if bounds is not None:
-                low_row[metric] = bounds.get("low")
-                high_row[metric] = bounds.get("high")
+    # Collect rows
+    for measures_row, low_row, high_row, keys in results:
+        rows_measures.append(measures_row)
         rows_ci_low.append(low_row)
         rows_ci_high.append(high_row)
+        all_measure_keys.update(keys)
 
-    # sort measure keys by 'sorted_metrics'
+    # Align columns
+    sorted_metrics = list(sorted_metrics or [])
     ordered_metrics = [key for key in sorted_metrics if key in all_measure_keys]
     extra_metrics = sorted(all_measure_keys - set(sorted_metrics))
     all_metrics = ordered_metrics + extra_metrics
