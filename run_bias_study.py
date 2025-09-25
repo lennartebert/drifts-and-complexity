@@ -189,5 +189,5 @@ if __name__ == "__main__":
     # os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     # os.environ.setdefault("NUMEXPR_MAX_THREADS", "1")
     import multiprocessing as mp
-    mp.freeze_support()          # harmless on Linux; required on Windows exe/frozen
+    mp.freeze_support()          # harmless on Linux; required on Windows
     main()

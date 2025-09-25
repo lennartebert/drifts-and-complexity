@@ -95,20 +95,23 @@ def get_dataframe_from_drift_detection_results(datasets, cp_configurations):
     return out.reset_index(drop=True)
 
 # correlation helpers
-def get_correlations_for_dictionary(sample_metrics_per_log, rename_dictionary_map, metric_columns, base_column='sample_size'):
+def get_correlations_for_dictionary(
+    sample_metrics_per_log,
+    rename_dictionary_map,
+    metric_columns,
+    base_column='sample_size'
+):
     # create a correlation analysis for all measures
     from pathlib import Path
-
     import pandas as pd
     from scipy import stats
 
-    # mapping of your dict keys to desired column names
     rename_map = rename_dictionary_map
 
     r_results, p_results = {}, {}
 
     for key, df in sample_metrics_per_log.items():
-        col_tag = key if rename_map is None else rename_map[key] # apply the rename map if available
+        col_tag = key if rename_map is None else rename_map[key]  # apply the rename map if available
         r_results[col_tag] = {}
         p_results[col_tag] = {}
 
@@ -124,9 +127,14 @@ def get_correlations_for_dictionary(sample_metrics_per_log, rename_dictionary_ma
             r_results[col_tag][col] = r
             p_results[col_tag][col] = p
 
-    # DataFrames: measures as index, P1..P4 as columns
+    # Create DataFrames
     corr_df = pd.DataFrame(r_results)
-    pval_df = pd.DataFrame(p_results).reindex(corr_df.index)
+    pval_df = pd.DataFrame(p_results)
+
+    # Enforce consistent row order
+    corr_df = corr_df.reindex(metric_columns)
+    pval_df = pval_df.reindex(metric_columns)
+
     print("Correlations:")
     print(corr_df)
     print()

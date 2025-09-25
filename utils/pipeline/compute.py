@@ -145,7 +145,7 @@ def compute_metrics_and_CIs(
 
         rep_norms_visible: List[Dict[str, float]] = []
         for rep_w in reps:
-            # Ensure population info per replicate if your extractor affects estimates
+            # Ensure population info per replicate if the extractor affects estimates
             population_extractor.apply(rep_w)
 
             rep_store, _ = _merge_measures_and_info(
@@ -153,7 +153,7 @@ def compute_metrics_and_CIs(
                 rep_w,
             )
             rep_store = apply_normalizers(rep_store, normalizers)  # returns MeasureStore
-            rep_norms_visible.append(rep_store.to_visible_dict())
+            rep_norms_visible.append(rep_store.to_visible_dict(get_normalized_if_available=True))
 
         # CI keys aligned to baseline normalized measures
         ci_keys = list(normalized_measures.keys())
