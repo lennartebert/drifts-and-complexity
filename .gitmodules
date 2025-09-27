@@ -4,6 +4,6 @@
 [submodule "vidgof_complexity"]
 	path = plugins/vidgof_complexity
 	url = https://github.com/lennartebert/process-complexity.git
-[submodule "cdrift-evaluation"]
-	path = cdrift-evaluation
+[submodule "cdrift_evaluation"]
+	path = plugins/cdrift_evaluation
 	url = https://github.com/lennartebert/cdrift-evaluation
