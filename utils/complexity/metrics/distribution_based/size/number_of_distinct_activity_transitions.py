@@ -1,7 +1,7 @@
 """Number of distinct activity transitions metric implementation (distribution-based)."""
 
 from __future__ import annotations
-from utils.complexity.measures.measure_store import MeasureStore  # type: ignore
+from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.distribution_based.distribution_metric import PopulationDistributionsMetric
 from utils.complexity.metrics.registry import register_metric
 from utils.population.population_distributions import PopulationDistributions
