@@ -5,6 +5,9 @@ import pandas as pd
 from pathlib import Path
 
 from utils import constants, helpers
+
+# Local configuration path
+WINDOW_CONFIG_FILE_PATH = Path(__file__).parent.parent / 'window_config.yml'
 from utils.plotting.coverage_curves import plot_coverage_curves_for_cp_windows
 from utils.windowing.loader import load_window_config
 from utils.drift_io import drift_info_to_dict, load_xes_log
@@ -120,7 +123,7 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
     print("## Running concept drift complexity assessment ##")
 
     # Load approaches & drift info
-    approaches = load_window_config(constants.WINDOW_CONFIG_FILE_PATH)
+    approaches = load_window_config(WINDOW_CONFIG_FILE_PATH)
     drift_df = pd.read_csv(concept_drift_info_path)
     drift_info_by_id = drift_info_to_dict(drift_df)
 

@@ -46,7 +46,7 @@ jobs:
     
     - name: Type check with mypy
       run: |
-        mypy utils
+        mypy --config-file=dev/config/mypy.ini utils
     
     - name: Test with pytest
       run: |
@@ -77,4 +77,4 @@ jobs:
     
     - name: Strict type check with mypy
       run: |
-        mypy --strict utils
+        mypy --config-file=dev/config/mypy.ini --strict utils

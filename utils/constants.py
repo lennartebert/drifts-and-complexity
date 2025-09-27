@@ -8,9 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 # configs
-CONFIG_DIR = ROOT / 'configuration'
-DATA_DICTIONARY_FILE_PATH = CONFIG_DIR / 'data_dictionary.json'
-WINDOW_CONFIG_FILE_PATH = CONFIG_DIR / 'window_config.yml'
+DATA_DICTIONARY_FILE_PATH = ROOT / 'data' / 'data_dictionary.json'
 
 # drift characterization
 DRIFT_CHARACTERIZATION_DIR = ROOT / 'plugins' / 'drift_characterization'

@@ -112,6 +112,7 @@ ignore_missing_imports = true
 
 [tool.mypy-overrides]
 "tests.*" = {disallow_untyped_defs = false, disallow_incomplete_defs = false}
+"plugins.*" = {ignore_errors = true}
 "*.ipynb" = {ignore_errors = true}
 "assess_datasets.py" = {disallow_untyped_defs = false}
 "combine_results.py" = {disallow_untyped_defs = false}
