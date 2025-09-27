@@ -1,5 +1,6 @@
 """Window configuration loader and validator."""
 
+from __future__ import annotations
 from typing import Dict, List, Any
 from pathlib import Path
 from ..helpers import load_yaml

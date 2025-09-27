@@ -22,7 +22,7 @@ def _encode_trace_activities_as_single_chars(traces: List[Trace]) -> List[str]:
         List of encoded trace strings.
     """
     # collect all activities
-    acts = []
+    acts: List[str] = []
     for trace in traces:
         acts.extend(ev["concept:name"] for ev in trace)
     uniq = {a: i for i, a in enumerate(dict.fromkeys(acts))}

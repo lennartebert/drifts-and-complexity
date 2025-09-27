@@ -1,0 +1,59 @@
+{
+  "test_log_description": {
+    "_WARNING": "DO NOT MODIFY test_log_description unless you also update the standard_test_log() fixture in tests/conftest.py",
+    "total_traces": 6,
+    "total_events": 16,
+    "trace_patterns": [
+      "A -> B -> C",
+      "A -> B -> D",
+      "A -> B -> C (duplicate)",
+      "E -> F",
+      "A -> B -> C -> D",
+      "A (single activity)"
+    ],
+    "distinct_activities": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F"
+    ],
+    "distinct_trace_variants": 4,
+    "distinct_activity_transitions": 8
+  },
+  "computed_metrics": {
+    "Number of Distinct Activities": 6.0,
+    "Number of Distinct Activity Transitions": 5.0,
+    "Number of Distinct Traces": 5.0,
+    "Average Affinity": 0.36666666666666664,
+    "Average Edit Distance": 1.9333333333333333,
+    "Deviation from Random": 0.4906586886688147,
+    "Avg. Trace Length": 2.6666666666666665,
+    "Max. Trace Length": 4.0,
+    "Min. Trace Length": 1.0,
+    "Number of Events": 16.0,
+    "Number of Traces": 6.0,
+    "Average Distinct Activities per Trace": 2.6666666666666665,
+    "Estimated Number of Acyclic Paths": 1.0,
+    "Lempel-Ziv Complexity": 14.0,
+    "Number of Ties in Paths to Goal": 8.0,
+    "Percentage of Distinct Traces": 0.8333333333333334,
+    "Structure": 0.8611111111111112
+  },
+  "computation_info": {
+    "skipped": []
+  },
+  "hand_computed_values": {
+    "Number of Traces": 6,
+    "Number of Events": 16,
+    "Number of Distinct Traces": 5,
+    "Number of Distinct Activities": 6,
+    "Number of Distinct Activity Transitions": 5,
+    "Min. Trace Length": 1.0,
+    "Max. Trace Length": 4.0,
+    "Avg. Trace Length": 2.6666666666666665,
+    "Percentage of Distinct Traces": 0.8333333333333334,
+    "Average Distinct Activities per Trace": 2.6666666666666665
+  }
+}

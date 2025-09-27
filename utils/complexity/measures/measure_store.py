@@ -44,7 +44,7 @@ class MeasureStore:
     def get(self, name: str) -> Optional[Measure]:
         return self._measures.get(name)
 
-    def get_value(self, name: str, get_normalized_if_available=False) -> Optional[float]:
+    def get_value(self, name: str, get_normalized_if_available: bool = False) -> Optional[float]:
         m = self._measures.get(name)
         if m is None: return None
         elif (get_normalized_if_available) and (m.value_normalized is not None):
@@ -60,8 +60,8 @@ class MeasureStore:
         for n in names:
             self.reveal(n)
 
-    def to_visible_dict(self, get_normalized_if_available=False) -> Dict[str, float]:
-        result_dict = {}
+    def to_visible_dict(self, get_normalized_if_available: bool = False) -> Dict[str, float]:
+        result_dict: Dict[str, float] = {}
         for k, m in self._measures.items():
             if m.hidden: continue
             if (get_normalized_if_available) and (m.value_normalized is not None):

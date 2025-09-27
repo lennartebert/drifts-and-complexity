@@ -160,7 +160,8 @@ def get_correlations_for_dictionary(
 
     rename_map = rename_dictionary_map
 
-    r_results, p_results = {}, {}
+    r_results: Dict[str, Dict[str, float]] = {}
+    p_results: Dict[str, Dict[str, float]] = {}
 
     for key, df in sample_metrics_per_log.items():
         col_tag = key if rename_map is None else rename_map[key]  # apply the rename map if available

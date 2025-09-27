@@ -1,5 +1,6 @@
 """Constants and configuration paths for the drifts-and-complexity project."""
 
+from __future__ import annotations
 from pathlib import Path
 
 ### DIRECTORIES
@@ -31,4 +32,42 @@ CORRELATION_RESULTS_DIR = RESULTS_DIR / 'correlations'
 DEFAULT_CHANGE_POINT_PARAMETER_SETTING = 'processGraphsPDefaultWDefault'
 DEFAULT_COMPLEXITY_WINDOW_SETTING = 'cp_default'
 DEFAULT_CORRELATION_ANLAYSIS_NAME = 'default'
+
+### METRIC NAMES
+# All available complexity metrics in the system
+ALL_METRIC_NAMES = [
+    'Number of Events',
+    'Number of Distinct Activities',
+    'Number of Traces',
+    'Number of Distinct Traces',
+    'Min. Trace Length',
+    'Avg. Trace Length',
+    'Max. Trace Length',
+    'Percentage of Distinct Traces',
+    'Average Distinct Activities per Trace',
+    'Structure',
+    'Estimated Number of Acyclic Paths',
+    'Number of Ties in Paths to Goal',
+    'Lempel-Ziv Complexity',
+    'Average Affinity',
+    'Deviation from Random',
+    'Average Edit Distance', 
+    'Sequence Entropy',
+    'Normalized Sequence Entropy', 
+    'Variant Entropy',
+    'Normalized Variant Entropy'
+]
+
+# Metrics that have both trace-based and distribution-based implementations
+DUAL_VARIANT_METRIC_NAMES = [
+    "Number of Distinct Traces",
+    "Number of Distinct Activities",
+    "Number of Distinct Activity Transitions"
+]
+
+# Metrics that are trace-based only
+TRACE_ONLY_METRIC_NAMES = [
+    name for name in ALL_METRIC_NAMES 
+    if name not in DUAL_VARIANT_METRIC_NAMES
+]
 

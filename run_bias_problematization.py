@@ -8,7 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from pm4py.objects.log.obj import Event, EventLog, Trace
 
-from utils import helpers, sampling_helper
+from utils import constants, helpers, sampling_helper
 from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import \
     INextBootstrapSampler
 from utils.complexity.metrics_adapters.local_metrics_adapter import \
@@ -23,29 +23,7 @@ from utils.population.extractors.chao1_population_extractor import \
 from utils.population.extractors.naive_population_extractor import \
     NaivePopulationExtractor
 
-sorted_metrics = [
-	'Number of Events',
-	'Number of Distinct Activities',
-	'Number of Traces',
-	'Number of Distinct Traces',
-	'Min. Trace Length',
-    'Avg. Trace Length',
-    'Max. Trace Length',
-	'Percentage of Distinct Traces',
-	'Average Distinct Activities per Trace',
-	'Structure',
-	'Estimated Number of Acyclic Paths',
-	'Number of Ties in Paths to Goal',
-	'Lempel-Ziv Complexity',
-	'Average Affinity',
-	'Deviation from Random',
-	'Average Edit Distance',
-	'Sequence Entropy',
-    'Normalized Sequence Entropy',
-    'Variant Entropy',
-    'Normalized Variant Entropy'
-]
-
+sorted_metrics = constants.ALL_METRIC_NAMES
 
 ## helper functions
 def make_trace(variant, trace_id: int):

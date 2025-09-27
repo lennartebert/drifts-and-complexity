@@ -24,7 +24,7 @@ def _default_n_jobs(n_jobs: int | None) -> int:
 
 
 @contextlib.contextmanager
-def _blas_safety(backend: Backend, force_single_thread_blas: bool = True):
+def _blas_safety(backend: Backend, force_single_thread_blas: bool = True) -> Any:
     """
     Prevent massive oversubscription (processes x BLAS threads).
     This does NOT affect Python threading; it only caps BLAS-backed libs.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 import math
-from typing import List
+from typing import List, Dict, Any
 from pm4py.objects.log.obj import Trace
 from lempel_ziv_complexity import lempel_ziv_complexity as _lz76_impl
 from utils.complexity.measures.measure_store import MeasureStore
@@ -68,7 +68,8 @@ class LempelZivComplexity(TraceMetric):
             flat = [tok for row in sequences for tok in row]
 
         # --- 3) Map tokens to consecutive ints
-        vocab, int_seq = {}, []
+        vocab: Dict[Any, int] = {}
+        int_seq: List[int] = []
         for tok in flat:
             if tok not in vocab:
                 vocab[tok] = len(vocab)

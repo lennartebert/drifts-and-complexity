@@ -20,28 +20,7 @@ from utils.population.extractors.chao1_population_extractor import Chao1Populati
 from utils.population.extractors.naive_population_extractor import NaivePopulationExtractor
 
 # --- defaults (same as before) ---
-sorted_metrics = [
-    'Number of Events',
-    'Number of Distinct Activities',
-    'Number of Traces',
-    'Number of Distinct Traces',
-    'Min. Trace Length',
-    'Avg. Trace Length',
-    'Max. Trace Length',
-    'Percentage of Distinct Traces',
-    'Average Distinct Activities per Trace',
-    'Structure',
-    'Estimated Number of Acyclic Paths',
-    'Number of Ties in Paths to Goal',
-    'Lempel-Ziv Complexity',
-    'Average Affinity',
-    'Deviation from Random',
-    'Average Edit Distance', 
-    'Sequence Entropy',
-    'Normalized Sequence Entropy', 
-    'Variant Entropy',
-    'Normalized Variant Entropy'
-]
+sorted_metrics = constants.ALL_METRIC_NAMES
 
 SAMPLES_PER_SIZE = 200
 RANDOM_STATE = 123

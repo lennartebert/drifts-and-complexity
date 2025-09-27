@@ -22,7 +22,7 @@ References (for context):
 from __future__ import annotations
 
 from collections import Counter
-from typing import Tuple
+from typing import Tuple, List
 
 from pm4py.algo.discovery.dfg import algorithm as dfg_discovery
 from pm4py.algo.filtering.log.variants import variants_filter
@@ -37,13 +37,13 @@ from utils.windowing.helpers import Window
 
 
 # ---- observed abundance counters (PM4Py) ----
-def _counts_activities(log) -> Counter[str]:
+def _counts_activities(log: List) -> Counter[str]:
     """
     Count activity occurrences in the given PM4Py event log.
 
     Parameters
     ----------
-    log : pm4py.objects.log.log.EventLog
+    log : List[Trace]
         Event log of traces and events.
 
     Returns
@@ -56,7 +56,7 @@ def _counts_activities(log) -> Counter[str]:
     return Counter(vals)
 
 
-def _counts_dfg_edges(log) -> Counter[str]:
+def _counts_dfg_edges(log: List) -> Counter[str]:
     """
     Count directly-follows (DFG) edge occurrences in the log.
 
@@ -64,7 +64,7 @@ def _counts_dfg_edges(log) -> Counter[str]:
 
     Parameters
     ----------
-    log : pm4py.objects.log.log.EventLog
+    log : List[Trace]
 
     Returns
     -------
@@ -75,7 +75,7 @@ def _counts_dfg_edges(log) -> Counter[str]:
     return Counter({f"{a}>{b}": c for (a, b), c in dfg.items()})
 
 
-def _counts_trace_variants(log) -> Counter[Tuple[str, ...]]:
+def _counts_trace_variants(log: List) -> Counter[Tuple[str, ...]]:
     """
     Count trace variants by their activity sequences.
 
@@ -83,7 +83,7 @@ def _counts_trace_variants(log) -> Counter[Tuple[str, ...]]:
 
     Parameters
     ----------
-    log : pm4py.objects.log.log.EventLog
+    log : List[Trace]
 
     Returns
     -------
@@ -91,7 +91,7 @@ def _counts_trace_variants(log) -> Counter[Tuple[str, ...]]:
         A Counter mapping variant tuple -> frequency (number of traces with that variant).
     """
     varmap = variants_filter.get_variants(log)
-    out = Counter()
+    out: Counter[Tuple[str, ...]] = Counter()
     # `varmap` is {variant_id: [trace1, trace2, ...]}; we reconstruct a canonical tuple key
     for trs in varmap.values():
         # use the first representative trace to obtain the activity sequence

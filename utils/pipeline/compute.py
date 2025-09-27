@@ -204,8 +204,8 @@ def _compute_one_window_task(args: Tuple[
     measures_row = {**base, **measures}
 
     # CI rows
-    low_row = dict(base)
-    high_row = dict(base)
+    low_row: Dict[str, Any] = dict(base)
+    high_row: Dict[str, Any] = dict(base)
     for metric, bounds in cis.items():
         if bounds is not None:
             low_row[metric] = bounds.get("low")

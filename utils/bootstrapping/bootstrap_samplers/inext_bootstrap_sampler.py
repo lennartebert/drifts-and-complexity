@@ -58,7 +58,7 @@ def _draw_counts_for_species(rng: random.Random, pdist: PopulationDistribution) 
     draws = _multinomial_draw(rng, pdist.n_samples, probs)
     L = len(pdist.observed_labels)
 
-    counts = Counter()
+    counts: Counter = Counter()
     for j, c in enumerate(draws):
         if c == 0:
             continue

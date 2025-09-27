@@ -24,6 +24,12 @@ dependencies:
   - pytest
   - pytest-cov
 
+  # Development tools
+  - black
+  - isort
+  - flake8
+  - pre-commit
+
   # PM4Py (pip-only)
   - pip:
       - pm4py==2.4.1
@@ -35,3 +41,8 @@ dependencies:
       - lempel_ziv_complexity
       - mypy
       - python-Levenshtein
+      - types-PyYAML
+      - types-requests
+      - types-setuptools
+      - jupyter
+      - ipython
