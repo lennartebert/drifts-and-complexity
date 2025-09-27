@@ -50,9 +50,9 @@ def flatten_measurements(window_rows: List[Dict[str, Any]]) -> pd.DataFrame:
         DataFrame with flattened measurements.
     """
     rows = []
-    for r in window_rows:
-        base = {k: v for k, v in r.items() if k != "measurements"}
-        base.update(r.get("measurements", {}))
+    for row in window_rows:
+        base = {k: v for k, v in row.items() if k != "measurements"}
+        base.update(row.get("measurements", {}))
         rows.append(base)
     return pd.DataFrame(rows)
 

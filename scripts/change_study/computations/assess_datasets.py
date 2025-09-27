@@ -96,7 +96,7 @@ def concept_drift_characterization(dataset_key, dataset_info):
         raise
 
     # Copy output to results folder
-    target_dir = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key
+    target_dir = constants.CHANGE_STUDY_RESULTS_DIR / "drift_detection" / dataset_key
     target_dir.mkdir(parents=True, exist_ok=True)
 
     results_target_file_paths = []
@@ -174,7 +174,7 @@ def concept_drift_complexity_assessment(dataset_key, dataset_info, concept_drift
                 windows = split_log_into_windows_by_change_points(traces_sorted, cps)
                 
                 # save next to other complexity plots
-                out_dir = constants.COMPLEXITY_PLOTS_DIR / dataset_key / cfg_with_approach / "coverage_curves"
+                out_dir = constants.CHANGE_STUDY_RESULTS_DIR / "complexity_assessment" / dataset_key / cfg_with_approach / "coverage_curves"
                 plot_coverage_curves_for_cp_windows(windows, out_dir, q_orders=(0,), xlim=(0, 1.0))
 
         elif typ == "fixed_size_windows":
@@ -243,7 +243,7 @@ def main_per_dataset(dataset_key, dataset_info, mode='all', plot_coverage_curves
         concept_drift_info_paths = concept_drift_characterization(dataset_key, dataset_info)
     else:
         # search for all csvs in input folder
-        input_folder = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset_key
+        input_folder = constants.CHANGE_STUDY_RESULTS_DIR / "drift_detection" / dataset_key
         concept_drift_info_paths = list(input_folder.glob("*.csv"))
 
     if mode == 'all' or mode == 'complexity_only':

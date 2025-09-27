@@ -65,7 +65,7 @@ def compute_results(
             sorted_metrics=sorted_metrics,
         )
 
-        out_dir = Path(out_path) / log_name
+        out_dir = constants.BIAS_STUDY_RESULTS_DIR / log_name
         out_dir.mkdir(parents=True, exist_ok=True)
         measures_df.to_csv(out_dir / "measures.csv")
         ci_low_df.to_csv(out_dir / "ci_low.csv")
@@ -83,7 +83,7 @@ def compute_results(
         ci_low_per_log[log_name] = ci_low_df
         ci_high_per_log[log_name] = ci_high_df
 
-    out_dir = Path(out_path)
+    out_dir = constants.BIAS_STUDY_RESULTS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     corr_df, pval_df = helpers.get_correlations_for_dictionary(
         sample_metrics_per_log=measures_per_log,

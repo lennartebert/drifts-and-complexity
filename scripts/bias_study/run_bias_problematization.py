@@ -325,7 +325,7 @@ def main():
     corr_df, pval_df = helpers.get_correlations_for_dictionary(sample_metrics_per_log=measures_per_log, rename_dictionary_map=rename_map, metric_columns=sorted_metrics, base_column='sample_size')
 
     # Save
-    out_dir = Path("results/correlations/problematization")
+    out_dir = constants.BIAS_STUDY_RESULTS_DIR / "problematization"
     out_dir.mkdir(parents=True, exist_ok=True)
     corr_df.to_csv(out_dir / "correlations_r.csv")
     pval_df.to_csv(out_dir / "correlations_p.csv")
@@ -344,7 +344,7 @@ def main():
     corr_df, pval_df = helpers.get_correlations_for_dictionary(sample_metrics_per_log=measures_per_log, rename_dictionary_map=rename_map, metric_columns=sorted_metrics, base_column='sample_size')
 
     # Save
-    out_dir = Path("results/correlations/problematization")
+    out_dir = constants.BIAS_STUDY_RESULTS_DIR / "problematization"
     out_dir.mkdir(parents=True, exist_ok=True)
     corr_df.to_csv(out_dir / "correlations_r_p1_fixed.csv")
     pval_df.to_csv(out_dir / "correlations_p_p1_fixed.csv")
@@ -361,7 +361,7 @@ def main():
     corr_df, pval_df = helpers.get_correlations_for_dictionary(sample_metrics_per_log=measures_per_log, rename_dictionary_map=rename_map, metric_columns=sorted_metrics, base_column='sample_size')
 
     # Save
-    out_dir = Path("results/correlations/problematization")
+    out_dir = constants.BIAS_STUDY_RESULTS_DIR / "problematization"
     out_dir.mkdir(parents=True, exist_ok=True)
     corr_df.to_csv(out_dir / "correlations_r_p1_p2_fixed.csv")
     pval_df.to_csv(out_dir / "correlations_p_p1_p2_fixed.csv")

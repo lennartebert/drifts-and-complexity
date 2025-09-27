@@ -19,7 +19,7 @@ drift_type_order = [
 
 def load_complexity_per_window_dict(datasets, complexity_window_string):
     """"""
-    dataset_file_dict = {dataset: constants.COMPLEXITY_RESULTS_DIR / dataset / complexity_window_string / "complexity.csv" for dataset in datasets}
+    dataset_file_dict = {dataset: constants.CHANGE_STUDY_RESULTS_DIR / "complexity_assessment" / dataset / complexity_window_string / "complexity.csv" for dataset in datasets}
     complexity_per_window_df_dict = {}
     for dataset, f in dataset_file_dict.items():
         if not f.exists() or not f.is_file():
@@ -37,7 +37,7 @@ def load_complexity_per_window_dict(datasets, complexity_window_string):
 def load_drift_info(complexity_per_window_df_dict, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING):
     drift_info_by_dataset = {}
     for dataset in complexity_per_window_df_dict.keys():
-        path = constants.DRIFT_CHARACTERIZATION_RESULTS_DIR / dataset / f"results_{dataset}_{cp_parameter_setting}.csv"
+        path = constants.CHANGE_STUDY_RESULTS_DIR / "drift_detection" / dataset / f"results_{dataset}_{cp_parameter_setting}.csv"
         drift_info = pd.read_csv(path)
         # drift info may be empty for some datasets
         if drift_info.empty or drift_info["calc_change_id"].eq("na").all():
@@ -174,7 +174,7 @@ def save_aggregated_table(results_df, cp_parameter_setting):
     summary_df.set_index(["measure", "change_type"], inplace=True)
     summary_df = summary_df.reorder_levels(["change_type", "measure"]).sort_index()
     # Ensure the output directory exists
-    output_dir = constants.COMBINED_RESULTS_TABLE_DIR / cp_parameter_setting
+    output_dir = constants.CHANGE_STUDY_RESULTS_DIR / "combined_results" / "tables" / cp_parameter_setting
     output_dir.mkdir(parents=True, exist_ok=True)
     summary_df.to_csv(output_dir / "complexity_delta_aggregated.csv")
     return summary_df
@@ -213,7 +213,7 @@ def save_simple_aggregated_table(aggregated_table_df, cp_parameter_setting):
     # Create DataFrame and save
     final_df = pd.DataFrame(rows)
     final_df.set_index("Change Type", inplace=True)
-    final_df.to_csv(constants.COMBINED_RESULTS_TABLE_DIR / cp_parameter_setting / "complexity_delta_simple.csv")
+    final_df.to_csv(constants.CHANGE_STUDY_RESULTS_DIR / "combined_results" / "tables" / cp_parameter_setting / "complexity_delta_simple.csv")
 
     return final_df
 
@@ -234,7 +234,7 @@ def save_boxplots(results_df, cp_parameter_setting):
         plt.xticks(rotation=25, ha="right")
         plt.tight_layout()
         # Ensure the output directory exists
-        output_dir = constants.COMBINED_RESULTS_BOXPLOT_DIR / cp_parameter_setting
+        output_dir = constants.CHANGE_STUDY_RESULTS_DIR / "combined_results" / "boxplots" / cp_parameter_setting
         output_dir.mkdir(parents=True, exist_ok=True)
         plt.savefig(output_dir / f"{measure}_boxplot.png", dpi=300)
         plt.close()
@@ -364,7 +364,7 @@ def main(datasets=None, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARA
     if datasets is None:
         # Get all folder names (1st level child) under folder results/complexity_assessment
         datasets = [
-            d.name for d in (constants.COMPLEXITY_RESULTS_DIR).iterdir()
+            d.name for d in (constants.CHANGE_STUDY_RESULTS_DIR / "complexity_assessment").iterdir()
             if d.is_dir()
         ]
     
@@ -379,7 +379,7 @@ def main(datasets=None, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARA
     # get summary of drift info
     drift_info_summary_table_df = get_drift_info_summary_table(drift_info_by_dataset=drift_info_by_dataset)
     # Ensure the output directory exists
-    output_dir = constants.COMBINED_RESULTS_TABLE_DIR / complexity_window_string
+    output_dir = constants.CHANGE_STUDY_RESULTS_DIR / "combined_results" / "tables" / complexity_window_string
     output_dir.mkdir(parents=True, exist_ok=True)
     drift_info_summary_table_df.to_csv(output_dir / "drift_info_summary.csv")
 

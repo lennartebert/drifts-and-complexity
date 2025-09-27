@@ -5,7 +5,7 @@ from typing import List
 from pm4py.objects.log.obj import Trace
 from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.registry import register_metric
-from utils.complexity.metrics.trace_based.size.trace_lengh_stats import \
+from utils.complexity.metrics.trace_based.size.trace_length_stats import \
     TraceLengthStats
 from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
 

@@ -53,3 +53,27 @@ class MetricsAdapter(Protocol):
             out[key] = (store, info)
 
         return out
+
+
+def get_adapters(adapter_names: List[str]) -> List[MetricsAdapter]:
+    """Get adapter instances by name.
+    
+    Args:
+        adapter_names: List of adapter names to instantiate.
+        
+    Returns:
+        List of adapter instances.
+    """
+    from .local_metrics_adapter import LocalMetricsAdapter
+    from .vidgof_metrics_adapter import VidgofMetricsAdapter
+    
+    adapters = []
+    for name in adapter_names:
+        if name == "local":
+            adapters.append(LocalMetricsAdapter())
+        elif name == "vidgof_sample":
+            adapters.append(VidgofMetricsAdapter())
+        else:
+            raise ValueError(f"Unknown adapter name: {name}")
+    
+    return adapters
