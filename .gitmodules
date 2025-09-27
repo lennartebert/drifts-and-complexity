@@ -1,5 +1,5 @@
-[submodule "concept-drift-characterization"]
-	path = concept-drift-characterization
+[submodule "drift_characterization"]
+	path = plugins/drift_characterization
 	url = https://github.com/lennartebert/concept-drift-characterization.git
 [submodule "vidgof_complexity"]
 	path = plugins/vidgof_complexity
