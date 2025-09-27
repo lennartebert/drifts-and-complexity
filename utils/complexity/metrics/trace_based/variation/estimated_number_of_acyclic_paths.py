@@ -1,8 +1,9 @@
 
+"""Estimated number of acyclic paths metric implementation."""
+
 from __future__ import annotations
-
-from typing import Any, Iterable
-
+from typing import List
+from pm4py.objects.log.obj import Trace
 from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.registry import register_metric
 from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
@@ -10,11 +11,19 @@ from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
 
 @register_metric("Estimated Number of Acyclic Paths")
 class EstimatedNumberOfAcyclicPaths(TraceMetric):
+    """Estimated number of acyclic paths using Pentland formula."""
     name = "Estimated Number of Acyclic Paths"
     requires: list[str] = ['Number of Distinct Activities', 'Number of Distinct Activity Transitions']
 
-    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
-        if measures.has(self.name): return
+    def compute(self, traces: List[Trace], measures: MeasureStore) -> None:
+        """Compute estimated number of acyclic paths using Pentland formula.
+        
+        Args:
+            traces: List of PM4Py Trace objects.
+            measures: MeasureStore to store the computed metric.
+        """
+        if measures.has(self.name): 
+            return
 
         number_of_distinct_activities = measures.get('Number of Distinct Activities')
         number_of_activity_transitions = measures.get('Number of Distinct Activity Transitions')

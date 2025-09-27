@@ -1,22 +1,29 @@
 
+"""Average edit distance metric implementation."""
+
 from __future__ import annotations
 import math
-from typing import Any, Iterable, Tuple, List, Dict
+from typing import List
 from collections import Counter
-
+from pm4py.objects.log.obj import Trace
 from utils.complexity.measures.measure_store import MeasureStore
-from utils.complexity.metrics.metric import Metric
 from utils.complexity.metrics.registry import register_metric
 from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
-from utils.windowing.window import Window
-
 import Levenshtein
 
 
-def _encode_trace_activities_as_single_chars(pm4py_log):
+def _encode_trace_activities_as_single_chars(traces: List[Trace]) -> List[str]:
+    """Encode trace activities as single characters for edit distance computation.
+    
+    Args:
+        traces: List of PM4Py Trace objects.
+        
+    Returns:
+        List of encoded trace strings.
+    """
     # collect all activities
     acts = []
-    for trace in pm4py_log:
+    for trace in traces:
         acts.extend(ev["concept:name"] for ev in trace)
     uniq = {a: i for i, a in enumerate(dict.fromkeys(acts))}
     # map to private-use Unicode (safe single code points)
@@ -26,15 +33,22 @@ def _encode_trace_activities_as_single_chars(pm4py_log):
         base = 0xF0000
     enc = {a: chr(base + i) for a, i in uniq.items()}
 
-    encoded = ["".join(enc[ev["concept:name"]] for ev in trace) for trace in pm4py_log]
+    encoded = ["".join(enc[ev["concept:name"]] for ev in trace) for trace in traces]
     return encoded
 
 @register_metric("Average Edit Distance")
 class AverageEditDistance(TraceMetric):
+    """Average edit distance between all pairs of traces using Levenshtein distance."""
     name = "Average Edit Distance"
     requires: list[str] = []
 
-    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
+    def compute(self, traces: List[Trace], measures: MeasureStore) -> None:
+        """Compute the average edit distance between all trace pairs.
+        
+        Args:
+            traces: List of PM4Py Trace objects.
+            measures: MeasureStore to store the computed metric.
+        """
         traces = _encode_trace_activities_as_single_chars(traces)
         n = len(traces)
         if n < 2:

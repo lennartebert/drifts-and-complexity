@@ -1,22 +1,18 @@
+"""Lempel-Ziv complexity metric implementation."""
+
 from __future__ import annotations
-
 import math
-from typing import Any, Iterable, List
-
+from typing import List
+from pm4py.objects.log.obj import Trace
 from lempel_ziv_complexity import lempel_ziv_complexity as _lz76_impl
-
 from utils.complexity.measures.measure_store import MeasureStore
-from utils.complexity.metrics.metric import Metric
 from utils.complexity.metrics.registry import register_metric
-from utils.windowing.window import Window
 from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
-
 
 
 @register_metric("Lempel-Ziv Complexity")
 class LempelZivComplexity(TraceMetric):
-    """
-    LZ76 phrase-count complexity on a window's event log,
+    """LZ76 phrase-count complexity on a window's event log,
     using Pentland-style row-wise concatenation.
     
     Parameters
@@ -32,12 +28,23 @@ class LempelZivComplexity(TraceMetric):
     name = "Lempel-Ziv Complexity"
     requires: list[str] = []
 
-
     def __init__(self, normalize: bool = False, padding: bool = True):
+        """Initialize Lempel-Ziv complexity metric.
+        
+        Args:
+            normalize: If True, apply length/alphabet normalization.
+            padding: If True, pad traces to equal length before concatenation.
+        """
         self.normalize = normalize
         self.padding = padding
 
-    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
+    def compute(self, traces: List[Trace], measures: MeasureStore) -> None:
+        """Compute Lempel-Ziv complexity of the trace sequences.
+        
+        Args:
+            traces: List of PM4Py Trace objects.
+            measures: MeasureStore to store the computed metric.
+        """
         if measures.has(self.name):
             return
 

@@ -1,7 +1,8 @@
+"""Maximum trace length metric implementation."""
+
 from __future__ import annotations
-
-from typing import Any, Iterable
-
+from typing import List
+from pm4py.objects.log.obj import Trace
 from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.registry import register_metric
 from utils.complexity.metrics.trace_based.size.trace_lengh_stats import \
@@ -14,6 +15,12 @@ class MaxTraceLength(TraceMetric):
     """Maximum trace length in the sample traces (revealed)."""
     name = "Max. Trace Length"
 
-    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
+    def compute(self, traces: List[Trace], measures: MeasureStore) -> None:
+        """Compute the maximum trace length.
+        
+        Args:
+            traces: List of PM4Py Trace objects.
+            measures: MeasureStore to store the computed metric.
+        """
         TraceLengthStats().compute(traces, measures)
         measures.reveal(self.name)

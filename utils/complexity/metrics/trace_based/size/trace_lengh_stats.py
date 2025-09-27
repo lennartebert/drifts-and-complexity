@@ -1,16 +1,24 @@
+"""Trace length statistics computation."""
+
 from __future__ import annotations
-from typing import Any, Iterable
+from typing import List
+from pm4py.objects.log.obj import Trace
 from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
 
 class TraceLengthStats(TraceMetric):
-    """
-    Hidden one-pass aggregator that computes Min/Avg/Max trace length and stores
+    """Hidden one-pass aggregator that computes Min/Avg/Max trace length and stores
     them as hidden measures. Public metrics reveal only their own names.
     """
     name = "_TraceLengthStats"
 
-    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
+    def compute(self, traces: List[Trace], measures: MeasureStore) -> None:
+        """Compute trace length statistics (min, avg, max).
+        
+        Args:
+            traces: List of PM4Py Trace objects.
+            measures: MeasureStore to store the computed metrics.
+        """
         needed = ("Min. Trace Length", "Avg. Trace Length", "Max. Trace Length")
         if all(measures.has(n) for n in needed):
             return

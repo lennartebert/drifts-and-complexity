@@ -1,3 +1,5 @@
+"""Constants and configuration paths for the drifts-and-complexity project."""
+
 from pathlib import Path
 
 ### DIRECTORIES

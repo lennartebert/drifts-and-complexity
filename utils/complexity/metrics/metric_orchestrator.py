@@ -197,7 +197,7 @@ class MetricOrchestrator:
                         raise RuntimeError("PopulationDistributions required but missing on window")
                     metric.compute(pd, store)  # type: ignore[arg-type]
                 elif issubclass(cls, TraceMetric):
-                    metric.compute(window.traces, store)  # type: ignore[arg-type]
+                    metric.compute(window.traces, store)
                 else:
                     # Fallback: use 'input_kind' if class doesn't subclass the abstractions
                     kind = getattr(cls, "input_kind", "trace")
@@ -207,7 +207,7 @@ class MetricOrchestrator:
                             raise RuntimeError("PopulationDistributions required but missing on window")
                         metric.compute(pd, store)  # type: ignore[arg-type]
                     else:
-                        metric.compute(window.traces, store)  # type: ignore[arg-type]
+                        metric.compute(window.traces, store)
 
                 # 3) finalize visibility for dependency-only measures
                 if store.has(metric_name):

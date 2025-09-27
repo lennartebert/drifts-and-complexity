@@ -1,10 +1,12 @@
+"""Sampling utilities for trace and window generation."""
+
 from __future__ import annotations
 
-from typing import Any, Iterable, List, Literal, Optional, Tuple
-
+from typing import Iterable, List, Literal, Optional, Tuple
+from pm4py.objects.log.obj import Trace
 import numpy as np
 
-from utils.windowing.helpers import Window
+from utils.windowing.window import Window
 
 ReplacementPolicy = Literal[
     "within_and_across",  # (1) full replacement: duplicates allowed within a sample and across samples
@@ -13,12 +15,12 @@ ReplacementPolicy = Literal[
 ]
 
 def sample_random_traces(
-    event_log: Iterable[Any],
+    event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
     policy: ReplacementPolicy = "within_and_across",
     random_state: Optional[int] = None
-) -> List[Tuple[int, str, List[Any]]]:
+) -> List[Tuple[int, str, List[Trace]]]:
     """
     Sample random trace sets from an event log under different replacement policies.
 
@@ -41,7 +43,7 @@ def sample_random_traces(
 
     Returns
     -------
-    List[Tuple[int, str, List[Any]]]
+    List[Tuple[int, str, List[Trace]]]
         List of (window_size, sample_id, trace_list).
     """
     # Materialize and validate
@@ -56,7 +58,7 @@ def sample_random_traces(
         return []
 
     rng = np.random.default_rng(seed=random_state)
-    results: List[Tuple[int, str, List[Any]]] = []
+    results: List[Tuple[int, str, List[Trace]]] = []
 
     if policy == "within_and_across":
         # (1) Full replacement: allow repeats within a sample and across samples.
@@ -110,11 +112,11 @@ def sample_random_traces(
 # --- Backwards-compatible wrappers for sampling --------------------------
 
 def sample_random_traces_with_replacement(
-    event_log: Iterable[Any],
+    event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
     random_state: Optional[int] = None
-) -> List[Tuple[int, str, List[Any]]]:
+) -> List[Tuple[int, str, List[Trace]]]:
     """(1) Duplicates allowed within and across samples."""
     return sample_random_traces(
         event_log=event_log,
@@ -125,11 +127,11 @@ def sample_random_traces_with_replacement(
     )
 
 def sample_random_trace_sets_no_replacement_within_only(
-    event_log: Iterable[Any],
+    event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
     random_state: Optional[int] = None
-) -> List[Tuple[int, str, List[Any]]]:
+) -> List[Tuple[int, str, List[Trace]]]:
     """(2) No duplicates within a sample; samples are independent across runs."""
     return sample_random_traces(
         event_log=event_log,
@@ -140,11 +142,11 @@ def sample_random_trace_sets_no_replacement_within_only(
     )
 
 def sample_random_trace_sets_no_replacement_global(
-    event_log: Iterable[Any],
+    event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
     random_state: Optional[int] = None
-) -> List[Tuple[int, str, List[Any]]]:
+) -> List[Tuple[int, str, List[Trace]]]:
     """(3) No replacement globally across all samples and sizes."""
     return sample_random_traces(
         event_log=event_log,
@@ -157,11 +159,11 @@ def sample_random_trace_sets_no_replacement_global(
 # --- Samplers that return windows --------------------------
 
 def sample_random_windows_with_replacement(
-    event_log: Iterable[Any],
+    event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
     random_state: Optional[int] = None
-) -> List[Tuple[int, str, List[Any]]]:
+) -> List[Tuple[int, str, Window]]:
     """(1) Duplicates allowed within and across samples."""
     trace_samples = sample_random_traces(
         event_log=event_log,
@@ -170,18 +172,18 @@ def sample_random_windows_with_replacement(
         policy="within_and_across",
         random_state=random_state,
     )
-    window_samples: List[Tuple[int, str, "Window"]] = [
+    window_samples: List[Tuple[int, str, Window]] = [
         (window_size, sample_id, Window(id=sample_id, size=len(trace_list), traces=trace_list))
         for window_size, sample_id, trace_list in trace_samples
     ]
     return window_samples
 
 def sample_random_windows_no_replacement_within_only(
-    event_log: Iterable[Any],
+    event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
     random_state: Optional[int] = None
-) -> List[Tuple[int, str, List[Any]]]:
+) -> List[Tuple[int, str, Window]]:
     """(2) No duplicates within a sample; samples are independent across runs."""
     trace_samples = sample_random_traces(
         event_log=event_log,
@@ -190,18 +192,18 @@ def sample_random_windows_no_replacement_within_only(
         policy="within_only",
         random_state=random_state,
     )
-    window_samples: List[Tuple[int, str, "Window"]] = [
+    window_samples: List[Tuple[int, str, Window]] = [
         (window_size, sample_id, Window(id=sample_id, size=len(trace_list), traces=trace_list))
         for window_size, sample_id, trace_list in trace_samples
     ]
     return window_samples
 
 def sample_random_windows_no_replacement_global(
-    event_log: Iterable[Any],
+    event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
     random_state: Optional[int] = None
-) -> List[Tuple[int, str, List[Any]]]:
+) -> List[Tuple[int, str, Window]]:
     """(3) No replacement globally across all samples and sizes."""
     trace_samples = sample_random_traces(
         event_log=event_log,
@@ -210,7 +212,7 @@ def sample_random_windows_no_replacement_global(
         policy="none",
         random_state=random_state,
     )
-    window_samples: List[Tuple[int, str, "Window"]] = [
+    window_samples: List[Tuple[int, str, Window]] = [
         (window_size, sample_id, Window(id=sample_id, size=len(trace_list), traces=trace_list))
         for window_size, sample_id, trace_list in trace_samples
     ]

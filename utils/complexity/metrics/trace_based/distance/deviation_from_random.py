@@ -1,24 +1,63 @@
 
+"""Deviation from random metric implementation."""
+
 from __future__ import annotations
 import math
-from typing import Iterable, Any
-
+from typing import List, Dict, Tuple, Any
+from pm4py.objects.log.obj import Trace
 from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.registry import register_metric
 from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
 
-def _acts(ev): return ev.get("concept:name", ev.get("activity", ev.get("Activity", None)))
-def _seq(trace): return [_acts(ev) for ev in trace]
-def _df_pairs(seq): return [(seq[i], seq[i+1]) for i in range(len(seq)-1)]
+def _acts(ev: Any) -> str:
+    """Extract activity name from event.
+    
+    Args:
+        ev: Event object.
+        
+    Returns:
+        Activity name or None.
+    """
+    return ev.get("concept:name", ev.get("activity", ev.get("Activity", None)))
+
+def _seq(trace: Trace) -> List[str]:
+    """Extract activity sequence from trace.
+    
+    Args:
+        trace: PM4Py Trace object.
+        
+    Returns:
+        List of activity names.
+    """
+    return [_acts(ev) for ev in trace]
+
+def _df_pairs(seq: List[str]) -> List[Tuple[str, str]]:
+    """Extract direct follow pairs from sequence.
+    
+    Args:
+        seq: List of activity names.
+        
+    Returns:
+        List of consecutive activity pairs.
+    """
+    return [(seq[i], seq[i+1]) for i in range(len(seq)-1)]
 
 @register_metric("Deviation from Random")
 class DeviationFromRandom(TraceMetric):
+    """Deviation from random process using Pentland-style normalized L2 distance."""
     name = "Deviation from Random"
     requires: list[str] = []
 
-    def compute(self, traces: Iterable[Iterable[Any]], measures: MeasureStore) -> None:
-        if measures.has(self.name): return
-        counts = {}
+    def compute(self, traces: List[Trace], measures: MeasureStore) -> None:
+        """Compute deviation from random process.
+        
+        Args:
+            traces: List of PM4Py Trace objects.
+            measures: MeasureStore to store the computed metric.
+        """
+        if measures.has(self.name): 
+            return
+        counts: Dict[Tuple[str, str], int] = {}
         for tr in traces:
             s = _seq(tr)
             for a,b in _df_pairs(s):

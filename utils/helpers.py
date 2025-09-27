@@ -1,19 +1,39 @@
 import json
 import os
-import pandas as pd
 from pathlib import Path
-from typing import Dict, Any, List
-import json, yaml
+from typing import Dict, Any, List, Optional
+import yaml
 import pandas as pd
 from .constants import COMPLEXITY_RESULTS_DIR
 
-def to_naive_ts(x):
-    if x is None: return None
+def to_naive_ts(x: Any) -> Optional[pd.Timestamp]:
+    """Convert timestamp to naive (timezone-unaware) format.
+    
+    Args:
+        x: Input timestamp (can be string, datetime, or None).
+        
+    Returns:
+        Naive pandas Timestamp or None if input is None.
+    """
+    if x is None: 
+        return None
     ts = pd.to_datetime(x)
-    try: return ts.tz_convert(None)
-    except Exception: return ts
+    try: 
+        return ts.tz_convert(None)
+    except Exception: 
+        return ts
 
 def save_complexity_csv(dataset_key: str, configuration_name: str, df: pd.DataFrame) -> Path:
+    """Save complexity results DataFrame to CSV file.
+    
+    Args:
+        dataset_key: Name of the dataset.
+        configuration_name: Name of the configuration.
+        df: DataFrame containing complexity results.
+        
+    Returns:
+        Path to the saved CSV file.
+    """
     out_dir = COMPLEXITY_RESULTS_DIR / dataset_key / configuration_name
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "complexity.csv"
@@ -21,6 +41,14 @@ def save_complexity_csv(dataset_key: str, configuration_name: str, df: pd.DataFr
     return out
 
 def flatten_measurements(window_rows: List[Dict[str, Any]]) -> pd.DataFrame:
+    """Flatten window measurements into a single DataFrame.
+    
+    Args:
+        window_rows: List of dictionaries containing window data and measurements.
+        
+    Returns:
+        DataFrame with flattened measurements.
+    """
     rows = []
     for r in window_rows:
         base = {k: v for k, v in r.items() if k != "measurements"}
@@ -29,8 +57,7 @@ def flatten_measurements(window_rows: List[Dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 def load_data_dictionary(path: Path, get_real: bool = True, get_synthetic: bool = False) -> Dict[str, Any]:
-    """
-    Load a JSON data dictionary and filter entries by their 'type' field.
+    """Load a JSON data dictionary and filter entries by their 'type' field.
 
     Args:
         path: Path to the JSON file.
@@ -58,10 +85,27 @@ def load_data_dictionary(path: Path, get_real: bool = True, get_synthetic: bool 
     return {k: v for k, v in data_dictionary.items() if v.get("type") in allowed_types}
 
 def load_yaml(path: Path) -> Dict[str, Any]:
+    """Load YAML configuration file.
+    
+    Args:
+        path: Path to the YAML file.
+        
+    Returns:
+        Dictionary containing YAML data, or empty dict if file is empty.
+    """
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
     
-def get_dataframe_from_drift_detection_results(datasets, cp_configurations):
+def get_dataframe_from_drift_detection_results(datasets: List[str], cp_configurations: List[str]) -> pd.DataFrame:
+    """Load drift detection results from CSV files and combine into DataFrame.
+    
+    Args:
+        datasets: List of dataset names.
+        cp_configurations: List of change point configuration names.
+        
+    Returns:
+        DataFrame containing combined drift detection results.
+    """
     results = []
     for dataset in datasets:
         for cp_configuration in cp_configurations:
@@ -96,14 +140,22 @@ def get_dataframe_from_drift_detection_results(datasets, cp_configurations):
 
 # correlation helpers
 def get_correlations_for_dictionary(
-    sample_metrics_per_log,
-    rename_dictionary_map,
-    metric_columns,
-    base_column='sample_size'
-):
-    # create a correlation analysis for all measures
-    from pathlib import Path
-    import pandas as pd
+    sample_metrics_per_log: Dict[str, pd.DataFrame],
+    rename_dictionary_map: Optional[Dict[str, str]],
+    metric_columns: List[str],
+    base_column: str = 'sample_size'
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Calculate Pearson correlations between sample size and metrics.
+    
+    Args:
+        sample_metrics_per_log: Dictionary mapping log names to DataFrames with metrics.
+        rename_dictionary_map: Optional mapping to rename log names in output.
+        metric_columns: List of metric column names to analyze.
+        base_column: Name of the base column for correlation (default: 'sample_size').
+        
+    Returns:
+        Tuple of (correlation DataFrame, p-value DataFrame).
+    """
     from scipy import stats
 
     rename_map = rename_dictionary_map
@@ -147,6 +199,14 @@ def get_correlations_for_dictionary(
 # LATEX helpers
 # Create Latex output
 def _stars(p: float) -> str:
+    """Convert p-value to significance stars.
+    
+    Args:
+        p: P-value.
+        
+    Returns:
+        String with significance stars (*, **, ***).
+    """
     if pd.isna(p):
         return ""
     if p < 0.001:
@@ -158,6 +218,14 @@ def _stars(p: float) -> str:
     return ""
 
 def corr_p_to_latex_stars(corr_df: pd.DataFrame, pval_df: pd.DataFrame, out_path: Path, label: str) -> None:
+    """Generate LaTeX table with correlation coefficients and significance stars.
+    
+    Args:
+        corr_df: DataFrame with correlation coefficients.
+        pval_df: DataFrame with p-values.
+        out_path: Path to save the LaTeX file.
+        label: LaTeX label for the table.
+    """
     # keep P1..P4 order if present
     cols = [c for c in ["P1", "P2", "P3", "P4"] if c in corr_df.columns]
     corr = corr_df[cols].copy()
