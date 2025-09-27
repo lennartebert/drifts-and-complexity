@@ -1,8 +1,8 @@
 [submodule "concept-drift-characterization"]
 	path = concept-drift-characterization
 	url = https://github.com/lennartebert/concept-drift-characterization.git
-[submodule "process-complexity"]
-	path = process-complexity
+[submodule "vidgof_complexity"]
+	path = plugins/vidgof_complexity
 	url = https://github.com/lennartebert/process-complexity.git
 [submodule "cdrift-evaluation"]
 	path = cdrift-evaluation
