@@ -49,8 +49,8 @@ mkdir plugins
 ### 2. **Move submodules**
 ```bash
 # Move each submodule
-mv process-complexity plugins/complexity
-mv cdrift-evaluation plugins/drift_detection
+mv process-complexity plugins/vidgof_complexity
+mv cdrift-evaluation plugins/cdrift_evaluation
 mv concept-drift-characterization plugins/drift_characterization
 ```
 
@@ -88,8 +88,8 @@ Search and replace in your Python files:
 
 | Old Import | New Import |
 |------------|------------|
-| `from process-complexity import` | `from plugins.complexity import` |
-| `from cdrift-evaluation import` | `from plugins.drift_detection import` |
+| `from process-complexity import` | `from plugins.vidgof_complexity import` |
+| `from cdrift-evaluation import` | `from plugins.cdrift_evaluation import` |
 | `from concept-drift-characterization import` | `from plugins.drift_characterization import` |
 
 ### 6. **Update any hardcoded paths**
@@ -172,8 +172,8 @@ When you commit these changes:
 git add .
 git commit -m "refactor: reorganize submodules into plugins structure
 
-- Move process-complexity → plugins/complexity
-- Move cdrift-evaluation → plugins/drift_detection  
+- Move process-complexity → plugins/vidgof_complexity
+- Move cdrift-evaluation → plugins/cdrift_evaluation  
 - Move concept-drift-characterization → plugins/drift_characterization
 - Update imports and documentation
 - Improve project organization and maintainability"

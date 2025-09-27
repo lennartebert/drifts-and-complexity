@@ -10,7 +10,7 @@ from utils.windowing.window import Window
 
 # --- fork import sandbox (unchanged logic) ------------------------------------
 THIS_DIR = Path(__file__).resolve().parents[3]
-PROC_COMPLEXITY_DIR = THIS_DIR / "process-complexity"
+PROC_COMPLEXITY_DIR = THIS_DIR / "plugins" / "vidgof_complexity"
 if PROC_COMPLEXITY_DIR.exists():
     sys.path.insert(0, str(PROC_COMPLEXITY_DIR))
 
