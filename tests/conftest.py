@@ -182,41 +182,6 @@ def standard_test_log() -> List[Trace]:
     return traces
 
 
-@pytest.fixture
-def standard_test_log_expected_values() -> Dict[str, Any]:
-    """
-    Expected values for all metrics computed on the standard_test_log.
-    
-    These values are computed by hand and should be used for golden tests.
-    """
-    return {
-        # Size metrics
-        "Number of Traces": 6,
-        "Number of Events": 16,  # 3+3+3+2+4+1 = 16 total events
-        "Number of Distinct Traces": 4,  # A->B->C, A->B->D, E->F, A->B->C->D, A
-        "Number of Distinct Activities": 6,  # A, B, C, D, E, F
-        "Number of Distinct Activity Transitions": 8,  # A->B, B->C, B->D, E->F, C->D, A (no transitions)
-        
-        # Trace length metrics
-        "Min. Trace Length": 1.0,  # Trace 6 has 1 event
-        "Max. Trace Length": 4.0,  # Trace 5 has 4 events
-        "Avg. Trace Length": 16.0 / 6.0,  # 16 total events / 6 traces = 2.666...
-        
-        # Variation metrics
-        "Percentage of Distinct Traces": 4.0 / 6.0,  # 4 distinct / 6 total = 0.666...
-        "Average Distinct Activities per Trace": 3.0,  # (3+3+3+2+4+1) / 6 = 2.666... activities per trace on average
-        
-        # Distance metrics (these will be computed)
-        "Average Edit Distance": "computed",  # Will be calculated
-        "Average Affinity": "computed",  # Will be calculated
-        "Deviation from Random": "computed",  # Will be calculated
-        
-        # Complexity metrics
-        "Lempel-Ziv Complexity": "computed",  # Will be calculated
-        "Structure": "computed",  # Will be calculated
-        "Estimated Number of Acyclic Paths": "computed",  # Will be calculated
-        "Number of Ties in Paths to Goal": "computed",  # Will be calculated
-    }
 
 
 @pytest.fixture

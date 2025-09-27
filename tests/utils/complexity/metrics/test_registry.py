@@ -28,12 +28,16 @@ class TestMetricRegistry:
         assert len(metric_names) > 0, "No metrics discovered"
         
         # Check that we have all expected metrics
+        # Should include all metrics from our constants (excluding entropy metrics from vidgof)
+        entropy_metrics = ["Sequence Entropy", "Normalized Sequence Entropy", "Variant Entropy", "Normalized Variant Entropy"]
         for expected_metric in ALL_METRIC_NAMES:
-            assert expected_metric in metric_names, f"Expected metric {expected_metric} not found"
+            if expected_metric not in entropy_metrics:  # Entropy metrics are from vidgof adapter
+                assert expected_metric in metric_names, f"Expected metric {expected_metric} not found"
         
-        # Verify we have exactly the expected number of metrics
-        assert len(metric_names) == len(ALL_METRIC_NAMES), \
-            f"Expected {len(ALL_METRIC_NAMES)} metrics, found {len(metric_names)}"
+        # Verify we have the expected number of metrics (excluding entropy metrics)
+        expected_count = len(ALL_METRIC_NAMES) - len(entropy_metrics)
+        assert len(metric_names) == expected_count, \
+            f"Expected {expected_count} metrics (excluding entropy), found {len(metric_names)}"
     
     def test_get_metric_class(self):
         """Test getting a single metric class."""

@@ -1,59 +1,184 @@
 {
-  "test_log_description": {
-    "_WARNING": "DO NOT MODIFY test_log_description unless you also update the standard_test_log() fixture in tests/conftest.py",
-    "total_traces": 6,
-    "total_events": 16,
-    "trace_patterns": [
-      "A -> B -> C",
-      "A -> B -> D",
-      "A -> B -> C (duplicate)",
-      "E -> F",
-      "A -> B -> C -> D",
-      "A (single activity)"
-    ],
-    "distinct_activities": [
-      "A",
-      "B",
-      "C",
-      "D",
-      "E",
-      "F"
-    ],
-    "distinct_trace_variants": 4,
-    "distinct_activity_transitions": 8
+  "_NORMALIZATION_INFO": {
+    "description": "This file contains raw metric values. Normalized values are computed by the normalization module.",
+    "normalization_available": "Use utils.normalization.orchestrator.apply_normalizers() to compute normalized values",
+    "normalizers": [
+      "NormalizeNumberOfTraces",
+      "NormalizeNumberOfEvents", 
+      "NormalizePercentageOfDistinctTraces",
+      "NormalizeDeviationFromRandom",
+      "NormalizeLZComplexity",
+      "HideNumberOfTraces",
+      "HidePercentageOfDistinctTraces"
+    ]
   },
-  "computed_metrics": {
-    "Number of Distinct Activities": 6.0,
-    "Number of Distinct Activity Transitions": 5.0,
-    "Number of Distinct Traces": 5.0,
-    "Average Affinity": 0.36666666666666664,
-    "Average Edit Distance": 1.9333333333333333,
-    "Deviation from Random": 0.4906586886688147,
-    "Avg. Trace Length": 2.6666666666666665,
-    "Max. Trace Length": 4.0,
-    "Min. Trace Length": 1.0,
-    "Number of Events": 16.0,
-    "Number of Traces": 6.0,
-    "Average Distinct Activities per Trace": 2.6666666666666665,
-    "Estimated Number of Acyclic Paths": 1.0,
-    "Lempel-Ziv Complexity": 14.0,
-    "Number of Ties in Paths to Goal": 8.0,
-    "Percentage of Distinct Traces": 0.8333333333333334,
-    "Structure": 0.8611111111111112
+  "log_descriptions": {
+    "empty_traces": {
+      "description": "Empty trace list for edge case testing",
+      "total_traces": 0,
+      "total_events": 0
+    },
+    "single_trace": {
+      "description": "Single trace A -> B for edge case testing",
+      "total_traces": 1,
+      "total_events": 2,
+      "trace_patterns": [
+        "A -> B"
+      ]
+    },
+    "simple_traces": {
+      "description": "Simple trace set with 3 traces: A->B->C, A->B->D, A->B->C (duplicate)",
+      "total_traces": 3,
+      "total_events": 9,
+      "trace_patterns": [
+        "A -> B -> C",
+        "A -> B -> D",
+        "A -> B -> C (duplicate)"
+      ]
+    },
+    "complex_traces": {
+      "description": "Complex trace set with 8 traces including duplicates and various patterns",
+      "total_traces": 8,
+      "total_events": 28,
+      "trace_patterns": [
+        "A -> B -> C -> D",
+        "A -> B -> C -> D (duplicate)",
+        "A -> B -> E -> F",
+        "A -> C -> B -> D",
+        "A -> A -> B -> B",
+        "X -> Y -> Z",
+        "A (single)",
+        "A -> B (minimal)"
+      ]
+    },
+    "standard_test_log": {
+      "description": "Standard test log for golden tests with predictable values",
+      "total_traces": 6,
+      "total_events": 16,
+      "trace_patterns": [
+        "A -> B -> C",
+        "A -> B -> D",
+        "A -> B -> C (duplicate)",
+        "E -> F",
+        "A -> B -> C -> D",
+        "A (single)"
+      ]
+    }
+  },
+  "expected_metrics": {
+    "single_trace": {
+      "Number of Events": 2.0,
+      "Number of Distinct Activities": 2.0,
+      "Number of Traces": 1.0,
+      "Number of Distinct Traces": 1.0,
+      "Min. Trace Length": 2.0,
+      "Avg. Trace Length": 2.0,
+      "Max. Trace Length": 2.0,
+      "Percentage of Distinct Traces": 1.0,
+      "Average Distinct Activities per Trace": 2.0,
+      "Structure": 0.75,
+      "Estimated Number of Acyclic Paths": 1.0,
+      "Number of Ties in Paths to Goal": 1.0,
+      "Lempel-Ziv Complexity": 2.0,
+      "Average Affinity": NaN,
+      "Deviation from Random": 0.0,
+      "Average Edit Distance": NaN,
+      "Sequence Entropy": null,
+      "Normalized Sequence Entropy": null,
+      "Variant Entropy": null,
+      "Normalized Variant Entropy": null
+    },
+    "simple_traces": {
+      "Number of Events": 9.0,
+      "Number of Distinct Activities": 4.0,
+      "Number of Traces": 3.0,
+      "Number of Distinct Traces": 2.0,
+      "Min. Trace Length": 3.0,
+      "Avg. Trace Length": 3.0,
+      "Max. Trace Length": 3.0,
+      "Percentage of Distinct Traces": 0.6666666666666666,
+      "Average Distinct Activities per Trace": 3.0,
+      "Structure": 0.8125,
+      "Estimated Number of Acyclic Paths": 1.0,
+      "Number of Ties in Paths to Goal": 4.0,
+      "Lempel-Ziv Complexity": 6.0,
+      "Average Affinity": 0.6666666666666666,
+      "Deviation from Random": 0.40995919789547774,
+      "Average Edit Distance": 0.6666666666666666,
+      "Sequence Entropy": null,
+      "Normalized Sequence Entropy": null,
+      "Variant Entropy": null,
+      "Normalized Variant Entropy": null
+    },
+    "complex_traces": {
+      "Number of Events": 26.0,
+      "Number of Distinct Activities": 9.0,
+      "Number of Traces": 8.0,
+      "Number of Distinct Traces": 7.0,
+      "Min. Trace Length": 1.0,
+      "Avg. Trace Length": 3.25,
+      "Max. Trace Length": 4.0,
+      "Percentage of Distinct Traces": 0.875,
+      "Average Distinct Activities per Trace": 3.0,
+      "Structure": 0.8518518518518519,
+      "Estimated Number of Acyclic Paths": 2.0892961308540396,
+      "Number of Ties in Paths to Goal": 15.0,
+      "Lempel-Ziv Complexity": 19.0,
+      "Average Affinity": 0.39285714285714285,
+      "Deviation from Random": 0.6553987811977444,
+      "Average Edit Distance": 2.642857142857143,
+      "Sequence Entropy": null,
+      "Normalized Sequence Entropy": null,
+      "Variant Entropy": null,
+      "Normalized Variant Entropy": null
+    },
+    "standard_test_log": {
+      "Number of Events": 16.0,
+      "Number of Distinct Activities": 6.0,
+      "Number of Traces": 6.0,
+      "Number of Distinct Traces": 5.0,
+      "Min. Trace Length": 1.0,
+      "Avg. Trace Length": 2.6666666666666665,
+      "Max. Trace Length": 4.0,
+      "Percentage of Distinct Traces": 0.8333333333333334,
+      "Average Distinct Activities per Trace": 2.6666666666666665,
+      "Structure": 0.8611111111111112,
+      "Estimated Number of Acyclic Paths": 1.0,
+      "Number of Ties in Paths to Goal": 8.0,
+      "Lempel-Ziv Complexity": 14.0,
+      "Average Affinity": 0.36666666666666664,
+      "Deviation from Random": 0.4906586886688147,
+      "Average Edit Distance": 1.9333333333333333,
+      "Sequence Entropy": null,
+      "Normalized Sequence Entropy": null,
+      "Variant Entropy": null,
+      "Normalized Variant Entropy": null
+    }
   },
   "computation_info": {
-    "skipped": []
-  },
-  "hand_computed_values": {
-    "Number of Traces": 6,
-    "Number of Events": 16,
-    "Number of Distinct Traces": 5,
-    "Number of Distinct Activities": 6,
-    "Number of Distinct Activity Transitions": 5,
-    "Min. Trace Length": 1.0,
-    "Max. Trace Length": 4.0,
-    "Avg. Trace Length": 2.6666666666666665,
-    "Percentage of Distinct Traces": 0.8333333333333334,
-    "Average Distinct Activities per Trace": 2.6666666666666665
+    "total_logs": 4,
+    "total_metrics": 20,
+    "metric_names": [
+      "Number of Events",
+      "Number of Distinct Activities",
+      "Number of Traces",
+      "Number of Distinct Traces",
+      "Min. Trace Length",
+      "Avg. Trace Length",
+      "Max. Trace Length",
+      "Percentage of Distinct Traces",
+      "Average Distinct Activities per Trace",
+      "Structure",
+      "Estimated Number of Acyclic Paths",
+      "Number of Ties in Paths to Goal",
+      "Lempel-Ziv Complexity",
+      "Average Affinity",
+      "Deviation from Random",
+      "Average Edit Distance",
+      "Sequence Entropy",
+      "Normalized Sequence Entropy",
+      "Variant Entropy",
+      "Normalized Variant Entropy"
+    ]
   }
 }

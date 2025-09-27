@@ -40,6 +40,7 @@ ALL_METRIC_NAMES = [
     'Number of Distinct Activities',
     'Number of Traces',
     'Number of Distinct Traces',
+    'Number of Distinct Activity Transitions',
     'Min. Trace Length',
     'Avg. Trace Length',
     'Max. Trace Length',
