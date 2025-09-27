@@ -20,6 +20,10 @@ dependencies:
   - python-graphviz
 
 
+  # Testing
+  - pytest
+  - pytest-cov
+
   # PM4Py (pip-only)
   - pip:
       - pm4py==2.4.1
