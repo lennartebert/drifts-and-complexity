@@ -1,0 +1,14 @@
+[submodule "plugins/complexity"]
+	path = plugins/complexity
+	url = <original-process-complexity-repo-url>
+	branch = main
+
+[submodule "plugins/drift_detection"]
+	path = plugins/drift_detection
+	url = <original-cdrift-evaluation-repo-url>
+	branch = main
+
+[submodule "plugins/drift_characterization"]
+	path = plugins/drift_characterization
+	url = <original-concept-drift-characterization-repo-url>
+	branch = main
