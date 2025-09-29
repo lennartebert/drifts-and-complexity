@@ -79,7 +79,7 @@ class VidgofMetricsAdapter(MetricsAdapter):
         metrics["Sequence Entropy"] = seq_ent[0]
         metrics["Normalized Sequence Entropy"] = seq_ent[1]
 
-        metrics["Number of Partitions"] = _get_num_partitions(pa)
+        metrics["Number of Partitions"] = VidgofMetricsAdapter._get_num_partitions(pa)
 
         return metrics
 
