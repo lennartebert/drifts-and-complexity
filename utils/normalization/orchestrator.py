@@ -22,6 +22,9 @@ from utils.normalization.normalizers.normalize_number_of_traces import (
 from utils.normalization.normalizers.normalize_percentage_of_distinct_traces import (
     NormalizePercentageOfDistinctTraces,
 )
+from utils.normalization.normalizers.normalize_variant_entropy import (
+    NormalizeVariantEntropy,
+)
 from utils.normalization.normalizers.normalizer import Normalizer
 
 # Default pipeline (instances, in order)
@@ -32,6 +35,7 @@ DEFAULT_NORMALIZERS: List[Normalizer] = [
     NormalizePercentageOfDistinctTraces(),
     NormalizeDeviationFromRandom(),
     NormalizeLZComplexity(),
+    NormalizeVariantEntropy(),
 ]
 
 

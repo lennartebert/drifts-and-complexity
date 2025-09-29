@@ -274,6 +274,8 @@ def run_metrics_over_samples(
       * Bootstraps remain sequential inside each worker to avoid nested pools.
       * Default n_jobs uses SLURM_CPUS_PER_TASK when running on Slurm.
 
+    # TODO changes this to only compute metrics that are in sorted_metrics
+
     Returns:
         (measures_df, ci_low_df, ci_high_df)
     """

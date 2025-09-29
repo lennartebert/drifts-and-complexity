@@ -14,14 +14,23 @@ PROC_COMPLEXITY_DIR = THIS_DIR / "plugins" / "vidgof_complexity"
 if PROC_COMPLEXITY_DIR.exists():
     sys.path.insert(0, str(PROC_COMPLEXITY_DIR))
 
-# Third-party lib (Vidgof / Augusto fork)
-from Complexity import (  # type: ignore
-    build_graph,
-    create_c_index,
-    generate_log,
-    graph_complexity,
-    log_complexity,
-)
+# Third-party lib (Vidgof / Augusto fork) – robust import for CI/local
+try:
+    from Complexity import (  # type: ignore
+        build_graph,
+        create_c_index,
+        generate_log,
+        graph_complexity,
+        log_complexity,
+    )
+except ModuleNotFoundError:  # Fallback when PYTHONPATH does not include plugins dir
+    from plugins.vidgof_complexity.Complexity import (  # type: ignore
+        build_graph,
+        create_c_index,
+        generate_log,
+        graph_complexity,
+        log_complexity,
+    )
 
 
 class VidgofMetricsAdapter(MetricsAdapter):
