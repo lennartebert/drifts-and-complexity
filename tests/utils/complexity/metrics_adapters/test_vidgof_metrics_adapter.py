@@ -40,6 +40,7 @@ class TestVidgofMetricsAdapter:
             "Normalized Variant Entropy",
             "Trace Entropy",
             "Normalized Trace Entropy",
+            "Number of Partitions",
         ]
 
         assert len(metrics) == len(expected_metrics)
