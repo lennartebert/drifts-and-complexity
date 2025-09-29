@@ -1,0 +1,44 @@
+name: drifts-and-complexity-ci
+channels:
+  - conda-forge
+dependencies:
+  # Python
+  - python=3.10
+  - pip
+  - numpy=1.24.*
+  - pandas=1.5.*
+  - scipy=1.10.*
+  - scikit-learn=1.2.*
+  - networkx=3.0
+  - matplotlib=3.6.*
+  - seaborn=0.12.*
+  - tqdm=4.64.*
+  - pytz=2022.7.*
+  - pyyaml
+  - lxml
+  - graphviz
+  - python-graphviz
+
+  # Testing
+  - pytest
+  - pytest-cov
+
+  # Development tools (minimal set for CI)
+  - black
+  - isort
+  - flake8
+  - mypy
+
+  # PM4Py (pip-only) - only essential packages
+  - pip:
+      - pm4py==2.4.1
+      - pulp==3.2.1
+      - Wasserstein==1.1.0
+      - strsimpy==0.2.1
+      - Levenshtein==0.21.0
+      - BitVector
+      - lempel_ziv_complexity
+      - python-Levenshtein
+      - types-PyYAML
+      - types-requests
+      - types-setuptools
