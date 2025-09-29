@@ -158,7 +158,7 @@ def main():
         
         # Create test scenario
         test_scenario = dict(
-            logs=['O2C_S'],
+            logs=['RTFMP'],
             name="test",
             out="results/tests/test",
             population_extractor=Chao1PopulationExtractor(),
