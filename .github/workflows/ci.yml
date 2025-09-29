@@ -7,9 +7,22 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    - name: Smoke
+      run: python -c "print('smoke ok')"
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: smoke
     strategy:
       matrix:
         python-version: [3.10, 3.11]
@@ -30,11 +43,6 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements-ci.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
-
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y graphviz graphviz-dev
 
     - name: Install Python dependencies
       run: |
@@ -74,6 +82,7 @@ jobs:
   typecheck-strict:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: smoke
     steps:
     - uses: actions/checkout@v4
     
@@ -90,11 +99,6 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements-ci.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
-
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y graphviz graphviz-dev
 
     - name: Install Python dependencies
       run: |

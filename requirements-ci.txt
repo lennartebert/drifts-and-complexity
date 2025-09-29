@@ -11,7 +11,6 @@ pytz>=2022.7.0
 pyyaml
 lxml
 graphviz
-python-graphviz
 
 # Testing
 pytest>=7.0.0

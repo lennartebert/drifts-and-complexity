@@ -146,12 +146,31 @@ SCENARIOS = [
 def main():
     parser = argparse.ArgumentParser(description="Run one scenario by integer ID.")
     parser.add_argument("scenario_id", type=int, help=f"Scenario ID [0..{len(SCENARIOS)-1}]")
+    parser.add_argument("--test", action="store_true", help="Run in test mode with reduced parameters")
     args = parser.parse_args()
 
-    if args.scenario_id < 0 or args.scenario_id >= len(SCENARIOS):
-        raise SystemExit(f"Invalid scenario_id {args.scenario_id}")
+    # Modify global parameters for test mode
+    global SAMPLES_PER_SIZE, BOOTSTRAP_SIZE, SIZES
+    if args.test:
+        SAMPLES_PER_SIZE = 1
+        BOOTSTRAP_SIZE = 2
+        SIZES = range(50, 101, 50)  # Just 2 sizes: 50 and 100
+        
+        # Create test scenario
+        test_scenario = dict(
+            logs=['O2C_S'],
+            name="test",
+            out="results/tests/test",
+            population_extractor=Chao1PopulationExtractor(),
+            normalizers=default_normalizers,
+        )
+        
+        sc = test_scenario
+    else:
+        if args.scenario_id < 0 or args.scenario_id >= len(SCENARIOS):
+            raise SystemExit(f"Invalid scenario_id {args.scenario_id}")
+        sc = SCENARIOS[args.scenario_id]
 
-    sc = SCENARIOS[args.scenario_id]
     compute_results(
         list_of_logs=sc["logs"],
         results_name=sc["name"],
