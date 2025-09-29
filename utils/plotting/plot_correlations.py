@@ -45,6 +45,7 @@ def plot_correlation_results(
     # Common formatting
     plt.axhline(0, linewidth=0.8, color="grey")
     plt.ylabel("Pearson r")
+    plt.ylim(-1, 1)
     plt.xticks(rotation=90)
     plt.xlabel("Measure")
     plt.title("Distribution of Pearson r Across Datasets by Measure")
