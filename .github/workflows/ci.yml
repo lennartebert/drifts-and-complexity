@@ -9,6 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         python-version: [3.10, 3.11]
@@ -29,10 +30,15 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
     
-    - name: Install dependencies
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential python3-dev
+    
+    - name: Install dependencies with optimizations
       run: |
         python -m pip install --upgrade pip
-        pip install --no-cache-dir --timeout=1000 -e ".[ci]"
+        pip install --no-cache-dir --timeout=1000 --retries=3 --prefer-binary --no-build-isolation -e ".[ci]"
     
     - name: Lint with flake8
       run: |
@@ -62,6 +68,7 @@ jobs:
 
   typecheck-strict:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
     - uses: actions/checkout@v4
     
@@ -70,10 +77,15 @@ jobs:
       with:
         python-version: 3.10
     
-    - name: Install dependencies
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential python3-dev
+    
+    - name: Install dependencies with optimizations
       run: |
         python -m pip install --upgrade pip
-        pip install --no-cache-dir --timeout=1000 -e ".[ci]"
+        pip install --no-cache-dir --timeout=1000 --retries=3 --prefer-binary --no-build-isolation -e ".[ci]"
     
     - name: Strict type check with mypy
       run: |

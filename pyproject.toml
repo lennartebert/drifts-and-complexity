@@ -70,6 +70,9 @@ ci = [
     "types-requests",
     "types-setuptools",
 ]
+plugins = [
+    "BitVector",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
