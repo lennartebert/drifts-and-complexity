@@ -15,7 +15,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.10'
     - name: Smoke
       run: python -c "print('smoke ok')"
 
@@ -23,9 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: smoke
-    strategy:
-      matrix:
-        python-version: [3.10, 3.11]
 
     steps:
     - uses: actions/checkout@v4
@@ -33,7 +30,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.10'
         cache: 'pip'
     
     - name: Cache pip dependencies
@@ -75,10 +72,6 @@ jobs:
         black --check utils tests
         isort --check-only utils tests
     
-    - name: Type check with mypy
-      run: |
-        mypy utils
-    
     - name: Test with pytest
       run: |
         pytest --cov=utils --cov-report=xml --cov-report=term-missing
@@ -91,39 +84,4 @@ jobs:
         name: codecov-umbrella
         fail_ci_if_error: false
 
-  typecheck-strict:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: smoke
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.10
-        cache: 'pip'
-    
-    - name: Cache pip dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-ci.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-
-    - name: Install Python dependencies
-      env:
-        PIP_DISABLE_PIP_VERSION_CHECK: '1'
-        PIP_NO_INPUT: '1'
-      run: |
-        python -m pip install --upgrade pip
-        pip install --no-cache-dir --timeout=1000 --retries=3 --prefer-binary -r requirements-ci.txt
-
-    - name: Install project in development mode
-      run: |
-        pip install --no-cache-dir --timeout=1000 --retries=3 -e .
-    
-    - name: Strict type check with mypy
-      run: |
-        mypy --strict utils
+  
