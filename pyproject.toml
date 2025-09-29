@@ -34,7 +34,6 @@ dependencies = [
     "pyyaml",
     "lxml",
     "graphviz",
-    "python-graphviz",
     "pm4py>=2.4.1",
     "pulp>=3.2.1",
     "Wasserstein>=1.1.0",
