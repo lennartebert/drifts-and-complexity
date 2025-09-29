@@ -59,6 +59,17 @@ dev = [
     "jupyter>=1.0.0",
     "ipython>=8.0.0",
 ]
+ci = [
+    "mypy>=1.0.0",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "isort>=5.0.0",
+    "flake8>=5.0.0",
+    "types-PyYAML",
+    "types-requests",
+    "types-setuptools",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
