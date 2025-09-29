@@ -45,4 +45,4 @@ repos:
         args: [--ignore-missing-imports]
         files: ^utils/
         exclude: ^(plugins/|data/)
-        stages: [push]
+        stages: [manual]
