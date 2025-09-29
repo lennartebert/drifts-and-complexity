@@ -10,6 +10,8 @@ class Measure:
     - value: numeric result
     - hidden: if True, it's stored but not shown by default
     - meta: free-form metadata (e.g., {"source": "observed"})
+
+    # TODO add measure name
     """
     value: float
     hidden: bool = False

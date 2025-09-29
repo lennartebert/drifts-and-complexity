@@ -74,7 +74,7 @@ class MetricOrchestrator:
         -------
         (MeasureStore, Dict)
             The (possibly newly created) `MeasureStore` and an info dict:
-            - "computed": List[str] of metric names successfully present in the store.
+            - "visible":  List[str] of metric names successfully present and visible in the store.
             - "hidden":   List[str] of measures currently marked hidden.
             - "skipped":  List[str] of metric names that were requested but not
                           produced (e.g., due to failures in non-strict mode).
@@ -104,7 +104,20 @@ class MetricOrchestrator:
                 if not computation_was_successfull:
                     skipped.append(name)
 
+        # Collect visible and hidden metrics
+        visible = []
+        hidden = []
+        for name in metric_names:
+            if store.has(name):
+                measure = store.get(name)
+                if measure.hidden:
+                    hidden.append(name)
+                else:
+                    visible.append(name)
+        
         info = {
+            "visible": visible,
+            "hidden": hidden,
             "skipped": skipped,
         }
         return store, info

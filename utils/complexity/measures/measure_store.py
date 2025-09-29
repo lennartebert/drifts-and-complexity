@@ -79,3 +79,11 @@ class MeasureStore:
             self._measures.update(other._measures)
         else:
             self._measures.update(other)
+    
+    def __len__(self) -> int:
+        """Return the number of measures in the store."""
+        return len(self._measures)
+    
+    def keys(self):
+        """Return an iterator over the measure names."""
+        return self._measures.keys()

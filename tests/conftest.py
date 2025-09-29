@@ -55,6 +55,7 @@ def empty_traces() -> List[Trace]:
 def single_trace() -> List[Trace]:
     """Single trace for edge case testing."""
     trace = Trace()
+    trace.attributes['concept:name'] = 'trace_1'
     trace.append(Event({"concept:name": "A", "time:timestamp": "2023-01-01T10:00:00"}))
     trace.append(Event({"concept:name": "B", "time:timestamp": "2023-01-01T10:01:00"}))
     return [trace]
@@ -67,6 +68,7 @@ def simple_traces() -> List[Trace]:
     
     # Trace 1: A -> B -> C
     trace1 = Trace()
+    trace1.attributes['concept:name'] = 'trace_1'
     trace1.append(Event({"concept:name": "A", "time:timestamp": "2023-01-01T10:00:00"}))
     trace1.append(Event({"concept:name": "B", "time:timestamp": "2023-01-01T10:01:00"}))
     trace1.append(Event({"concept:name": "C", "time:timestamp": "2023-01-01T10:02:00"}))
@@ -74,6 +76,7 @@ def simple_traces() -> List[Trace]:
     
     # Trace 2: A -> B -> D
     trace2 = Trace()
+    trace2.attributes['concept:name'] = 'trace_2'
     trace2.append(Event({"concept:name": "A", "time:timestamp": "2023-01-01T11:00:00"}))
     trace2.append(Event({"concept:name": "B", "time:timestamp": "2023-01-01T11:01:00"}))
     trace2.append(Event({"concept:name": "D", "time:timestamp": "2023-01-01T11:02:00"}))
@@ -81,6 +84,7 @@ def simple_traces() -> List[Trace]:
     
     # Trace 3: A -> B -> C (duplicate of trace1)
     trace3 = Trace()
+    trace3.attributes['concept:name'] = 'trace_3'
     trace3.append(Event({"concept:name": "A", "time:timestamp": "2023-01-01T12:00:00"}))
     trace3.append(Event({"concept:name": "B", "time:timestamp": "2023-01-01T12:01:00"}))
     trace3.append(Event({"concept:name": "C", "time:timestamp": "2023-01-01T12:02:00"}))
@@ -108,6 +112,7 @@ def complex_traces() -> List[Trace]:
     
     for i, pattern in enumerate(patterns):
         trace = Trace()
+        trace.attributes['concept:name'] = f'trace_{i+1}'
         for j, activity in enumerate(pattern):
             trace.append(Event({
                 "concept:name": activity, 

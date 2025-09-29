@@ -340,6 +340,7 @@ class TestVidgofMetricsAdapter:
         from pm4py.objects.log.obj import Trace, Event
         
         trace = Trace()
+        trace.attributes['concept:name'] = f'trace_{len(activities)}'
         for i, activity in enumerate(activities):
             trace.append(Event({
                 "concept:name": activity,

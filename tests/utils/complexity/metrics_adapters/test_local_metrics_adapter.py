@@ -144,9 +144,10 @@ class TestLocalMetricsAdapter:
             window, include=include_metrics
         )
         
-        # Should only compute included metrics
-        computed_metrics = list(store.to_dict().keys())
-        for metric in computed_metrics:
+        # Should only compute included metrics as visible
+        computed_metrics = store.to_dict()
+        visible_metric_names = [name for name, measure in computed_metrics.items() if not measure.hidden]
+        for metric in visible_metric_names:
             assert metric in include_metrics, f"Unexpected metric {metric} computed"
         
         # Test exclude filter
@@ -155,9 +156,13 @@ class TestLocalMetricsAdapter:
             window, exclude=exclude_metrics
         )
         
-        # Should not compute excluded metrics
+        computed_metrics = store.to_dict()
+        visible_metric_names = [name for name, measure in computed_metrics.items() if not measure.hidden]
+        # Should not hold excluded metrics as visible
         for metric in exclude_metrics:
-            assert not store.has(metric), f"Excluded metric {metric} was computed"
+            if store.has(metric):
+                measure = store.get(metric)
+                assert measure.hidden, f"Excluded metric {metric} was computed as visible"
     
     def test_compute_measures_with_existing_store(self, adapter, standard_test_log):
         """Test computing measures with existing MeasureStore."""
@@ -202,7 +207,7 @@ class TestLocalMetricsAdapter:
         if store.has("Number of Distinct Traces"):
             measure = store.get("Number of Distinct Traces")
             # Should use distribution-based implementation
-            assert measure.meta.get("basis") == "observation distribution"
+            assert measure.meta.get("bases") == "population_distribution"
     
     def test_compute_measures_for_windows_batch(self, adapter, simple_traces, complex_traces):
         """Test batch computing measures for multiple windows."""
@@ -234,9 +239,11 @@ class TestLocalMetricsAdapter:
         
         # Create existing stores
         existing_stores = {
-            "simple": MeasureStore({"Custom": 1.0}),
-            "complex": MeasureStore({"Custom": 2.0})
+            "simple": MeasureStore(),
+            "complex": MeasureStore()
         }
+        existing_stores["simple"].set("Custom", 1.0)
+        existing_stores["complex"].set("Custom", 2.0)
         
         results = adapter.compute_measures_for_windows(windows, measures_by_id=existing_stores)
         
@@ -332,12 +339,12 @@ class TestLocalMetricsAdapter:
         assert "adapter" in info
         assert "strict" in info
         assert "prefer" in info
-        # Note: "computed" field may not be present in all versions
+        assert "visible" in info
         assert "skipped" in info
         
         # Check values
         assert info["adapter"] == "local"
         assert info["strict"] is True
         assert info["prefer"] == "trace"
-        assert isinstance(info["computed"], list)
+        assert isinstance(info["visible"], list)
         assert isinstance(info["skipped"], list)

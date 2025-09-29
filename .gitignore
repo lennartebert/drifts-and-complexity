@@ -4,6 +4,7 @@ process_simulation/*
 .local_scripts/*
 *.slurm
 */__pycache__/
+.cursor/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
