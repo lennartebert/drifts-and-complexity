@@ -22,17 +22,18 @@ References (for context):
 from __future__ import annotations
 
 from collections import Counter
-from typing import Tuple, List
+from typing import List, Tuple
 
 from pm4py.algo.discovery.dfg import algorithm as dfg_discovery
 from pm4py.algo.filtering.log.variants import variants_filter
 from pm4py.statistics.attributes.log import get as attributes_get
 from pm4py.util import xes_constants as xes
 
-from utils.population.extractors.population_extractor import \
-    PopulationExtractor
-from utils.population.population_distributions import (PopulationDistribution,
-                                                       PopulationDistributions)
+from utils.population.extractors.population_extractor import PopulationExtractor
+from utils.population.population_distributions import (
+    PopulationDistribution,
+    PopulationDistributions,
+)
 from utils.windowing.helpers import Window
 
 
@@ -125,7 +126,11 @@ def _chao1_S_hat_from_counts(counts: Counter) -> float:
         return 0.0
     f1 = sum(1 for c in counts.values() if c == 1)
     f2 = sum(1 for c in counts.values() if c == 2)
-    return float(s_obs + (f1 * f1) / (2.0 * f2)) if f2 > 0 else float(s_obs + (f1 * (f1 - 1)) / 2.0)
+    return (
+        float(s_obs + (f1 * f1) / (2.0 * f2))
+        if f2 > 0
+        else float(s_obs + (f1 * (f1 - 1)) / 2.0)
+    )
 
 
 def _coverage_hat(N: int, f1: int, f2: int) -> float:
@@ -210,9 +215,12 @@ def _build_chao_distribution_from_counts(counts: Counter) -> PopulationDistribut
         probs_obs = []
 
     return PopulationDistribution(
-        observed_labels=labels, observed_probs=probs_obs, unseen_count=M_unseen, p0=p0, n_samples=N
+        observed_labels=labels,
+        observed_probs=probs_obs,
+        unseen_count=M_unseen,
+        p0=p0,
+        n_samples=N,
     )
-
 
 
 class Chao1PopulationExtractor(PopulationExtractor):
@@ -258,7 +266,7 @@ class Chao1PopulationExtractor(PopulationExtractor):
         # Build from traces once (observed abundances -> iNEXT-like model)
         log = window.traces
         pd_acts = _build_chao_distribution_from_counts(_counts_activities(log))
-        pd_dfg  = _build_chao_distribution_from_counts(_counts_dfg_edges(log))
+        pd_dfg = _build_chao_distribution_from_counts(_counts_dfg_edges(log))
         pd_vars = _build_chao_distribution_from_counts(_counts_trace_variants(log))
         PD = PopulationDistributions(
             activities=pd_acts, dfg_edges=pd_dfg, trace_variants=pd_vars

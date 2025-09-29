@@ -2,11 +2,12 @@
 # ProcessPool/ThreadPool boilerplate across the codebase.
 
 from __future__ import annotations
-import os
-import math
+
 import contextlib
-from typing import Any, Callable, Iterable, List, Literal, Sequence
+import math
+import os
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from typing import Any, Callable, Iterable, List, Literal, Sequence
 
 Backend = Literal["off", "auto", "processes", "threads"]
 
@@ -19,7 +20,9 @@ def _default_n_jobs(n_jobs: int | None) -> int:
       3) os.cpu_count()
     """
     if n_jobs is None:
-        n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", "0")) or (os.cpu_count() or 1)
+        n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", "0")) or (
+            os.cpu_count() or 1
+        )
     return max(1, int(n_jobs))
 
 

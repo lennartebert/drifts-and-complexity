@@ -1,23 +1,28 @@
 """Average trace length metric implementation."""
 
 from __future__ import annotations
+
 from typing import List
+
 from pm4py.objects.log.obj import Trace
+
 from utils.complexity.measures.measure_store import MeasureStore
 from utils.complexity.metrics.registry import register_metric
-from utils.complexity.metrics.trace_based.size.trace_length_stats import \
-    TraceLengthStats
+from utils.complexity.metrics.trace_based.size.trace_length_stats import (
+    TraceLengthStats,
+)
 from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
 
 
 @register_metric("Avg. Trace Length")
 class AvgTraceLength(TraceMetric):
     """Average trace length in the sample traces (revealed)."""
+
     name = "Avg. Trace Length"
 
     def compute(self, traces: List[Trace], measures: MeasureStore) -> None:
         """Compute the average trace length.
-        
+
         Args:
             traces: List of PM4Py Trace objects.
             measures: MeasureStore to store the computed metric.

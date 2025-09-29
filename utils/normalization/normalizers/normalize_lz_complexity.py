@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import math
 
 from utils.complexity.measures.measure_store import MeasureStore
@@ -38,12 +39,16 @@ class NormalizeLZComplexity(Normalizer):
 
         # Require N and V explicitly
         nda_key = "Number of Distinct Activities"
-        ne_key  = "Number of Events"
+        ne_key = "Number of Events"
 
         if not measures.has(ne_key):
-            raise Exception("Number of Events required to normalize Lempel–Ziv Complexity")
+            raise Exception(
+                "Number of Events required to normalize Lempel–Ziv Complexity"
+            )
         if not measures.has(nda_key):
-            raise Exception("Number of Distinct Activities required to normalize Lempel–Ziv Complexity")
+            raise Exception(
+                "Number of Distinct Activities required to normalize Lempel–Ziv Complexity"
+            )
 
         N = measures.get_value(ne_key)
         V = measures.get_value(nda_key)

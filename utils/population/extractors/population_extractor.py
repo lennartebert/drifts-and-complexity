@@ -1,8 +1,11 @@
 """Abstract base class for population extractors."""
 
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
+
 from utils.windowing.window import Window
+
 
 class PopulationExtractor(ABC):
     """Abstract strategy for inferring population data from a Window.
@@ -21,17 +24,17 @@ class PopulationExtractor(ABC):
         >>> window_with_pop = extractor.apply(window)
         >>> print(window_with_pop.population_distributions.activities.count)
     """
-    
+
     @abstractmethod
     def apply(self, window: Window) -> Window:
         """Apply population extraction to a window.
-        
+
         Args:
             window: Window containing traces to analyze.
-            
+
         Returns:
             The same window object with population_distributions populated.
-            
+
         Raises:
             ValueError: If window has no traces or traces are invalid.
         """

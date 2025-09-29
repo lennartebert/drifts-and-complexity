@@ -1,25 +1,35 @@
 import argparse
-from pathlib import Path
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from utils import constants 
 import os
+from pathlib import Path
 from typing import Dict
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
 from scipy.stats import pearsonr
+
+from utils import constants
 
 # Define drift type order
 drift_type_order = [
     "Sudden (before to after)",
     "Gradual (before to after)",
     "Gradual (before to during)",
-    "Gradual (during to after)"
+    "Gradual (during to after)",
 ]
+
 
 def load_complexity_per_window_dict(datasets, complexity_window_string):
     """"""
-    dataset_file_dict = {dataset: constants.CHANGE_STUDY_RESULTS_DIR / "complexity_assessment" / dataset / complexity_window_string / "complexity.csv" for dataset in datasets}
+    dataset_file_dict = {
+        dataset: constants.CHANGE_STUDY_RESULTS_DIR
+        / "complexity_assessment"
+        / dataset
+        / complexity_window_string
+        / "complexity.csv"
+        for dataset in datasets
+    }
     complexity_per_window_df_dict = {}
     for dataset, f in dataset_file_dict.items():
         if not f.exists() or not f.is_file():
@@ -27,31 +37,43 @@ def load_complexity_per_window_dict(datasets, complexity_window_string):
         df = pd.read_csv(f)
         df["dataset"] = dataset
         df["start_change_point"] = df["start_change_point"].astype("Int64")
-        df["end_change_point"] =  df["end_change_point"].astype("Int64")
+        df["end_change_point"] = df["end_change_point"].astype("Int64")
         df["n_traces"] = df["last_index"] - df["first_index"]
         df["id"] = df["id"].astype(int)
         complexity_per_window_df_dict[dataset] = df
     return complexity_per_window_df_dict
 
 
-def load_drift_info(complexity_per_window_df_dict, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING):
+def load_drift_info(
+    complexity_per_window_df_dict,
+    cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING,
+):
     drift_info_by_dataset = {}
     for dataset in complexity_per_window_df_dict.keys():
-        path = constants.CHANGE_STUDY_RESULTS_DIR / "drift_detection" / dataset / f"results_{dataset}_{cp_parameter_setting}.csv"
+        path = (
+            constants.CHANGE_STUDY_RESULTS_DIR
+            / "drift_detection"
+            / dataset
+            / f"results_{dataset}_{cp_parameter_setting}.csv"
+        )
         drift_info = pd.read_csv(path)
         # drift info may be empty for some datasets
         if drift_info.empty or drift_info["calc_change_id"].eq("na").all():
             drift_info_by_dataset[dataset] = {}
             continue
         drift_info["calc_change_id"] = drift_info["calc_change_id"].astype("Int64")
-        drift_info_by_dataset[dataset] = drift_info.set_index("calc_change_id").to_dict(orient="index")
+        drift_info_by_dataset[dataset] = drift_info.set_index("calc_change_id").to_dict(
+            orient="index"
+        )
     return drift_info_by_dataset
+
 
 def get_drift_info_summary_table(drift_info_by_dataset):
     drift_info_summary_dict = {}
 
     for dataset, drift_info_dict in drift_info_by_dataset.items():
-        if drift_info_dict == {}: continue
+        if drift_info_dict == {}:
+            continue
         result = {}
         sudden_changes = []
         gradual_changes = []
@@ -84,11 +106,13 @@ def get_drift_info_summary_table(drift_info_by_dataset):
         drift_info_summary_dict[dataset] = result
 
     # convert dict to DataFrame
-    drift_info_summary_df = pd.DataFrame.from_dict(drift_info_summary_dict, orient="index")
+    drift_info_summary_df = pd.DataFrame.from_dict(
+        drift_info_summary_dict, orient="index"
+    )
 
     # add total row
     total_row = {
-        '# Total Changes': drift_info_summary_df["# Total Changes"].sum(),
+        "# Total Changes": drift_info_summary_df["# Total Changes"].sum(),
         "# Sudden Changes": drift_info_summary_df["# Sudden Changes"].sum(),
         "Sudden Change Points": "",
         "# Gradual Changes": drift_info_summary_df["# Gradual Changes"].sum(),
@@ -98,40 +122,87 @@ def get_drift_info_summary_table(drift_info_by_dataset):
 
     return drift_info_summary_df
 
+
 def compute_complexity_deltas(window_dict, drift_info_by_dataset):
     results = []
     for dataset, window_df in window_dict.items():
         drift_info = drift_info_by_dataset.get(dataset, {})
-        measure_columns = [col for col in window_df.columns if col.startswith("measure_")]
+        measure_columns = [
+            col for col in window_df.columns if col.startswith("measure_")
+        ]
 
         for change_id, info in drift_info.items():
             change_type = info["calc_change_type"]
-            window_before_change_point = window_df[window_df["end_change_point"] == change_id].iloc[0]
-            window_after_change_point = window_df[window_df["start_change_point"] == change_id].iloc[0]
+            window_before_change_point = window_df[
+                window_df["end_change_point"] == change_id
+            ].iloc[0]
+            window_after_change_point = window_df[
+                window_df["start_change_point"] == change_id
+            ].iloc[0]
 
             # Assert that window_before_change and window_after_change are not empty - there always needs to be a window before/after a change point
-            assert not window_before_change_point.empty, f"window_before_change is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
-            assert not window_after_change_point.empty, f"window_after_change is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
+            assert (
+                not window_before_change_point.empty
+            ), f"window_before_change is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
+            assert (
+                not window_after_change_point.empty
+            ), f"window_after_change is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
 
             if change_type == "sudden":
-                deltas = (window_after_change_point[measure_columns] - window_before_change_point[measure_columns]).to_dict()
-                results.append({"change_type": "Sudden (before to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
+                deltas = (
+                    window_after_change_point[measure_columns]
+                    - window_before_change_point[measure_columns]
+                ).to_dict()
+                results.append(
+                    {
+                        "change_type": "Sudden (before to after)",
+                        **{k.replace("measure_", ""): v for k, v in deltas.items()},
+                    }
+                )
 
             elif change_type == "gradual_start":
-                deltas = (window_after_change_point[measure_columns] - window_before_change_point[measure_columns]).to_dict()
-                results.append({"change_type": "Gradual (before to during)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
+                deltas = (
+                    window_after_change_point[measure_columns]
+                    - window_before_change_point[measure_columns]
+                ).to_dict()
+                results.append(
+                    {
+                        "change_type": "Gradual (before to during)",
+                        **{k.replace("measure_", ""): v for k, v in deltas.items()},
+                    }
+                )
 
                 # also record the before to after change
-                window_after_gradual_end = window_df[window_df["start_change_point"] == change_id + 1].iloc[0]
-                assert not window_after_gradual_end.empty, f"window_after_gradual_end is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
-                deltas = (window_after_gradual_end[measure_columns] - window_before_change_point[measure_columns]).to_dict()
-                results.append({"change_type": "Gradual (before to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
+                window_after_gradual_end = window_df[
+                    window_df["start_change_point"] == change_id + 1
+                ].iloc[0]
+                assert (
+                    not window_after_gradual_end.empty
+                ), f"window_after_gradual_end is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
+                deltas = (
+                    window_after_gradual_end[measure_columns]
+                    - window_before_change_point[measure_columns]
+                ).to_dict()
+                results.append(
+                    {
+                        "change_type": "Gradual (before to after)",
+                        **{k.replace("measure_", ""): v for k, v in deltas.items()},
+                    }
+                )
 
             elif change_type == "gradual_end":
-                deltas = (window_after_change_point[measure_columns] - window_before_change_point[measure_columns]).to_dict()
-                results.append({"change_type": "Gradual (during to after)", **{k.replace("measure_", ""): v for k, v in deltas.items()}})
-                       
-            else: 
+                deltas = (
+                    window_after_change_point[measure_columns]
+                    - window_before_change_point[measure_columns]
+                ).to_dict()
+                results.append(
+                    {
+                        "change_type": "Gradual (during to after)",
+                        **{k.replace("measure_", ""): v for k, v in deltas.items()},
+                    }
+                )
+
+            else:
                 raise ValueError("Unknown change type")
 
     return pd.DataFrame(results)
@@ -142,14 +213,14 @@ def format_number(x, include_plus=False):
     if abs(x) >= 1000:
         if include_plus:
             return f"{x:+.1e}"  # scientific notation
-        else: 
+        else:
             return f"{x:.1e}"  # scientific notation
     else:
         if include_plus:
             return f"{x:+.2f}"  # fixed-point with 2 decimals
         else:
             return f"{x:.2f}"  # fixed-point with 2 decimals
-    
+
 
 def save_aggregated_table(results_df, cp_parameter_setting):
     results_df_clean = results_df.dropna()
@@ -159,25 +230,35 @@ def save_aggregated_table(results_df, cp_parameter_setting):
     records = []
     for measure in measure_cols:
         for change_type in change_types:
-            subset = results_df_clean[results_df_clean["change_type"] == change_type][measure]
-            records.append({
-                "measure": measure,
-                "change_type": change_type,
-                "mean": subset.mean(),
-                "min": subset.min(),
-                "max": subset.max(),
-                "std": subset.std(),
-                "count": subset.count()
-            })
+            subset = results_df_clean[results_df_clean["change_type"] == change_type][
+                measure
+            ]
+            records.append(
+                {
+                    "measure": measure,
+                    "change_type": change_type,
+                    "mean": subset.mean(),
+                    "min": subset.min(),
+                    "max": subset.max(),
+                    "std": subset.std(),
+                    "count": subset.count(),
+                }
+            )
 
     summary_df = pd.DataFrame(records)
     summary_df.set_index(["measure", "change_type"], inplace=True)
     summary_df = summary_df.reorder_levels(["change_type", "measure"]).sort_index()
     # Ensure the output directory exists
-    output_dir = constants.CHANGE_STUDY_RESULTS_DIR / "combined_results" / "tables" / cp_parameter_setting
+    output_dir = (
+        constants.CHANGE_STUDY_RESULTS_DIR
+        / "combined_results"
+        / "tables"
+        / cp_parameter_setting
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     summary_df.to_csv(output_dir / "complexity_delta_aggregated.csv")
     return summary_df
+
 
 def save_simple_aggregated_table(aggregated_table_df, cp_parameter_setting):
     # Ensure index is MultiIndex
@@ -193,7 +274,9 @@ def save_simple_aggregated_table(aggregated_table_df, cp_parameter_setting):
 
         if change_type in aggregated_table_df.index.get_level_values("change_type"):
             subset = aggregated_table_df.loc[change_type]
-            row["Instances"] = int(subset["count"].iloc[0]) if "count" in subset.columns else None
+            row["Instances"] = (
+                int(subset["count"].iloc[0]) if "count" in subset.columns else None
+            )
 
             for measure in measures:
                 if measure in subset.index:
@@ -213,7 +296,13 @@ def save_simple_aggregated_table(aggregated_table_df, cp_parameter_setting):
     # Create DataFrame and save
     final_df = pd.DataFrame(rows)
     final_df.set_index("Change Type", inplace=True)
-    final_df.to_csv(constants.CHANGE_STUDY_RESULTS_DIR / "combined_results" / "tables" / cp_parameter_setting / "complexity_delta_simple.csv")
+    final_df.to_csv(
+        constants.CHANGE_STUDY_RESULTS_DIR
+        / "combined_results"
+        / "tables"
+        / cp_parameter_setting
+        / "complexity_delta_simple.csv"
+    )
 
     return final_df
 
@@ -223,22 +312,21 @@ def save_boxplots(results_df, cp_parameter_setting):
 
     for measure in measure_names:
         plt.figure(figsize=(8, 5))
-        sns.boxplot(
-            data=results_df,
-            x="change_type",
-            y=measure,
-            order=drift_type_order
-        )
+        sns.boxplot(data=results_df, x="change_type", y=measure, order=drift_type_order)
         plt.xlabel("Change Type")
         plt.ylabel(measure.replace("_", " ").title())
         plt.xticks(rotation=25, ha="right")
         plt.tight_layout()
         # Ensure the output directory exists
-        output_dir = constants.CHANGE_STUDY_RESULTS_DIR / "combined_results" / "boxplots" / cp_parameter_setting
+        output_dir = (
+            constants.CHANGE_STUDY_RESULTS_DIR
+            / "combined_results"
+            / "boxplots"
+            / cp_parameter_setting
+        )
         output_dir.mkdir(parents=True, exist_ok=True)
         plt.savefig(output_dir / f"{measure}_boxplot.png", dpi=300)
         plt.close()
-
 
 
 def compute_and_save_correlation_analysis(
@@ -267,14 +355,23 @@ def compute_and_save_correlation_analysis(
     if not dfs:
         result_df = pd.DataFrame(
             columns=[
-                "measure", "column", "n_rows_used", "n_datasets_used",
-                "pearson_r", "p_value_two_sided",
-                "significant_0.10","significant_0.05","significant_0.01","significant_0.001",
-                "direction"
+                "measure",
+                "column",
+                "n_rows_used",
+                "n_datasets_used",
+                "pearson_r",
+                "p_value_two_sided",
+                "significant_0.10",
+                "significant_0.05",
+                "significant_0.01",
+                "significant_0.001",
+                "direction",
             ]
         )
         os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, f"{cp_parameter_setting}_correlation_analysis.csv")
+        out_path = os.path.join(
+            out_dir, f"{cp_parameter_setting}_correlation_analysis.csv"
+        )
         result_df.to_csv(out_path, index=False)
         return result_df
 
@@ -285,18 +382,26 @@ def compute_and_save_correlation_analysis(
     if "dataset" not in combined.columns:
         combined["dataset"] = "unknown"
 
-    measure_cols = [c for c in combined.columns if isinstance(c, str) and c.startswith("measure_")]
+    measure_cols = [
+        c for c in combined.columns if isinstance(c, str) and c.startswith("measure_")
+    ]
     n_traces_all = pd.to_numeric(combined["n_traces"], errors="coerce")
 
     rows = []
     for col in measure_cols:
         measure_vals = pd.to_numeric(combined[col], errors="coerce")
 
-        pair = pd.DataFrame({
-            "x": measure_vals,
-            "y": n_traces_all,
-            "dataset": combined["dataset"],
-        }).replace([pd.NA, pd.NaT, np.inf, -np.inf], np.nan).dropna(subset=["x", "y"])
+        pair = (
+            pd.DataFrame(
+                {
+                    "x": measure_vals,
+                    "y": n_traces_all,
+                    "dataset": combined["dataset"],
+                }
+            )
+            .replace([pd.NA, pd.NaT, np.inf, -np.inf], np.nan)
+            .dropna(subset=["x", "y"])
+        )
 
         n_rows_used = int(len(pair))
         n_datasets_used = int(pair["dataset"].nunique()) if n_rows_used > 0 else 0
@@ -305,46 +410,60 @@ def compute_and_save_correlation_analysis(
         if n_rows_used < 2 or pair["x"].nunique() < 2 or pair["y"].nunique() < 2:
             r, p = np.nan, np.nan
         else:
-            r, p = pearsonr(pair["x"].to_numpy(dtype=float), pair["y"].to_numpy(dtype=float))
+            r, p = pearsonr(
+                pair["x"].to_numpy(dtype=float), pair["y"].to_numpy(dtype=float)
+            )
 
-        measure_name = col[len("measure_"):]
-        sig_10  = (p <= 0.10) if np.isfinite(p) else False
-        sig_05  = (p <= 0.05) if np.isfinite(p) else False
-        sig_01  = (p <= 0.01) if np.isfinite(p) else False
+        measure_name = col[len("measure_") :]
+        sig_10 = (p <= 0.10) if np.isfinite(p) else False
+        sig_05 = (p <= 0.05) if np.isfinite(p) else False
+        sig_01 = (p <= 0.01) if np.isfinite(p) else False
         sig_001 = (p <= 0.001) if np.isfinite(p) else False
 
         direction = (
-            "positive" if np.isfinite(r) and r > 0
-            else "negative" if np.isfinite(r) and r < 0
-            else "zero/undefined"
+            "positive"
+            if np.isfinite(r) and r > 0
+            else "negative" if np.isfinite(r) and r < 0 else "zero/undefined"
         )
 
-        rows.append({
-            "measure": measure_name,
-            "column": col,
-            "n_rows_used": n_rows_used,
-            "n_datasets_used": n_datasets_used,
-            "pearson_r": r,
-            "p_value_two_sided": p,
-            "significant_0.10": sig_10,
-            "significant_0.05": sig_05,
-            "significant_0.01": sig_01,
-            "significant_0.001": sig_001,
-            "direction": direction,
-        })
+        rows.append(
+            {
+                "measure": measure_name,
+                "column": col,
+                "n_rows_used": n_rows_used,
+                "n_datasets_used": n_datasets_used,
+                "pearson_r": r,
+                "p_value_two_sided": p,
+                "significant_0.10": sig_10,
+                "significant_0.05": sig_05,
+                "significant_0.01": sig_01,
+                "significant_0.001": sig_001,
+                "direction": direction,
+            }
+        )
 
         # --- Plot for trace_length_avg ---
         if col == "measure_Trace length avg" and n_rows_used > 0:
             plt.figure(figsize=(8, 6))
             sns.scatterplot(
-                data=pair, x="y", y="x",
-                hue="dataset", alpha=0.7, edgecolor="black", linewidth=0.5, s=10
+                data=pair,
+                x="y",
+                y="x",
+                hue="dataset",
+                alpha=0.7,
+                edgecolor="black",
+                linewidth=0.5,
+                s=10,
             )
 
             # Overall regression line
             sns.regplot(
-                data=pair, x="y", y="x",
-                scatter=False, color="black", line_kws={"linestyle": "--", "label": "Overall trend"}
+                data=pair,
+                x="y",
+                y="x",
+                scatter=False,
+                color="black",
+                line_kws={"linestyle": "--", "label": "Overall trend"},
             )
 
             plt.xlabel("Number of Traces (n_traces)")
@@ -352,34 +471,56 @@ def compute_and_save_correlation_analysis(
             plt.title("n_traces vs. trace_length_avg by Dataset")
             plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
             plt.tight_layout()
-            plt.savefig(os.path.join(out_dir, f"{cp_parameter_setting}_trace_length_avg_scatter.png"), dpi=600)
+            plt.savefig(
+                os.path.join(
+                    out_dir, f"{cp_parameter_setting}_trace_length_avg_scatter.png"
+                ),
+                dpi=600,
+            )
 
     result_df = pd.DataFrame(rows).sort_values(["measure"]).reset_index(drop=True)
     out_path = os.path.join(out_dir, f"{cp_parameter_setting}_correlation_analysis.csv")
     result_df.to_csv(out_path, index=False)
     return result_df
 
-def main(datasets=None, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING, complexity_window_setting=constants.DEFAULT_COMPLEXITY_WINDOW_SETTING):
+
+def main(
+    datasets=None,
+    cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING,
+    complexity_window_setting=constants.DEFAULT_COMPLEXITY_WINDOW_SETTING,
+):
     print("#### Starting to combine drift analysis results ####")
     if datasets is None:
         # Get all folder names (1st level child) under folder results/complexity_assessment
         datasets = [
-            d.name for d in (constants.CHANGE_STUDY_RESULTS_DIR / "complexity_assessment").iterdir()
+            d.name
+            for d in (
+                constants.CHANGE_STUDY_RESULTS_DIR / "complexity_assessment"
+            ).iterdir()
             if d.is_dir()
         ]
-    
-    complexity_window_string = f'{cp_parameter_setting}__{complexity_window_setting}'
+
+    complexity_window_string = f"{cp_parameter_setting}__{complexity_window_setting}"
 
     window_dict = load_complexity_per_window_dict(datasets, complexity_window_string)
     if not window_dict:
-        print(f"No datasets with complexity_per_window.csv for {cp_parameter_setting} found.")
+        print(
+            f"No datasets with complexity_per_window.csv for {cp_parameter_setting} found."
+        )
         return
     drift_info_by_dataset = load_drift_info(window_dict, cp_parameter_setting)
 
     # get summary of drift info
-    drift_info_summary_table_df = get_drift_info_summary_table(drift_info_by_dataset=drift_info_by_dataset)
+    drift_info_summary_table_df = get_drift_info_summary_table(
+        drift_info_by_dataset=drift_info_by_dataset
+    )
     # Ensure the output directory exists
-    output_dir = constants.CHANGE_STUDY_RESULTS_DIR / "combined_results" / "tables" / complexity_window_string
+    output_dir = (
+        constants.CHANGE_STUDY_RESULTS_DIR
+        / "combined_results"
+        / "tables"
+        / complexity_window_string
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     drift_info_summary_table_df.to_csv(output_dir / "drift_info_summary.csv")
 
@@ -388,32 +529,42 @@ def main(datasets=None, cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARA
 
     aggregated_table = save_aggregated_table(results_df, complexity_window_string)
     print(aggregated_table)
-    simple_aggregated_table = save_simple_aggregated_table(aggregated_table, complexity_window_string)
+    simple_aggregated_table = save_simple_aggregated_table(
+        aggregated_table, complexity_window_string
+    )
     print(simple_aggregated_table)
 
-    correlation_analysis = compute_and_save_correlation_analysis(window_dict, complexity_window_string)
+    correlation_analysis = compute_and_save_correlation_analysis(
+        window_dict, complexity_window_string
+    )
     print(correlation_analysis)
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Combine drift complexity analysis detection results.")
+    parser = argparse.ArgumentParser(
+        description="Combine drift complexity analysis detection results."
+    )
     parser.add_argument(
         "--datasets",
         nargs="+",
         default=None,
-        help="Optional list of dataset keys to include. If not set, all datasets are used."
+        help="Optional list of dataset keys to include. If not set, all datasets are used.",
     )
     parser.add_argument(
         "--cp-parameter-setting",
         default=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING,
-        help="Name of change point parameter setting (e.g., processGraphsPDefaultWDefault)"
+        help="Name of change point parameter setting (e.g., processGraphsPDefaultWDefault)",
     )
     parser.add_argument(
         "--complexity-window-setting",
         default=constants.DEFAULT_COMPLEXITY_WINDOW_SETTING,
-        help="Name of complexity window setting (e.g., cp_default)"
+        help="Name of complexity window setting (e.g., cp_default)",
     )
 
     args = parser.parse_args()
 
-    main(datasets=args.datasets, cp_parameter_setting=args.cp_parameter_setting, complexity_window_setting=args.complexity_window_setting)
-
+    main(
+        datasets=args.datasets,
+        cp_parameter_setting=args.cp_parameter_setting,
+        complexity_window_setting=args.complexity_window_setting,
+    )

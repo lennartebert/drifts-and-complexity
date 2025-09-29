@@ -1,4 +1,4 @@
-from typing import Protocol, Any
+from typing import Any, Protocol
 
 from utils.complexity.measures.measure_store import MeasureStore
 
@@ -12,7 +12,8 @@ class Metric(Protocol):
       - writes any measures (and hidden by-products) into that store
       - returns None (store is mutated in place)
     """
+
     name: str
     requires: list[str] = []
-    
+
     def compute(self, input_data: Any, measures: MeasureStore) -> None: ...

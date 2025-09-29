@@ -8,7 +8,7 @@ class NormalizePercentageOfDistinctTraces(Normalizer):
     """
     Convert 'Percentage of Distinct Traces' into a COUNT by multiplying with
     'Number of Traces'.
-    
+
     - Accepts percentages in [0,1] or [0,100].
     - Does nothing if the base measure is absent.
     - Raises if 'Number of Traces' is missing.
@@ -30,7 +30,9 @@ class NormalizePercentageOfDistinctTraces(Normalizer):
 
         nt_key = "Number of Traces"
         if not measures.has(nt_key):
-            raise Exception("Number of Traces required to normalize Percentage of Distinct Traces")
+            raise Exception(
+                "Number of Traces required to normalize Percentage of Distinct Traces"
+            )
 
         nt = measures.get_value(nt_key)
 

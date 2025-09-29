@@ -1,9 +1,9 @@
-
+import math
 import os
 from typing import Iterable, Tuple
-import math
-import pandas as pd
+
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def _get_measure_columns(df: pd.DataFrame) -> list[str]:
@@ -48,7 +48,9 @@ def plot_aggregated_measures_cis(
     # Ensure columns align and pick measure columns
     measure_cols = _get_measure_columns(measures_df)
     # guard: intersect with CI frames in case of drift
-    measure_cols = [c for c in measure_cols if c in ci_low_df.columns and c in ci_high_df.columns]
+    measure_cols = [
+        c for c in measure_cols if c in ci_low_df.columns and c in ci_high_df.columns
+    ]
 
     # Group by sample_size and aggregate
     group = measures_df.groupby("sample_size", as_index=True)

@@ -84,13 +84,17 @@ class LocalMetricsAdapter(MetricsAdapter):
             - "hidden":   list of measure keys currently hidden,
             - "skipped":  list of metric names requested but not produced.
         """
-        store = measures if isinstance(measures, MeasureStore) else MeasureStore(measures)
+        store = (
+            measures if isinstance(measures, MeasureStore) else MeasureStore(measures)
+        )
 
         selected_metrics = self.available_metrics()
         if include is not None:
             selected_metrics = [name for name in include if name in selected_metrics]
         if exclude is not None:
-            selected_metrics = [name for name in selected_metrics if name not in exclude]
+            selected_metrics = [
+                name for name in selected_metrics if name not in exclude
+            ]
 
         store, info = self._orch.compute_many_metrics(
             selected_metrics,
@@ -109,7 +113,9 @@ class LocalMetricsAdapter(MetricsAdapter):
     def compute_measures_for_windows(
         self,
         windows: List[Window],
-        measures_by_id: Optional[Dict[str, Union[MeasureStore, Dict[str, Measure]]]] = None,
+        measures_by_id: Optional[
+            Dict[str, Union[MeasureStore, Dict[str, Measure]]]
+        ] = None,
         include: Optional[Iterable[str]] = None,
         exclude: Optional[Iterable[str]] = None,
     ) -> Dict[str, Tuple[MeasureStore, Dict]]:

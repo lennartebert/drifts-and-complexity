@@ -1,42 +1,46 @@
 """Window configuration loader and validator."""
 
 from __future__ import annotations
-from typing import Dict, List, Any
+
 from pathlib import Path
+from typing import Any, Dict, List
+
 from ..helpers import load_yaml
 
 _ALLOWED = {"change_point_windows", "fixed_size_windows", "window_comparison"}
 
+
 def _req_int(params: Dict[str, Any], key: str, min_val: int) -> int:
     """Require an integer parameter with minimum value.
-    
+
     Args:
         params: Parameter dictionary.
         key: Parameter key.
         min_val: Minimum allowed value.
-        
+
     Returns:
         Integer value.
-        
+
     Raises:
         ValueError: If parameter is missing, not an integer, or below minimum.
     """
-    if key not in params: 
+    if key not in params:
         raise ValueError(f"Missing param '{key}'.")
-    try: 
+    try:
         val = int(params[key])
-    except Exception: 
+    except Exception:
         raise ValueError(f"Param '{key}' must be integer.")
-    if val < min_val: 
+    if val < min_val:
         raise ValueError(f"Param '{key}' must be ≥ {min_val}.")
     return val
 
+
 def validate_window_approaches(approaches: List[Dict[str, Any]]) -> None:
     """Validate window approach configurations.
-    
+
     Args:
         approaches: List of approach configuration dictionaries.
-        
+
     Raises:
         ValueError: If validation fails.
     """
@@ -44,15 +48,15 @@ def validate_window_approaches(approaches: List[Dict[str, Any]]) -> None:
         raise ValueError("'approaches' must be a non-empty list")
     seen = set()
     for a in approaches:
-        name = str(a.get("name","")).strip()
-        typ  = str(a.get("type","")).strip()
+        name = str(a.get("name", "")).strip()
+        typ = str(a.get("type", "")).strip()
         params = a.get("params", {}) or {}
-        if not name: 
+        if not name:
             raise ValueError("Approach requires a 'name'")
-        if name in seen: 
+        if name in seen:
             raise ValueError(f"Duplicate approach name: {name}")
         seen.add(name)
-        if typ not in _ALLOWED: 
+        if typ not in _ALLOWED:
             raise ValueError(f"Unknown approach type: {typ}")
         if typ == "fixed_size_windows":
             _req_int(params, "window_size", 1)
@@ -63,15 +67,16 @@ def validate_window_approaches(approaches: List[Dict[str, Any]]) -> None:
             _req_int(params, "offset", 0)
             _req_int(params, "step", 1)
 
+
 def load_window_config(path: Path) -> List[Dict[str, Any]]:
     """Load and validate window configuration from YAML file.
-    
+
     Args:
         path: Path to YAML configuration file.
-        
+
     Returns:
         List of validated approach configurations.
-        
+
     Raises:
         ValueError: If validation fails.
     """

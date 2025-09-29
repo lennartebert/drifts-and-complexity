@@ -4,12 +4,10 @@ This module provides tools for analyzing process complexity through various metr
 and assessment methods.
 """
 
-from . import assessors
-from . import metrics
-from . import metrics_adapters
+from . import assessors, metrics, metrics_adapters
 
 __all__ = [
     "assessors",
-    "metrics", 
+    "metrics",
     "metrics_adapters",
 ]

@@ -1,16 +1,16 @@
 from pathlib import Path
-from typing import Optional, Dict, Any, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 
 # Project constants (adjust import if your path differs)
 from utils.constants import COMPLEXITY_RESULTS_DIR
 
-
 # -----------------------------------------------------------------------------
 # Public API
 # -----------------------------------------------------------------------------
+
 
 def plot_complexity_via_change_point_split(
     dataset_key: str,
@@ -72,13 +72,10 @@ def plot_complexity_via_fixed_sized_windows(
     """
     df = _prepare_df(flat_data)
 
-    default_title = (
-        title
-        or (
-            f"Fixed-size windows (size={window_size}, offset={offset})"
-            if window_size is not None and offset is not None
-            else "Fixed-size windows"
-        )
+    default_title = title or (
+        f"Fixed-size windows (size={window_size}, offset={offset})"
+        if window_size is not None and offset is not None
+        else "Fixed-size windows"
     )
 
     measure_columns = _get_measure_columns(df)
@@ -153,6 +150,7 @@ def plot_delta_measures(
 # Internals – single-figure renderers & helpers
 # -----------------------------------------------------------------------------
 
+
 def _plot_single_cp_segments(
     dataset_key: str,
     configuration_name: str,
@@ -188,7 +186,12 @@ def _plot_single_cp_segments(
         val = row.get(measure_column)
         if pd.isna(val):
             continue
-        ax.plot([row["start_moment"], row["end_moment"]], [val, val], color="blue", linewidth=1.5)
+        ax.plot(
+            [row["start_moment"], row["end_moment"]],
+            [val, val],
+            color="blue",
+            linewidth=1.5,
+        )
         # N label
         n = int(row["size"])  # guaranteed by caller
         mid = row["start_moment"] + (row["end_moment"] - row["start_moment"]) / 2
@@ -199,9 +202,13 @@ def _plot_single_cp_segments(
         ax.text(mid, y_pos, f"N={n}", fontsize=7, ha="center", va="bottom")
 
     _apply_y_scale_and_headroom(ax, y_series, y_log=y_log, headroom=headroom)
-    _draw_start_end_and_cps(ax, df["start_moment"].min(), df["end_moment"].max(), drift_info_by_id)
+    _draw_start_end_and_cps(
+        ax, df["start_moment"].min(), df["end_moment"].max(), drift_info_by_id
+    )
 
-    _finalize_and_save(ax, dataset_key, configuration_name, f"{mname}_over_time.{fig_format}")
+    _finalize_and_save(
+        ax, dataset_key, configuration_name, f"{mname}_over_time.{fig_format}"
+    )
 
 
 def _plot_single_fixed_line(
@@ -225,7 +232,11 @@ def _plot_single_fixed_line(
     mname = measure_column.removeprefix("measure_")
 
     # Sort by end_moment to ensure monotonic x for line plot
-    d = df[["end_moment", "start_moment", measure_column]].sort_values("end_moment").copy()
+    d = (
+        df[["end_moment", "start_moment", measure_column]]
+        .sort_values("end_moment")
+        .copy()
+    )
 
     fig, ax = plt.subplots(figsize=(12, 5))
     if title:
@@ -237,14 +248,25 @@ def _plot_single_fixed_line(
         return
 
     # line + points
-    ax.plot(d["end_moment"], d[measure_column], color="blue", linewidth=1.5, marker="o", markersize=3)
+    ax.plot(
+        d["end_moment"],
+        d[measure_column],
+        color="blue",
+        linewidth=1.5,
+        marker="o",
+        markersize=3,
+    )
     # Pretty y-label for fixed-size charts
     ax.set_ylabel(_format_measure_label(mname))
 
     _apply_y_scale_and_headroom(ax, y_series, y_log=y_log, headroom=headroom)
-    _draw_start_end_and_cps(ax, d["start_moment"].min(), d["end_moment"].max(), drift_info_by_id)
+    _draw_start_end_and_cps(
+        ax, d["start_moment"].min(), d["end_moment"].max(), drift_info_by_id
+    )
 
-    _finalize_and_save(ax, dataset_key, configuration_name, f"{mname}_over_time.{fig_format}")
+    _finalize_and_save(
+        ax, dataset_key, configuration_name, f"{mname}_over_time.{fig_format}"
+    )
 
 
 def _plot_single_delta_line(
@@ -267,7 +289,11 @@ def _plot_single_delta_line(
     dname = delta_column.removeprefix("delta_measure_")
 
     # Sort by plot_time to get a chronological line
-    d = df[["plot_time", "start_moment", "end_moment", delta_column]].dropna(subset=["plot_time"]).sort_values("plot_time")
+    d = (
+        df[["plot_time", "start_moment", "end_moment", delta_column]]
+        .dropna(subset=["plot_time"])
+        .sort_values("plot_time")
+    )
 
     fig, ax = plt.subplots(figsize=(12, 5))
     if title:
@@ -285,17 +311,29 @@ def _plot_single_delta_line(
     use_log = y_log and (y_series > 0).all()
 
     # line + points at plot_time
-    ax.plot(d["plot_time"], d[delta_column], color="blue", linewidth=1.5, marker="o", markersize=3)
+    ax.plot(
+        d["plot_time"],
+        d[delta_column],
+        color="blue",
+        linewidth=1.5,
+        marker="o",
+        markersize=3,
+    )
 
     _apply_y_scale_and_headroom(ax, y_series, y_log=use_log, headroom=headroom)
-    _draw_start_end_and_cps(ax, d["start_moment"].min(), d["end_moment"].max(), drift_info_by_id)
+    _draw_start_end_and_cps(
+        ax, d["start_moment"].min(), d["end_moment"].max(), drift_info_by_id
+    )
 
-    _finalize_and_save(ax, dataset_key, configuration_name, f"delta_{dname}_over_time.{fig_format}")
+    _finalize_and_save(
+        ax, dataset_key, configuration_name, f"delta_{dname}_over_time.{fig_format}"
+    )
 
 
 # -----------------------------------------------------------------------------
 # Small helpers
 # -----------------------------------------------------------------------------
+
 
 def _format_measure_label(name: str) -> str:
     """Replace underscores with spaces for nicer axis labels/titles."""
@@ -303,10 +341,11 @@ def _format_measure_label(name: str) -> str:
         return ""
     return str(name).replace("_", " ").strip()
 
+
 def _prepare_df(flat_data: Any) -> pd.DataFrame:
     df = pd.DataFrame(flat_data).copy()
     df["start_moment"] = pd.to_datetime(df["start_moment"], utc=True)  # required
-    df["end_moment"] = pd.to_datetime(df["end_moment"], utc=True)      # required
+    df["end_moment"] = pd.to_datetime(df["end_moment"], utc=True)  # required
     return df
 
 
@@ -320,7 +359,9 @@ def _get_measure_columns(df: pd.DataFrame) -> List[str]:
     return [c for c in df.columns if c.startswith("measure_")]
 
 
-def _apply_y_scale_and_headroom(ax: plt.Axes, y_series: pd.Series, *, y_log: bool, headroom: float) -> None:
+def _apply_y_scale_and_headroom(
+    ax: plt.Axes, y_series: pd.Series, *, y_log: bool, headroom: float
+) -> None:
     """Apply linear/log scaling and add top headroom. Linear bottom is clamped at 0.
 
     For log, choose a bottom slightly below the smallest positive value.
@@ -373,8 +414,24 @@ def _draw_start_end_and_cps(
     ax.axvline(x_end, color="grey", linestyle="--", linewidth=1)
 
     ylim_top = ax.get_ylim()[1]
-    ax.text(x_start, ylim_top, label_map["start"], fontsize=8, ha="left", va="bottom", rotation=45)
-    ax.text(x_end, ylim_top, label_map["end"], fontsize=8, ha="left", va="bottom", rotation=45)
+    ax.text(
+        x_start,
+        ylim_top,
+        label_map["start"],
+        fontsize=8,
+        ha="left",
+        va="bottom",
+        rotation=45,
+    )
+    ax.text(
+        x_end,
+        ylim_top,
+        label_map["end"],
+        fontsize=8,
+        ha="left",
+        va="bottom",
+        rotation=45,
+    )
 
     # change-points (red)
     if drift_info_by_id:
@@ -382,9 +439,13 @@ def _draw_start_end_and_cps(
             if cid == "na":
                 continue
             cp_x = pd.to_datetime(info["calc_change_moment"])
-            cp_lab = label_map.get(info.get("calc_change_type"), info.get("calc_change_type", "cp"))
+            cp_lab = label_map.get(
+                info.get("calc_change_type"), info.get("calc_change_type", "cp")
+            )
             ax.axvline(x=cp_x, color="red", linestyle="--", alpha=0.5)
-            ax.text(cp_x, ylim_top, cp_lab, fontsize=8, ha="left", va="bottom", rotation=45)
+            ax.text(
+                cp_x, ylim_top, cp_lab, fontsize=8, ha="left", va="bottom", rotation=45
+            )
 
     # common axes decorations
     ax.set_xlabel("Time")
@@ -393,7 +454,9 @@ def _draw_start_end_and_cps(
     ax.grid(True)
 
 
-def _finalize_and_save(ax: plt.Axes, dataset_key: str, configuration_name: str, filename: str) -> None:
+def _finalize_and_save(
+    ax: plt.Axes, dataset_key: str, configuration_name: str, filename: str
+) -> None:
     mname = ax.get_ylabel()  # may be empty if not set yet
 
     # If ylabel not set by caller, try to set from filename

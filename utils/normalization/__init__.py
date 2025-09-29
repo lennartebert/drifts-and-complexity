@@ -1,7 +1,6 @@
 """Data normalization utilities."""
 
-from . import orchestrator
-from . import normalizers
+from . import normalizers, orchestrator
 
 __all__ = [
     "orchestrator",

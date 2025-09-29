@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import Dict, Type, Iterable, List, Callable
+
 import importlib
 import pkgutil
+from typing import Callable, Dict, Iterable, List, Type
 
 from utils.complexity.metrics.metric import Metric
 
@@ -29,6 +30,7 @@ def register_metric(name: str) -> Callable[[Type[Metric]], Type[Metric]]:
     Callable[[Type[Metric]], Type[Metric]]
         A decorator that registers the given class and returns it unchanged.
     """
+
     def _wrap(cls: Type[Metric]) -> Type[Metric]:
         # Ensure a list exists for this name
         bucket = _METRIC_REGISTRY.setdefault(name, [])
@@ -39,6 +41,7 @@ def register_metric(name: str) -> Callable[[Type[Metric]], Type[Metric]]:
         if not getattr(cls, "name", None):
             cls.name = name  # type: ignore[attr-defined]
         return cls
+
     return _wrap
 
 

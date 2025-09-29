@@ -8,7 +8,7 @@ Transform this messy structure:
 ```
 drifts-and-complexity/
 ├── process-complexity/           # ❌ Hyphen, scattered
-├── cdrift-evaluation/            # ❌ Hyphen, scattered  
+├── cdrift-evaluation/            # ❌ Hyphen, scattered
 ├── concept-drift-characterization/ # ❌ Hyphen, scattered
 └── utils/
 ```
@@ -173,7 +173,7 @@ git add .
 git commit -m "refactor: reorganize submodules into plugins structure
 
 - Move process-complexity → plugins/vidgof_complexity
-- Move cdrift-evaluation → plugins/cdrift_evaluation  
+- Move cdrift-evaluation → plugins/cdrift_evaluation
 - Move concept-drift-characterization → plugins/drift_characterization
 - Update imports and documentation
 - Improve project organization and maintainability"

@@ -1,6 +1,7 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -13,9 +14,11 @@ class Measure:
     - meta: free-form metadata (e.g., {"source": "observed"})
     - value_normalized: normalized version of the value
     """
+
     name: str
     value: float
     hidden: bool = False
     meta: Dict[str, Any] = field(default_factory=dict)
-    value_normalized: Optional[float] = None # store normalized value separately from non-normalized value
-    
+    value_normalized: Optional[float] = (
+        None  # store normalized value separately from non-normalized value
+    )

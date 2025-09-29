@@ -8,7 +8,7 @@ class NormalizeNumberOfTraces(Normalizer):
     """
     Normalize 'Number of Traces' to a constant 1
     (i.e., value_normalized = number_of_traces / number_of_traces).
-    
+
     - Does nothing if the base measure is absent.
     - Stores 1.0 as the normalized value without overwriting .value.
     """

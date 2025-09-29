@@ -1,8 +1,6 @@
 """Windowing utilities for time-series analysis."""
 
-from . import helpers
-from . import loader
-from . import window
+from . import helpers, loader, window
 
 __all__ = [
     "helpers",

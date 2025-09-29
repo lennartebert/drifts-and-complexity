@@ -4,7 +4,7 @@ By Lennart Ebert (lennart.ebert@hu-berlin.de)
 ## Getting started
 
 1. In a python 3.11 environment, install dependencies (´´´conda env create -f environment.yml´´´, ´´´conda activate drifts-and-complexity´´´).
-2. Install R dependencies by ´´´Rscript install_r_packages.R´´´    
+2. Install R dependencies by ´´´Rscript install_r_packages.R´´´
 2. Place your data in folder /data/...
 3. Create a local copy of the data dictionary and configure for your datasets. The data_dictionary should be saved at data/data_dictionary.json
 4. Run assess_datasets.py (e.g., python assess_dataset.py) for assessement of complexity in dataset windows

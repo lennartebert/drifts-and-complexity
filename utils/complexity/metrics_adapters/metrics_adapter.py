@@ -1,7 +1,10 @@
 from __future__ import annotations
-from typing import Any, Protocol, Iterable, Dict, Tuple, Optional, Union, List
-from utils.complexity.measures.measure_store import MeasureStore, Measure
+
+from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Union
+
+from utils.complexity.measures.measure_store import Measure, MeasureStore
 from utils.windowing.window import Window
+
 
 class MetricsAdapter(Protocol):
     """
@@ -12,6 +15,7 @@ class MetricsAdapter(Protocol):
     - They must not erase values written by previous adapters.
     - They may set meta (e.g., {"source": "local"} or {"source": "sklearn"}).
     """
+
     name: str
 
     def available_metrics(self) -> List[str]:
@@ -24,7 +28,7 @@ class MetricsAdapter(Protocol):
         measures: Optional[Union[MeasureStore, Dict[str, Measure]]] = None,
     ) -> Tuple[MeasureStore, Dict]:
         """
-        Compute measures for a single window. 
+        Compute measures for a single window.
         Returns (MeasureStore, info).
         """
         ...
@@ -32,7 +36,9 @@ class MetricsAdapter(Protocol):
     def compute_measures_for_windows(
         self,
         windows: List["Window"],
-        measures_by_id: Optional[Dict[Union[str, int], Union[MeasureStore, Dict[str, Measure]]]] = None,
+        measures_by_id: Optional[
+            Dict[Union[str, int], Union[MeasureStore, Dict[str, Measure]]]
+        ] = None,
     ) -> Dict[Union[str, int], Tuple[MeasureStore, Dict[str, Any]]]:
         """
         Default batch implementation: calls `compute_measures_for_window` for each window.
@@ -57,16 +63,16 @@ class MetricsAdapter(Protocol):
 
 def get_adapters(adapter_names: List[str]) -> List[MetricsAdapter]:
     """Get adapter instances by name.
-    
+
     Args:
         adapter_names: List of adapter names to instantiate.
-        
+
     Returns:
         List of adapter instances.
     """
     from .local_metrics_adapter import LocalMetricsAdapter
     from .vidgof_metrics_adapter import VidgofMetricsAdapter
-    
+
     adapters = []
     for name in adapter_names:
         if name == "local":
@@ -75,5 +81,5 @@ def get_adapters(adapter_names: List[str]) -> List[MetricsAdapter]:
             adapters.append(VidgofMetricsAdapter())
         else:
             raise ValueError(f"Unknown adapter name: {name}")
-    
+
     return adapters

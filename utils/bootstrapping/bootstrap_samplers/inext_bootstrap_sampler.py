@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import random
 from abc import ABC, abstractmethod
 from collections import Counter
@@ -6,13 +7,17 @@ from copy import deepcopy
 from typing import List, Optional
 
 from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
-from utils.windowing.window import Window
-from utils.population.population_distributions import (
-    PopulationDistributions,
-    PopulationDistribution,
+from utils.population.extractors.chao1_population_extractor import (
+    Chao1PopulationExtractor,
 )
-from utils.population.extractors.chao1_population_extractor import Chao1PopulationExtractor
-from utils.population.extractors.naive_population_extractor import NaivePopulationExtractor
+from utils.population.extractors.naive_population_extractor import (
+    NaivePopulationExtractor,
+)
+from utils.population.population_distributions import (
+    PopulationDistribution,
+    PopulationDistributions,
+)
+from utils.windowing.window import Window
 
 
 # -----------------
@@ -20,6 +25,7 @@ from utils.population.extractors.naive_population_extractor import NaivePopulati
 # -----------------
 def _rng(seed: Optional[int]) -> random.Random:
     return random.Random(seed)
+
 
 def _multinomial_draw(rng: random.Random, n: int, probs: List[float]) -> List[int]:
     """
@@ -49,7 +55,10 @@ def _multinomial_draw(rng: random.Random, n: int, probs: List[float]) -> List[in
         out[j] += 1
     return out
 
-def _draw_counts_for_species(rng: random.Random, pdist: PopulationDistribution) -> Counter:
+
+def _draw_counts_for_species(
+    rng: random.Random, pdist: PopulationDistribution
+) -> Counter:
     """
     Draw abundance vector ~ Multinomial(n_ref, probs_obs + unseen bins).
     Observed bins map back to their labels; unseen bins get dummy keys.
@@ -67,7 +76,6 @@ def _draw_counts_for_species(rng: random.Random, pdist: PopulationDistribution) 
         else:
             counts[("UNSEEN", j - L)] = c
     return counts
-
 
 
 # -----------------
@@ -129,7 +137,9 @@ class INextBootstrapSampler(BootstrapSampler):
         if window.population_distributions is not None:
             return
         if self.ensure_with == "chao1":
-            Chao1PopulationExtractor().apply(window)  # sets distributions (and may set counts; counts are ignored here)
+            Chao1PopulationExtractor().apply(
+                window
+            )  # sets distributions (and may set counts; counts are ignored here)
         else:
             NaivePopulationExtractor().apply(window)
 
@@ -158,7 +168,7 @@ class INextBootstrapSampler(BootstrapSampler):
         for b in range(self.B):
             # 1) abundance-level multinomial draws (iNEXT-style)
             acts_counts = _draw_counts_for_species(rng, PD.activities)
-            dfg_counts  = _draw_counts_for_species(rng, PD.dfg_edges)
+            dfg_counts = _draw_counts_for_species(rng, PD.dfg_edges)
             vars_counts = _draw_counts_for_species(rng, PD.trace_variants)
 
             # 2) optional non-parametric trace bootstrap (for non-pop metrics)
@@ -166,7 +176,9 @@ class INextBootstrapSampler(BootstrapSampler):
                 boot_traces = self._resample_traces(rng, window)
                 boot_size = len(boot_traces)
             else:
-                boot_traces = window.traces   # share original traces (population-only bootstrap)
+                boot_traces = (
+                    window.traces
+                )  # share original traces (population-only bootstrap)
                 boot_size = window.size
 
             # 3) assemble replicate window (DO NOT compute Chao here)
@@ -174,7 +186,7 @@ class INextBootstrapSampler(BootstrapSampler):
                 id=f"{window.id}::boot{b+1}",
                 size=boot_size,
                 traces=boot_traces,
-                population_distributions=PD,   # reuse fitted model
+                population_distributions=PD,  # reuse fitted model
             )
 
             # Optionally attach abundance draws so you can compute estimators/metrics later

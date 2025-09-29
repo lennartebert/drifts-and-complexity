@@ -4,7 +4,7 @@
     "normalization_available": "Use utils.normalization.orchestrator.apply_normalizers() to compute normalized values",
     "normalizers": [
       "NormalizeNumberOfTraces",
-      "NormalizeNumberOfEvents", 
+      "NormalizeNumberOfEvents",
       "NormalizePercentageOfDistinctTraces",
       "NormalizeDeviationFromRandom",
       "NormalizeLZComplexity",

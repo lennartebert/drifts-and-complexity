@@ -3,23 +3,25 @@
 from __future__ import annotations
 
 from typing import Iterable, List, Literal, Optional, Tuple
-from pm4py.objects.log.obj import Trace
+
 import numpy as np
+from pm4py.objects.log.obj import Trace
 
 from utils.windowing.window import Window
 
 ReplacementPolicy = Literal[
     "within_and_across",  # (1) full replacement: duplicates allowed within a sample and across samples
-    "within_only",        # (2) no duplicates within a sample; samples are independent (replacement across samples)
-    "none"                # (3) no replacement at all across all samples; each trace used at most once globally
+    "within_only",  # (2) no duplicates within a sample; samples are independent (replacement across samples)
+    "none",  # (3) no replacement at all across all samples; each trace used at most once globally
 ]
+
 
 def sample_random_traces(
     event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
     policy: ReplacementPolicy = "within_and_across",
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, List[Trace]]]:
     """
     Sample random trace sets from an event log under different replacement policies.
@@ -100,7 +102,7 @@ def sample_random_traces(
         cursor = 0
         for sample_id in range(samples_per_size):
             for s in sizes:
-                take = pool[cursor: cursor + s]
+                take = pool[cursor : cursor + s]
                 cursor += s
                 chosen_traces = [event_log[i] for i in take]
                 results.append((s, str(sample_id), chosen_traces))
@@ -111,11 +113,12 @@ def sample_random_traces(
 
 # --- Backwards-compatible wrappers for sampling --------------------------
 
+
 def sample_random_traces_with_replacement(
     event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, List[Trace]]]:
     """(1) Duplicates allowed within and across samples."""
     return sample_random_traces(
@@ -125,12 +128,13 @@ def sample_random_traces_with_replacement(
         policy="within_and_across",
         random_state=random_state,
     )
+
 
 def sample_random_trace_sets_no_replacement_within_only(
     event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, List[Trace]]]:
     """(2) No duplicates within a sample; samples are independent across runs."""
     return sample_random_traces(
@@ -141,11 +145,12 @@ def sample_random_trace_sets_no_replacement_within_only(
         random_state=random_state,
     )
 
+
 def sample_random_trace_sets_no_replacement_global(
     event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, List[Trace]]]:
     """(3) No replacement globally across all samples and sizes."""
     return sample_random_traces(
@@ -156,13 +161,15 @@ def sample_random_trace_sets_no_replacement_global(
         random_state=random_state,
     )
 
+
 # --- Samplers that return windows --------------------------
+
 
 def sample_random_windows_with_replacement(
     event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, Window]]:
     """(1) Duplicates allowed within and across samples."""
     trace_samples = sample_random_traces(
@@ -173,16 +180,21 @@ def sample_random_windows_with_replacement(
         random_state=random_state,
     )
     window_samples: List[Tuple[int, str, Window]] = [
-        (window_size, sample_id, Window(id=sample_id, size=len(trace_list), traces=trace_list))
+        (
+            window_size,
+            sample_id,
+            Window(id=sample_id, size=len(trace_list), traces=trace_list),
+        )
         for window_size, sample_id, trace_list in trace_samples
     ]
     return window_samples
+
 
 def sample_random_windows_no_replacement_within_only(
     event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, Window]]:
     """(2) No duplicates within a sample; samples are independent across runs."""
     trace_samples = sample_random_traces(
@@ -193,16 +205,21 @@ def sample_random_windows_no_replacement_within_only(
         random_state=random_state,
     )
     window_samples: List[Tuple[int, str, Window]] = [
-        (window_size, sample_id, Window(id=sample_id, size=len(trace_list), traces=trace_list))
+        (
+            window_size,
+            sample_id,
+            Window(id=sample_id, size=len(trace_list), traces=trace_list),
+        )
         for window_size, sample_id, trace_list in trace_samples
     ]
     return window_samples
+
 
 def sample_random_windows_no_replacement_global(
     event_log: Iterable[Trace],
     sizes: Iterable[int] = range(10, 501, 50),
     samples_per_size: int = 10,
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, Window]]:
     """(3) No replacement globally across all samples and sizes."""
     trace_samples = sample_random_traces(
@@ -213,7 +230,11 @@ def sample_random_windows_no_replacement_global(
         random_state=random_state,
     )
     window_samples: List[Tuple[int, str, Window]] = [
-        (window_size, sample_id, Window(id=sample_id, size=len(trace_list), traces=trace_list))
+        (
+            window_size,
+            sample_id,
+            Window(id=sample_id, size=len(trace_list), traces=trace_list),
+        )
         for window_size, sample_id, trace_list in trace_samples
     ]
     return window_samples

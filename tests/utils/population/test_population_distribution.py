@@ -1,7 +1,8 @@
 """Tests for the PopulationDistribution class."""
 
-import pytest
 from typing import List, Tuple
+
+import pytest
 
 from utils.population.population_distribution import PopulationDistribution
 
@@ -13,15 +14,15 @@ class TestPopulationDistribution:
         """Test basic population distribution creation."""
         labels = [("A",), ("B",), ("C",)]
         probs = [0.4, 0.3, 0.3]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=0,
             p0=0.0,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         assert dist.observed_labels == labels
         assert dist.observed_probs == probs
         assert dist.unseen_count == 0
@@ -32,15 +33,15 @@ class TestPopulationDistribution:
         """Test population distribution with unseen categories."""
         labels = [("A",), ("B",)]
         probs = [0.6, 0.4]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=2,
             p0=0.2,
-            n_samples=50
+            n_samples=50,
         )
-        
+
         assert dist.observed_labels == labels
         # Probabilities are rescaled in __post_init__ to sum to (1 - p0)
         assert len(dist.observed_probs) == 2
@@ -56,7 +57,7 @@ class TestPopulationDistribution:
                 observed_probs=[1.0],
                 unseen_count=-1,
                 p0=0.0,
-                n_samples=10
+                n_samples=10,
             )
 
     def test_post_init_validation_p0_out_of_range(self):
@@ -68,9 +69,9 @@ class TestPopulationDistribution:
                 observed_probs=[1.0],
                 unseen_count=0,
                 p0=-0.1,
-                n_samples=10
+                n_samples=10,
             )
-        
+
         # p0 too high
         with pytest.raises(ValueError, match="p0 must be within \\[0, 1\\]"):
             PopulationDistribution(
@@ -78,33 +79,36 @@ class TestPopulationDistribution:
                 observed_probs=[1.0],
                 unseen_count=0,
                 p0=1.1,
-                n_samples=10
+                n_samples=10,
             )
 
     def test_post_init_validation_mismatched_lengths(self):
         """Test validation of mismatched label and probability lengths."""
-        with pytest.raises(ValueError, match="observed_labels and observed_probs must have the same length"):
+        with pytest.raises(
+            ValueError,
+            match="observed_labels and observed_probs must have the same length",
+        ):
             PopulationDistribution(
                 observed_labels=[("A",), ("B",)],
                 observed_probs=[1.0],  # Only one probability for two labels
                 unseen_count=0,
                 p0=0.0,
-                n_samples=10
+                n_samples=10,
             )
 
     def test_post_init_rescaling_observed_probs(self):
         """Test that observed probabilities are rescaled to sum to (1 - p0)."""
         labels = [("A",), ("B",), ("C",)]
         probs = [0.2, 0.3, 0.5]  # Sum to 1.0
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=1,
             p0=0.2,  # So observed should sum to 0.8
-            n_samples=100
+            n_samples=100,
         )
-        
+
         # Should be rescaled to sum to 0.8
         expected_sum = 0.8
         actual_sum = sum(dist.observed_probs)
@@ -114,15 +118,15 @@ class TestPopulationDistribution:
         """Test that zero mass is not rescaled."""
         labels = [("A",), ("B",)]
         probs = [0.0, 0.0]  # Zero mass
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=0,
             p0=0.0,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         # Should remain zeros
         assert dist.observed_probs == [0.0, 0.0]
 
@@ -130,15 +134,15 @@ class TestPopulationDistribution:
         """Test probs property when there are no unseen categories."""
         labels = [("A",), ("B",), ("C",)]
         probs = [0.4, 0.3, 0.3]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=0,
             p0=0.0,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         result_probs = dist.probs
         # Should be normalized to sum to 1.0
         assert abs(sum(result_probs) - 1.0) < 1e-10
@@ -148,15 +152,15 @@ class TestPopulationDistribution:
         """Test probs property when there are unseen categories."""
         labels = [("A",), ("B",)]
         probs = [0.6, 0.4]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=2,
             p0=0.2,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         result_probs = dist.probs
         # Should have 4 total probabilities (2 observed + 2 unseen)
         assert len(result_probs) == 4
@@ -169,15 +173,15 @@ class TestPopulationDistribution:
         """Test probs property when there is zero total mass."""
         labels = [("A",), ("B",)]
         probs = [0.0, 0.0]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=0,
             p0=0.0,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         result_probs = dist.probs
         # Should return empty list when no mass
         assert result_probs == []
@@ -186,15 +190,15 @@ class TestPopulationDistribution:
         """Test count property returns correct number of categories."""
         labels = [("A",), ("B",)]
         probs = [0.6, 0.4]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=3,
             p0=0.2,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         # Should be 2 observed + 3 unseen = 5 total
         assert dist.count == 5
 
@@ -202,37 +206,37 @@ class TestPopulationDistribution:
         """Test count property when there is zero mass."""
         labels = [("A",), ("B",)]
         probs = [0.0, 0.0]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=0,
             p0=0.0,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         assert dist.count == 0
 
     def test_cache_invalidation(self):
         """Test that cache is invalidated when observed_probs changes."""
         labels = [("A",), ("B",)]
         probs = [0.6, 0.4]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=0,
             p0=0.0,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         # Access to populate cache
         original_probs = dist.probs
-        
+
         # Modify observed_probs in place
         dist.observed_probs[0] = 0.8
         dist.observed_probs[1] = 0.2
-        
+
         # Should get new values (cache should be invalidated)
         new_probs = dist.probs
         assert new_probs != original_probs
@@ -243,23 +247,23 @@ class TestPopulationDistribution:
         """Test that cache key is consistent for same inputs."""
         labels = [("A",), ("B",)]
         probs = [0.6, 0.4]
-        
+
         dist1 = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=1,
             p0=0.2,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         dist2 = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=1,
             p0=0.2,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         # Should have same cache key
         assert dist1._current_key() == dist2._current_key()
 
@@ -267,15 +271,15 @@ class TestPopulationDistribution:
         """Test edge case where p0 = 1.0 (no observed mass)."""
         labels = [("A",), ("B",)]
         probs = [0.0, 0.0]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=2,
             p0=1.0,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         result_probs = dist.probs
         # Should have 2 observed + 2 unseen = 4 total categories
         assert len(result_probs) == 4
@@ -287,15 +291,15 @@ class TestPopulationDistribution:
         """Test edge case where unseen_count = 0."""
         labels = [("A",), ("B",)]
         probs = [0.6, 0.4]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=0,
             p0=0.0,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         result_probs = dist.probs
         # Should only have observed probabilities, normalized to sum to 1
         assert len(result_probs) == 2
@@ -305,18 +309,18 @@ class TestPopulationDistribution:
         """Test that probs property returns a copy to prevent external mutation."""
         labels = [("A",), ("B",)]
         probs = [0.6, 0.4]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=0,
             p0=0.0,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         result_probs = dist.probs
         result_probs[0] = 999.0  # Try to mutate
-        
+
         # Should not affect the cached value
         new_probs = dist.probs
         assert new_probs[0] != 999.0
@@ -326,18 +330,18 @@ class TestPopulationDistribution:
         labels = [
             ("activity1", "activity2"),  # DFG edge
             ("activity2", "activity3"),
-            ("activity1", "activity3")
+            ("activity1", "activity3"),
         ]
         probs = [0.5, 0.3, 0.2]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=1,
             p0=0.1,
-            n_samples=50
+            n_samples=50,
         )
-        
+
         assert dist.observed_labels == labels
         assert dist.count == 4  # 3 observed + 1 unseen
 
@@ -345,15 +349,15 @@ class TestPopulationDistribution:
         """Test numerical stability with very small probabilities."""
         labels = [("A",), ("B",)]
         probs = [1e-10, 1e-10]
-        
+
         dist = PopulationDistribution(
             observed_labels=labels,
             observed_probs=probs,
             unseen_count=0,
             p0=0.0,
-            n_samples=100
+            n_samples=100,
         )
-        
+
         # Should handle very small numbers without issues
         result_probs = dist.probs
         assert len(result_probs) == 2

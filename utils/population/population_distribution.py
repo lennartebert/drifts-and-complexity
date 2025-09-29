@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
@@ -53,10 +54,11 @@ class PopulationDistribution:
     n_samples: int
 
     # ---- Internal cache fields (not part of the public API) ----
-    _cache_key: Tuple[Tuple[float, ...], int, float] | None = field(default=None, init=False, repr=False)
+    _cache_key: Tuple[Tuple[float, ...], int, float] | None = field(
+        default=None, init=False, repr=False
+    )
     _cached_probs: List[float] | None = field(default=None, init=False, repr=False)
     _cached_count: int | None = field(default=None, init=False, repr=False)
-
 
     def __post_init__(self) -> None:
         # Basic validation / clipping
@@ -65,7 +67,9 @@ class PopulationDistribution:
         if not (0.0 <= self.p0 <= 1.0):
             raise ValueError("p0 must be within [0, 1]")
         if len(self.observed_labels) != len(self.observed_probs):
-            raise ValueError("observed_labels and observed_probs must have the same length")
+            raise ValueError(
+                "observed_labels and observed_probs must have the same length"
+            )
 
         # Rescale observed_probs to sum to (1 - p0) when they have positive mass.
         target = 1.0 - float(self.p0)
@@ -127,7 +131,11 @@ class PopulationDistribution:
     def _ensure_cache(self) -> None:
         """Compute and cache `probs`/`count` if the inputs changed."""
         key = self._current_key()
-        if key == self._cache_key and self._cached_probs is not None and self._cached_count is not None:
+        if (
+            key == self._cache_key
+            and self._cached_probs is not None
+            and self._cached_count is not None
+        ):
             return  # Cache is valid
 
         # Recompute

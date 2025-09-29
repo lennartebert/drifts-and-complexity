@@ -6,15 +6,11 @@ This module contains various complexity metrics organized by type:
 - Metric orchestration and registry
 """
 
-from . import metric
-from . import metric_orchestrator
-from . import registry
-from . import distribution_based
-from . import trace_based
+from . import distribution_based, metric, metric_orchestrator, registry, trace_based
 
 __all__ = [
     "metric",
-    "metric_orchestrator", 
+    "metric_orchestrator",
     "registry",
     "distribution_based",
     "trace_based",

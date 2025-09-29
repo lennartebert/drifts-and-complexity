@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import math
 
 from utils.complexity.measures.measure_store import MeasureStore
@@ -25,7 +26,9 @@ class NormalizeDeviationFromRandom(Normalizer):
         # get deviation from random if available - if not, raise exception
         nda_key = "Number of Distinct Activities"
         if not measures.has(nda_key):
-            raise Exception('Number of distinct activities required to normalize devaiation from random')
+            raise Exception(
+                "Number of distinct activities required to normalize devaiation from random"
+            )
         number_distinct_activities_value = measures.get_value(nda_key)
 
         denom_inner = 1.0 - 1.0 / (float(number_distinct_activities_value) ** 2)
@@ -34,13 +37,13 @@ class NormalizeDeviationFromRandom(Normalizer):
         denom = math.sqrt(denom_inner)
         if denom <= 0:
             return
-        
+
         norm_val = 1.0 - (1.0 - float(deviation_from_random_value)) / denom
         norm_val = max(0.0, min(1.0, float(norm_val)))
 
         # add norm value to measure
         deviation_from_random_measure.value_normalized = norm_val
-        
+
         # update meta information
         prev_meta = deviation_from_random_measure.meta
         meta = {**prev_meta, "normalized_by": type(self).__name__}

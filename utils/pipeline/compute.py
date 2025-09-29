@@ -2,24 +2,28 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, Set, Literal
-
 import os
+from typing import Any, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union
+
 import numpy as np
 import pandas as pd
 
-from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import INextBootstrapSampler
+from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import (
+    INextBootstrapSampler,
+)
 from utils.complexity.measures.measure_store import Measure, MeasureStore
 from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetricsAdapter
 from utils.complexity.metrics_adapters.metrics_adapter import MetricsAdapter
 from utils.normalization.normalizers.normalizer import Normalizer
 from utils.normalization.orchestrator import DEFAULT_NORMALIZERS, apply_normalizers
-from utils.population.extractors.naive_population_extractor import NaivePopulationExtractor
-from utils.population.extractors.population_extractor import PopulationExtractor
-from utils.windowing.window import Window
 
 # NEW: centralized parallel helper
 from utils.parallel import run_parallel
+from utils.population.extractors.naive_population_extractor import (
+    NaivePopulationExtractor,
+)
+from utils.population.extractors.population_extractor import PopulationExtractor
+from utils.windowing.window import Window
 
 
 def _merge_measures_and_info(
@@ -34,7 +38,9 @@ def _merge_measures_and_info(
     Later adapters can overwrite same-named measures depending on their own behavior.
     Adapter info is namespaced under adapter.name.
     """
-    store = base_store if isinstance(base_store, MeasureStore) else MeasureStore(base_store)
+    store = (
+        base_store if isinstance(base_store, MeasureStore) else MeasureStore(base_store)
+    )
     all_info: Dict[str, Any] = {}
 
     for adapter in adapters:
@@ -115,7 +121,9 @@ def compute_metrics_and_CIs(
 
     # 2) compute measures via adapters
     if metric_adapters is None:
-        metric_adapters = [LocalMetricsAdapter()]  # all registered local metrics by default
+        metric_adapters = [
+            LocalMetricsAdapter()
+        ]  # all registered local metrics by default
 
     base_store, adapters_info = _merge_measures_and_info(
         metric_adapters,
@@ -123,8 +131,12 @@ def compute_metrics_and_CIs(
     )
 
     # 3) normalize and get visible normalized measures
-    normalized_store: MeasureStore = apply_normalizers(base_store, normalizers)  # handles None
-    normalized_measures: Dict[str, float] = normalized_store.to_visible_dict(get_normalized_if_available=True)
+    normalized_store: MeasureStore = apply_normalizers(
+        base_store, normalizers
+    )  # handles None
+    normalized_measures: Dict[str, float] = normalized_store.to_visible_dict(
+        get_normalized_if_available=True
+    )
 
     result: Dict[str, Any] = {
         "measures": normalized_measures,
@@ -133,8 +145,16 @@ def compute_metrics_and_CIs(
             "adapters": adapters_info,
             "pipeline": {
                 "population_extractor": population_extractor.__class__.__name__,
-                "bootstrap": None if bootstrap_sampler is None else bootstrap_sampler.__class__.__name__,
-                "normalizers": None if normalizers is None else [type(n).__name__ for n in normalizers],
+                "bootstrap": (
+                    None
+                    if bootstrap_sampler is None
+                    else bootstrap_sampler.__class__.__name__
+                ),
+                "normalizers": (
+                    None
+                    if normalizers is None
+                    else [type(n).__name__ for n in normalizers]
+                ),
             },
         },
     }
@@ -152,8 +172,12 @@ def compute_metrics_and_CIs(
                 metric_adapters,
                 rep_w,
             )
-            rep_store = apply_normalizers(rep_store, normalizers)  # returns MeasureStore
-            rep_norms_visible.append(rep_store.to_visible_dict(get_normalized_if_available=True))
+            rep_store = apply_normalizers(
+                rep_store, normalizers
+            )  # returns MeasureStore
+            rep_norms_visible.append(
+                rep_store.to_visible_dict(get_normalized_if_available=True)
+            )
 
         # CI keys aligned to baseline normalized measures
         ci_keys = list(normalized_measures.keys())
@@ -169,13 +193,17 @@ def compute_metrics_and_CIs(
 # --------------------------------------------------------------------
 # Top-level worker used by the parallel window loop
 # --------------------------------------------------------------------
-def _compute_one_window_task(args: Tuple[
-    int, int, "Window",
-    Optional["PopulationExtractor"],
-    Optional[List["MetricsAdapter"]],
-    Optional["INextBootstrapSampler"],
-    Optional[List["Normalizer"]],
-]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Set[str]]:
+def _compute_one_window_task(
+    args: Tuple[
+        int,
+        int,
+        "Window",
+        Optional["PopulationExtractor"],
+        Optional[List["MetricsAdapter"]],
+        Optional["INextBootstrapSampler"],
+        Optional[List["Normalizer"]],
+    ],
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Set[str]]:
     """
     One task = compute metrics + CIs for a single (window_size, sample_id, window).
     Returns:
@@ -184,7 +212,15 @@ def _compute_one_window_task(args: Tuple[
       - ci_high_row:  base columns + CI highs
       - keys:         set of all metric keys seen (to align columns later)
     """
-    window_size, sample_id, window, population_extractor, metric_adapters, bootstrap_sampler, normalizers = args
+    (
+        window_size,
+        sample_id,
+        window,
+        population_extractor,
+        metric_adapters,
+        bootstrap_sampler,
+        normalizers,
+    ) = args
 
     res = compute_metrics_and_CIs(
         window=window,
@@ -251,7 +287,15 @@ def run_metrics_over_samples(
 
     # Prepare task args once
     task_args = [
-        (w_size, s_id, win, population_extractor, metric_adapters, bootstrap_sampler, normalizers)
+        (
+            w_size,
+            s_id,
+            win,
+            population_extractor,
+            metric_adapters,
+            bootstrap_sampler,
+            normalizers,
+        )
         for (w_size, s_id, win) in items
     ]
 
@@ -260,9 +304,9 @@ def run_metrics_over_samples(
         task_args,
         _compute_one_window_task,
         backend=parallel_backend,
-        n_jobs=n_jobs,         # defaults to SLURM_CPUS_PER_TASK
-        chunksize=chunksize,   # auto for processes; 1 for threads
-        unordered=True,        # faster; order doesn't matter here
+        n_jobs=n_jobs,  # defaults to SLURM_CPUS_PER_TASK
+        chunksize=chunksize,  # auto for processes; 1 for threads
+        unordered=True,  # faster; order doesn't matter here
     )
 
     # Collect rows

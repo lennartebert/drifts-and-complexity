@@ -1,7 +1,6 @@
 """Complexity measures management."""
 
-from . import measure
-from . import measure_store
+from . import measure, measure_store
 
 __all__ = [
     "measure",

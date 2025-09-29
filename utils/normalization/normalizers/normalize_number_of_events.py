@@ -47,4 +47,3 @@ class NormalizeNumberOfEvents(Normalizer):
         # Update meta
         prev_meta = ne_measure.meta or {}
         ne_measure.meta = {**prev_meta, "normalized_by": type(self).__name__}
-

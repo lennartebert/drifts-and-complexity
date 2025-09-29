@@ -1,16 +1,18 @@
 """Window data structure for process mining analysis."""
 
-from dataclasses import dataclass, asdict
-from typing import List, Optional, Dict, Any
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from pm4py.objects.log.obj import Trace
+
 # PopulationDistributions imported as string annotation to avoid circular import
+
 
 @dataclass
 class Window:
     """A window containing traces and optional population distributions.
-    
+
     Attributes:
         id: Unique identifier for the window.
         size: Number of traces in the window.
@@ -25,6 +27,7 @@ class Window:
         end_change_point: Index of end change point.
         end_change_point_type: Type of end change point.
     """
+
     id: str
     size: int
     traces: List[Trace]
@@ -40,7 +43,7 @@ class Window:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert window to dictionary, excluding traces for serialization.
-        
+
         Returns:
             Dictionary representation of the window.
         """

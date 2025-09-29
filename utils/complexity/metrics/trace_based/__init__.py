@@ -1,13 +1,10 @@
 """Trace-based complexity metrics."""
 
-from . import trace_metric
-from . import size
-from . import distance
-from . import variation
+from . import distance, size, trace_metric, variation
 
 __all__ = [
     "trace_metric",
     "size",
-    "distance", 
+    "distance",
     "variation",
 ]

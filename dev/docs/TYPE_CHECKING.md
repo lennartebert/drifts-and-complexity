@@ -214,7 +214,7 @@ T = TypeVar('T')
 class Container(Generic[T]):
     def __init__(self, value: T) -> None:
         self.value = value
-    
+
     def get(self) -> T:
         return self.value
 ```

@@ -1,11 +1,14 @@
 from __future__ import annotations
-from typing import Iterable, List, Optional, Set, Tuple, Dict, Type
+
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Type
 
 from utils.complexity.measures.measure_store import MeasureStore  # type: ignore
+from utils.complexity.metrics.distribution_based.distribution_metric import (
+    PopulationDistributionsMetric,
+)
 from utils.complexity.metrics.metric import Metric  # type: ignore
-from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
-from utils.complexity.metrics.distribution_based.distribution_metric import PopulationDistributionsMetric
 from utils.complexity.metrics.registry import get_metric_classes
+from utils.complexity.metrics.trace_based.trace_metric import TraceMetric
 from utils.windowing.window import Window  # type: ignore
 
 
@@ -99,8 +102,10 @@ class MetricOrchestrator:
                 continue
             else:
                 # compute metric
-                computation_was_successfull = self._compute_one_metric(name, window, store, recursion_guard=set(), top_level=True)
-                
+                computation_was_successfull = self._compute_one_metric(
+                    name, window, store, recursion_guard=set(), top_level=True
+                )
+
                 if not computation_was_successfull:
                     skipped.append(name)
 
@@ -114,7 +119,7 @@ class MetricOrchestrator:
                     hidden.append(name)
                 else:
                     visible.append(name)
-        
+
         info = {
             "visible": visible,
             "hidden": hidden,
@@ -180,7 +185,9 @@ class MetricOrchestrator:
         recursion_guard.add(metric_name)
 
         try:
-            classes = self._order_metric_variants_for_window(window, get_metric_classes(metric_name))
+            classes = self._order_metric_variants_for_window(
+                window, get_metric_classes(metric_name)
+            )
         except KeyError:
             if self.strict:
                 raise
@@ -195,19 +202,27 @@ class MetricOrchestrator:
                 for dep in deps:
                     if not store.has(dep):
                         ok_dep = self._compute_one_metric(
-                            dep, window, store, recursion_guard=recursion_guard, top_level=False
+                            dep,
+                            window,
+                            store,
+                            recursion_guard=recursion_guard,
+                            top_level=False,
                         )
                         if ok_dep:
                             newly.append(dep)
                         elif self.strict:
-                            raise RuntimeError(f"Failed dependency '{dep}' for '{metric_name}'")
+                            raise RuntimeError(
+                                f"Failed dependency '{dep}' for '{metric_name}'"
+                            )
 
                 # 2) dispatch correct input object based on variant
                 metric: Metric = cls()  # type: ignore
                 if issubclass(cls, PopulationDistributionsMetric):
                     pd = window.population_distributions
                     if pd is None:
-                        raise RuntimeError("PopulationDistributions required but missing on window")
+                        raise RuntimeError(
+                            "PopulationDistributions required but missing on window"
+                        )
                     metric.compute(pd, store)  # type: ignore[arg-type]
                 elif issubclass(cls, TraceMetric):
                     metric.compute(window.traces, store)
@@ -217,7 +232,9 @@ class MetricOrchestrator:
                     if kind == "distribution":
                         pd = window.population_distributions
                         if pd is None:
-                            raise RuntimeError("PopulationDistributions required but missing on window")
+                            raise RuntimeError(
+                                "PopulationDistributions required but missing on window"
+                            )
                         metric.compute(pd, store)  # type: ignore[arg-type]
                     else:
                         metric.compute(window.traces, store)
@@ -238,7 +255,9 @@ class MetricOrchestrator:
             raise last_err
         return False
 
-    def _order_metric_variants_for_window(self, window: Window, classes: List[Type[Metric]]) -> List[Type[Metric]]:
+    def _order_metric_variants_for_window(
+        self, window: Window, classes: List[Type[Metric]]
+    ) -> List[Type[Metric]]:
         """
         Order metric variant classes for a given window according to preference policy.
 
@@ -267,14 +286,20 @@ class MetricOrchestrator:
         # check that prefer is valid
         if self.prefer not in ("auto", "trace", "distribution"):
             raise ValueError(f"Invalid prefer policy: {self.prefer}")
-        
-        prefer = 'distribution' if self.prefer == 'auto' else self.prefer
+
+        prefer = "distribution" if self.prefer == "auto" else self.prefer
 
         def is_dist(cls: Type[Metric]) -> bool:
-            return issubclass(cls, PopulationDistributionsMetric) or getattr(cls, "input_kind", "trace") == "distribution"
+            return (
+                issubclass(cls, PopulationDistributionsMetric)
+                or getattr(cls, "input_kind", "trace") == "distribution"
+            )
 
         def is_trace(cls: Type[Metric]) -> bool:
-            return issubclass(cls, TraceMetric) or getattr(cls, "input_kind", "trace") == "trace"
+            return (
+                issubclass(cls, TraceMetric)
+                or getattr(cls, "input_kind", "trace") == "trace"
+            )
 
         # get for all classes whether they are dist or trace
         classes_to_type_map: Dict[Type[Metric], str] = {}
@@ -284,15 +309,24 @@ class MetricOrchestrator:
             elif is_trace(cls):
                 classes_to_type_map[cls] = "trace"
             else:
-                raise ValueError(f"Metric class {cls} is neither identifiable as distribution nor trace based")
-            
+                raise ValueError(
+                    f"Metric class {cls} is neither identifiable as distribution nor trace based"
+                )
+
         # if has_pd is False, remove these distribution classes from map
         if not has_pd:
-            classes_to_type_map = {cls: typ for cls, typ in classes_to_type_map.items() if typ != "distribution"}
-        
+            classes_to_type_map = {
+                cls: typ
+                for cls, typ in classes_to_type_map.items()
+                if typ != "distribution"
+            }
+
         # sort classes_to_type_map by prefered type (preferred type first)
-        sorted_classes = sorted(classes_to_type_map.keys(), key=lambda cls: 0 if classes_to_type_map[cls] == prefer else 1)
-        
+        sorted_classes = sorted(
+            classes_to_type_map.keys(),
+            key=lambda cls: 0 if classes_to_type_map[cls] == prefer else 1,
+        )
+
         return sorted_classes
 
     @staticmethod

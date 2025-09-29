@@ -30,7 +30,7 @@ dev/
    ```bash
    # Using mypy directly with dev config
    mypy --config-file=dev/config/mypy.ini utils
-   
+
    # Strict type checking
    mypy --config-file=dev/config/mypy.ini --strict utils
    ```
@@ -39,7 +39,7 @@ dev/
    ```bash
    # Using pytest with dev config
    pytest --config-file=dev/config/pytest.ini
-   
+
    # Or directly
    pytest
    ```

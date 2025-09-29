@@ -1,6 +1,7 @@
 """Abstract base class for metric normalizers."""
 
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
 from utils.complexity.measures.measure_store import MeasureStore
@@ -31,7 +32,7 @@ class Normalizer(ABC):
 
         Args:
             measures: MeasureStore to normalize in-place.
-            
+
         Note:
             Implementations:
             - MUST check measures.has(<target_key>) before modifying.
