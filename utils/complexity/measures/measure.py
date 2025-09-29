@@ -7,12 +7,13 @@ from typing import Dict, Any, Optional
 class Measure:
     """
     A single measured value with visibility + metadata.
+    - name: identifier for the measure
     - value: numeric result
     - hidden: if True, it's stored but not shown by default
     - meta: free-form metadata (e.g., {"source": "observed"})
-
-    # TODO add measure name
+    - value_normalized: normalized version of the value
     """
+    name: str
     value: float
     hidden: bool = False
     meta: Dict[str, Any] = field(default_factory=dict)

@@ -36,7 +36,7 @@ class MeasureStore:
             self._measures.update(initial)
 
     def set(self, name: str, value: float, *, hidden: bool = False, meta: Optional[Dict[str, Any]] = None) -> None:
-        self._measures[name] = Measure(value=float(value), hidden=hidden, meta=meta or {})
+        self._measures[name] = Measure(name=name, value=float(value), hidden=hidden, meta=meta or {})
 
     def has(self, name: str) -> bool:
         return name in self._measures
@@ -84,6 +84,6 @@ class MeasureStore:
         """Return the number of measures in the store."""
         return len(self._measures)
     
-    def keys(self):
+    def keys(self) -> Iterable[str]:
         """Return an iterator over the measure names."""
         return self._measures.keys()
