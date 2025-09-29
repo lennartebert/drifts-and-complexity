@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     strategy:
       matrix:
         python-version: [3.10, 3.11]
@@ -17,59 +17,50 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Miniconda
-      uses: conda-incubator/setup-miniconda@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-        channels: conda-forge
-        channel-priority: strict
-        auto-update-conda: true
-        activate-environment: drifts-and-complexity-ci
+        cache: 'pip'
     
-    - name: Cache conda dependencies
+    - name: Cache pip dependencies
       uses: actions/cache@v3
       with:
-        path: ~/conda_pkgs_dir
-        key: ${{ runner.os }}-conda-${{ hashFiles('environment-ci.yml') }}
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-ci.txt') }}
         restore-keys: |
-          ${{ runner.os }}-conda-
-    
-    - name: Install mamba
-      run: |
-        conda install -n base -c conda-forge mamba -y
+          ${{ runner.os }}-pip-
 
-    - name: Create conda environment
+    - name: Install system dependencies
       run: |
-        conda config --set channel_priority strict
-        conda config --set always_yes true
-        conda config --set show_channel_urls true
-        mamba env create -f environment-ci.yml --verbose
-    
+        sudo apt-get update
+        sudo apt-get install -y graphviz graphviz-dev
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install --no-cache-dir --timeout=1000 --retries=3 -r requirements-ci.txt
+
     - name: Install project in development mode
       run: |
-        conda activate drifts-and-complexity-ci-ci
         pip install --no-cache-dir --timeout=1000 --retries=3 -e .
     
     - name: Lint with flake8
       run: |
-        conda activate drifts-and-complexity-ci
         flake8 utils tests --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 utils tests --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
     
     - name: Check code formatting
       run: |
-        conda activate drifts-and-complexity-ci
         black --check utils tests
         isort --check-only utils tests
     
     - name: Type check with mypy
       run: |
-        conda activate drifts-and-complexity-ci
         mypy utils
     
     - name: Test with pytest
       run: |
-        conda activate drifts-and-complexity-ci
         pytest --cov=utils --cov-report=xml --cov-report=term-missing
     
     - name: Upload coverage to Codecov
@@ -82,44 +73,38 @@ jobs:
 
   typecheck-strict:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Miniconda
-      uses: conda-incubator/setup-miniconda@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
         python-version: 3.10
-        channels: conda-forge
-        channel-priority: strict
-        auto-update-conda: true
-        activate-environment: drifts-and-complexity-ci
+        cache: 'pip'
     
-    - name: Cache conda dependencies
+    - name: Cache pip dependencies
       uses: actions/cache@v3
       with:
-        path: ~/conda_pkgs_dir
-        key: ${{ runner.os }}-conda-${{ hashFiles('environment-ci.yml') }}
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-ci.txt') }}
         restore-keys: |
-          ${{ runner.os }}-conda-
-    
-    - name: Install mamba
-      run: |
-        conda install -n base -c conda-forge mamba -y
+          ${{ runner.os }}-pip-
 
-    - name: Create conda environment
+    - name: Install system dependencies
       run: |
-        conda config --set channel_priority strict
-        conda config --set always_yes true
-        conda config --set show_channel_urls true
-        mamba env create -f environment-ci.yml --verbose
-    
+        sudo apt-get update
+        sudo apt-get install -y graphviz graphviz-dev
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install --no-cache-dir --timeout=1000 --retries=3 -r requirements-ci.txt
+
     - name: Install project in development mode
       run: |
-        conda activate drifts-and-complexity-ci-ci
         pip install --no-cache-dir --timeout=1000 --retries=3 -e .
     
     - name: Strict type check with mypy
       run: |
-        conda activate drifts-and-complexity-ci
         mypy --strict utils
