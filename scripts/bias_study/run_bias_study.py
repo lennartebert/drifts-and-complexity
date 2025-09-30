@@ -50,9 +50,11 @@ def compute_results(
     metric_adapters=default_metric_adapters,
     bootstrap_sampler=default_bootstrap_sampler,
     normalizers=default_normalizers,
-    include_metrics=sorted_metrics,
+    include_metrics=None,
 ):
     print(f"Generating results for {results_name}")
+    if include_metrics is None:
+        include_metrics = sorted_metrics
     data_dictionary = helpers.load_data_dictionary(
         constants.DATA_DICTIONARY_FILE_PATH, get_real=True, get_synthetic=True
     )
@@ -128,36 +130,50 @@ SCENARIOS = {
     "synthetic_base": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
         population_extractor=default_population_extractor,
+        metric_adapters=default_metric_adapters,
+        bootstrap_sampler=default_bootstrap_sampler,
         normalizers=default_normalizers,
     ),
     "synthetic_normalized": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
         population_extractor=default_population_extractor,
+        metric_adapters=default_metric_adapters,
+        bootstrap_sampler=default_bootstrap_sampler,
         normalizers=DEFAULT_NORMALIZERS,
     ),
     "synthetic_normalized_and_population": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
         population_extractor=Chao1PopulationExtractor(),
+        metric_adapters=default_metric_adapters,
+        bootstrap_sampler=default_bootstrap_sampler,
         normalizers=DEFAULT_NORMALIZERS,
     ),
     "real_base": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
         population_extractor=default_population_extractor,
+        metric_adapters=default_metric_adapters,
+        bootstrap_sampler=default_bootstrap_sampler,
         normalizers=default_normalizers,
     ),
     "real_normalized": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
         population_extractor=default_population_extractor,
+        metric_adapters=default_metric_adapters,
+        bootstrap_sampler=default_bootstrap_sampler,
         normalizers=DEFAULT_NORMALIZERS,
     ),
     "real_normalized_and_population": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
         population_extractor=Chao1PopulationExtractor(),
+        metric_adapters=default_metric_adapters,
+        bootstrap_sampler=default_bootstrap_sampler,
         normalizers=DEFAULT_NORMALIZERS,
     ),
     "real_single_log": dict(
         logs=["BPIC12"],
         population_extractor=Chao1PopulationExtractor(),
+        metric_adapters=default_metric_adapters,
+        bootstrap_sampler=default_bootstrap_sampler,
         normalizers=DEFAULT_NORMALIZERS,
     ),
 }
@@ -220,6 +236,10 @@ def main():
         test_scenario = dict(
             logs=["BPIC12"],
             population_extractor=Chao1PopulationExtractor(),
+            metric_adapters=default_metric_adapters,
+            bootstrap_sampler=INextBootstrapSampler(
+                B=2
+            ),  # Test mode: smaller bootstrap size
             normalizers=default_normalizers,
             include_metrics=selected_metrics,
         )
@@ -268,8 +288,8 @@ def main():
             results_name=scenario_name,
             scenario_name=scenario_name,
             population_extractor=sc["population_extractor"],
-            metric_adapters=default_metric_adapters,
-            bootstrap_sampler=default_bootstrap_sampler,
+            metric_adapters=sc["metric_adapters"],
+            bootstrap_sampler=sc["bootstrap_sampler"],
             normalizers=sc["normalizers"],
             include_metrics=sc["include_metrics"],
         )

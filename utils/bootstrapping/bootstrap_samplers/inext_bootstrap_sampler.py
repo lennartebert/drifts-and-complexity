@@ -189,7 +189,7 @@ class INextBootstrapSampler(BootstrapSampler):
                 population_distributions=PD,  # reuse fitted model
             )
 
-            # Optionally attach abundance draws so you can compute estimators/metrics later
+            # Optionally attach abundance draws so we can compute estimators/metrics later
             if self.store_abundances_on_window:
                 # Attach as a private field to avoid API clashes
                 boot_win._bootstrap_abundances = {  # type: ignore[attr-defined]
