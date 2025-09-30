@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from utils.complexity.measures.measure import Measure
 from utils.complexity.measures.measure_store import MeasureStore
 from utils.normalization.normalizers.normalizer import Normalizer
 
 
 class HidePercentageOfDistinctTraces(Normalizer):
     """
-    Hide 'Percentage of Distinct Traces' after conversion (if present).
+    Hide 'Percentage of Distinct Traces' by setting normalized value to None and setting measure to hidden.
     """
 
     KEY = "Percentage of Distinct Traces"
@@ -15,6 +16,12 @@ class HidePercentageOfDistinctTraces(Normalizer):
         if not measures.has(self.KEY):
             return
         m = measures.get(self.KEY)
-        prev_meta = m.meta if m else {}
-        meta = {**prev_meta, "hidden_by": type(self).__name__}
-        measures.set(self.KEY, m.value if m else None, hidden=True, meta=meta)
+        if not isinstance(m, Measure):
+            return
+
+        # Set normalized value to None
+        m.value_normalized = None
+        # Hide the measure
+        m.hidden = True
+        # Update meta
+        m.meta = {**m.meta, "hidden_by": type(self).__name__}

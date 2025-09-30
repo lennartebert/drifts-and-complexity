@@ -77,7 +77,7 @@ def compute_results(
             metric_adapters=metric_adapters,
             bootstrap_sampler=bootstrap_sampler,
             normalizers=normalizers,
-            sorted_metrics=sorted_metrics,
+            include_metrics=sorted_metrics,
         )
 
         out_dir = constants.BIAS_STUDY_RESULTS_DIR / log_name
@@ -161,6 +161,13 @@ SCENARIOS = [
     ),
     dict(  # 5
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
+        name="real_normalized_and_population",
+        out="results/correlations/real/normalized_and_population",
+        population_extractor=Chao1PopulationExtractor(),
+        normalizers=DEFAULT_NORMALIZERS,
+    ),
+    dict(  # 6
+        logs=["BPIC12"],
         name="real_normalized_and_population",
         out="results/correlations/real/normalized_and_population",
         population_extractor=Chao1PopulationExtractor(),

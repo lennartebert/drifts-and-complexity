@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from utils.complexity.measures.measure_store import Measure, MeasureStore
 from utils.complexity.metrics import registry
@@ -52,9 +52,9 @@ class LocalMetricsAdapter(MetricsAdapter):
     def compute_measures_for_window(
         self,
         window: Window,
-        measures: Optional[Union[MeasureStore, Dict[str, Measure]]] = None,
-        include: Optional[Iterable[str]] = None,
-        exclude: Optional[Iterable[str]] = None,
+        measure_store: Optional[MeasureStore] = None,
+        include_metrics: Optional[Iterable[str]] = None,
+        exclude_metrics: Optional[Iterable[str]] = None,
     ) -> Tuple[MeasureStore, Dict]:
         """
         Compute the configured metrics for a single `window`.
@@ -68,12 +68,12 @@ class LocalMetricsAdapter(MetricsAdapter):
         window : Window
             Input window providing `traces` and optionally
             `population_distribution`.
-        measures : Optional[Union[MeasureStore, Dict[str, Measure]]], optional
-            Existing store (or dict-like) to populate/update. If None, a new
+        measure_store : Optional[MeasureStore], optional
+            Existing store to populate/update. If None, a new
             `MeasureStore` is created.
-        include : Optional[Iterable[str]], optional
+        include_metrics : Optional[Iterable[str]], optional
             If provided, only include **available metrics** from this set.
-        exclude : Optional[Iterable[str]], optional
+        exclude_metrics : Optional[Iterable[str]], optional
             If provided, remove these names from the target set.
 
         Returns
@@ -84,16 +84,16 @@ class LocalMetricsAdapter(MetricsAdapter):
             - "hidden":   list of measure keys currently hidden,
             - "skipped":  list of metric names requested but not produced.
         """
-        store = (
-            measures if isinstance(measures, MeasureStore) else MeasureStore(measures)
-        )
+        store = measure_store or MeasureStore()
 
         selected_metrics = self.available_metrics()
-        if include is not None:
-            selected_metrics = [name for name in include if name in selected_metrics]
-        if exclude is not None:
+        if include_metrics is not None:
             selected_metrics = [
-                name for name in selected_metrics if name not in exclude
+                name for name in include_metrics if name in selected_metrics
+            ]
+        if exclude_metrics is not None:
+            selected_metrics = [
+                name for name in selected_metrics if name not in exclude_metrics
             ]
 
         store, info = self._orch.compute_many_metrics(
@@ -113,12 +113,10 @@ class LocalMetricsAdapter(MetricsAdapter):
     def compute_measures_for_windows(
         self,
         windows: List[Window],
-        measures_by_id: Optional[
-            Dict[str, Union[MeasureStore, Dict[str, Measure]]]
-        ] = None,
-        include: Optional[Iterable[str]] = None,
-        exclude: Optional[Iterable[str]] = None,
-    ) -> Dict[str, Tuple[MeasureStore, Dict]]:
+        measures_by_id: Optional[Dict[Union[str, int], MeasureStore]] = None,
+        include_metrics: Optional[Iterable[str]] = None,
+        exclude_metrics: Optional[Iterable[str]] = None,
+    ) -> Dict[Union[str, int], Tuple[MeasureStore, Dict[str, Any]]]:
         """
         Batch-compute metrics for multiple windows.
 
@@ -126,26 +124,26 @@ class LocalMetricsAdapter(MetricsAdapter):
         ----------
         windows : List[Window]
             Windows to process.
-        measures_by_id : Optional[Dict[str, Union[MeasureStore, Dict[str, Measure]]]], optional
+        measures_by_id : Optional[Dict[Union[str, int], MeasureStore]], optional
             Optional per-window pre-filled stores keyed by `window.id`.
-        include, exclude : Optional[Iterable[str]]
+        include_metrics, exclude_metrics : Optional[Iterable[str]]
             Include/exclude filters applied per window.
 
         Returns
         -------
-        Dict[str, Tuple[MeasureStore, Dict]]
+        Dict[Union[str, int], Tuple[MeasureStore, Dict[str, Any]]]
             Mapping from `window.id` to `(store, info)` as returned by
             `compute_measures_for_window`.
         """
         measures_by_id = measures_by_id or {}
-        out: Dict[str, Tuple[MeasureStore, Dict]] = {}
+        out: Dict[Union[str, int], Tuple[MeasureStore, Dict[str, Any]]] = {}
 
         for w in windows:
             store, info = self.compute_measures_for_window(
                 w,
-                measures=measures_by_id.get(w.id),
-                include=include,
-                exclude=exclude,
+                measure_store=measures_by_id.get(w.id),
+                include_metrics=include_metrics,
+                exclude_metrics=exclude_metrics,
             )
             out[w.id] = (store, info)
 

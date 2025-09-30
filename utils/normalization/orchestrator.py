@@ -26,13 +26,23 @@ from utils.normalization.normalizers.normalize_variant_entropy import (
     NormalizeVariantEntropy,
 )
 from utils.normalization.normalizers.normalizer import Normalizer
+from utils.normalization.normalizers.set_to_none_number_of_events import (
+    SetToNoneNumberOfEvents,
+)
+from utils.normalization.normalizers.set_to_none_number_of_traces import (
+    SetToNoneNumberOfTraces,
+)
+from utils.normalization.normalizers.set_to_none_percentage_of_distinct_traces import (
+    SetToNonePercentageOfDistinctTraces,
+)
 
 # Default pipeline (instances, in order)
 DEFAULT_NORMALIZERS: List[Normalizer] = [
-    NormalizeNumberOfEvents(),
-    NormalizeNumberOfTraces(),
-    NormalizePercentageOfDistinctTraces(),
-    NormalizePercentageOfDistinctTraces(),
+    # Set normalized values to None (but don't hide measures)
+    SetToNoneNumberOfEvents(),
+    SetToNoneNumberOfTraces(),
+    SetToNonePercentageOfDistinctTraces(),
+    # Other normalizers that don't conflict
     NormalizeDeviationFromRandom(),
     NormalizeLZComplexity(),
     NormalizeVariantEntropy(),

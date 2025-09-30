@@ -5,12 +5,12 @@ from utils.complexity.measures.measure_store import MeasureStore
 from utils.normalization.normalizers.normalizer import Normalizer
 
 
-class HideNumberOfTraces(Normalizer):
+class HideNumberOfEvents(Normalizer):
     """
-    Hide 'Number of Traces' by setting normalized value to None and setting measure to hidden.
+    Hide 'Number of Events' by setting normalized value to None and setting measure to hidden.
     """
 
-    KEY = "Number of Traces"
+    KEY = "Number of Events"
 
     def apply(self, measures: MeasureStore) -> None:
         if not measures.has(self.KEY):

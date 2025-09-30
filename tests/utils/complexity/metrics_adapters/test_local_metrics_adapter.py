@@ -156,7 +156,7 @@ class TestLocalMetricsAdapter:
         # Test include filter
         include_metrics = ["Number of Traces", "Number of Events", "Avg. Trace Length"]
         store, info = adapter.compute_measures_for_window(
-            window, include=include_metrics
+            window, include_metrics=include_metrics
         )
 
         # Should only compute included metrics as visible
@@ -170,7 +170,7 @@ class TestLocalMetricsAdapter:
         # Test exclude filter
         exclude_metrics = ["Number of Traces", "Number of Events"]
         store, info = adapter.compute_measures_for_window(
-            window, exclude=exclude_metrics
+            window, exclude_metrics=exclude_metrics
         )
 
         computed_metrics = store.to_dict()
@@ -199,7 +199,7 @@ class TestLocalMetricsAdapter:
         )
 
         store, info = adapter.compute_measures_for_window(
-            window, measures=existing_store
+            window, measure_store=existing_store
         )
 
         # Should preserve existing values

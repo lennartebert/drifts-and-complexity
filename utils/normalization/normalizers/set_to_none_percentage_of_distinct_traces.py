@@ -5,12 +5,12 @@ from utils.complexity.measures.measure_store import MeasureStore
 from utils.normalization.normalizers.normalizer import Normalizer
 
 
-class HideNumberOfTraces(Normalizer):
+class SetToNonePercentageOfDistinctTraces(Normalizer):
     """
-    Hide 'Number of Traces' by setting normalized value to None and setting measure to hidden.
+    Set normalized value of 'Percentage of Distinct Traces' to None but do not hide the measure.
     """
 
-    KEY = "Number of Traces"
+    KEY = "Percentage of Distinct Traces"
 
     def apply(self, measures: MeasureStore) -> None:
         if not measures.has(self.KEY):
@@ -21,7 +21,5 @@ class HideNumberOfTraces(Normalizer):
 
         # Set normalized value to None
         m.value_normalized = None
-        # Hide the measure
-        m.hidden = True
         # Update meta
-        m.meta = {**m.meta, "hidden_by": type(self).__name__}
+        m.meta = {**m.meta, "set_to_none_by": type(self).__name__}

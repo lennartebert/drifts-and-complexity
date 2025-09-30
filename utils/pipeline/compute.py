@@ -31,12 +31,25 @@ def _merge_measures_and_info(
     window: Window,
     *,
     base_store: Optional[Union[MeasureStore, Dict[str, Measure]]] = None,
+    include_metrics: Optional[Iterable[str]] = None,
 ) -> Tuple[MeasureStore, Dict[str, Any]]:
     """
     Run all adapters on a single window and merge their outputs into one MeasureStore.
 
     Later adapters can overwrite same-named measures depending on their own behavior.
     Adapter info is namespaced under adapter.name.
+
+    Parameters
+    ----------
+    adapters : List[MetricsAdapter]
+        Adapters to compute measures.
+    window : Window
+        Input window to process.
+    base_store : Optional[Union[MeasureStore, Dict[str, Measure]]]
+        Optional pre-filled store to write into.
+    include : Optional[Iterable[str]]
+        If provided, adapters that support filtering will only compute metrics
+        in this list. Others will compute normally and results will be filtered later.
     """
     store = (
         base_store if isinstance(base_store, MeasureStore) else MeasureStore(base_store)
@@ -44,10 +57,18 @@ def _merge_measures_and_info(
     all_info: Dict[str, Any] = {}
 
     for adapter in adapters:
-        store, info = adapter.compute_measures_for_window(
-            window,
-            measures=store,
-        )
+        # Some adapters support include/exclude filters. Prefer passing include when available.
+        try:
+            store, info = adapter.compute_measures_for_window(
+                window,
+                measure_store=store,
+                include_metrics=include_metrics,
+            )
+        except TypeError:
+            store, info = adapter.compute_measures_for_window(
+                window,
+                measure_store=store,
+            )
         all_info[adapter.name] = info
 
     return store, all_info
@@ -98,6 +119,8 @@ def compute_metrics_and_CIs(
     metric_adapters: Optional[List[MetricsAdapter]] = None,
     bootstrap_sampler: Optional[INextBootstrapSampler] = None,
     normalizers: Optional[List[Normalizer]] = None,
+    *,
+    include_metrics: Optional[Iterable[str]] = None,
 ) -> Dict[str, Any]:
     """
     Full pipeline:
@@ -113,6 +136,11 @@ def compute_metrics_and_CIs(
       - "measures": normalized, visible measures {name: value}
       - "cis":      {metric: {"low","high","mean","std","n"}} if bootstrap was run, else {}
       - "info":     merged adapter info + pipeline metadata
+
+    Notes
+    -----
+    If `include_metrics` is provided, only those metrics are computed when possible
+    and returned in the results. Unknown metrics in `include_metrics` are ignored.
     """
     # 1) population extraction
     if population_extractor is None:
@@ -128,6 +156,7 @@ def compute_metrics_and_CIs(
     base_store, adapters_info = _merge_measures_and_info(
         metric_adapters,
         window,
+        include_metrics=include_metrics,
     )
 
     # 3) normalize and get visible normalized measures
@@ -171,6 +200,7 @@ def compute_metrics_and_CIs(
             rep_store, _ = _merge_measures_and_info(
                 metric_adapters,
                 rep_w,
+                include_metrics=include_metrics,
             )
             rep_store = apply_normalizers(
                 rep_store, normalizers
@@ -196,12 +226,13 @@ def compute_metrics_and_CIs(
 def _compute_one_window_task(
     args: Tuple[
         int,
-        int,
+        Union[int, str],
         "Window",
         Optional["PopulationExtractor"],
         Optional[List["MetricsAdapter"]],
         Optional["INextBootstrapSampler"],
         Optional[List["Normalizer"]],
+        Optional[Iterable[str]],
     ],
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Set[str]]:
     """
@@ -220,6 +251,7 @@ def _compute_one_window_task(
         metric_adapters,
         bootstrap_sampler,
         normalizers,
+        include_metrics,
     ) = args
 
     res = compute_metrics_and_CIs(
@@ -228,6 +260,7 @@ def _compute_one_window_task(
         metric_adapters=metric_adapters,
         bootstrap_sampler=bootstrap_sampler,
         normalizers=normalizers,
+        include_metrics=include_metrics,
     )
 
     measures: Dict[str, float] = res.get("measures", {}) or {}
@@ -251,13 +284,14 @@ def _compute_one_window_task(
 
 
 def run_metrics_over_samples(
-    window_samples: Iterable[Tuple[int, int, "Window"]],
+    window_samples: Iterable[Tuple[int, Union[int, str], "Window"]],
+    # sample_id may be int or str depending on sampling helper
     *,
     population_extractor: Optional["PopulationExtractor"] = None,
     metric_adapters: Optional[List["MetricsAdapter"]] = None,
     bootstrap_sampler: Optional["INextBootstrapSampler"] = None,
     normalizers: Optional[List[Optional["Normalizer"]]] = None,
-    sorted_metrics: Optional[Iterable[str]] = None,
+    include_metrics: Optional[Iterable[str]] = None,
     # --- Parallel knobs ---
     parallel_backend: Literal["off", "auto", "processes", "threads"] = "auto",
     n_jobs: Optional[int] = None,
@@ -265,7 +299,7 @@ def run_metrics_over_samples(
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Iterate samples and collect:
-      - measures_df:  sample_size, sample_id, [all normalized measures]
+      - measures_df:  sample_size, sample_id, [normalized measures]
       - ci_low_df:    sample_size, sample_id, [CI lows per measure]
       - ci_high_df:   sample_size, sample_id, [CI highs per measure]
 
@@ -274,7 +308,10 @@ def run_metrics_over_samples(
       * Bootstraps remain sequential inside each worker to avoid nested pools.
       * Default n_jobs uses SLURM_CPUS_PER_TASK when running on Slurm.
 
-    # TODO changes this to only compute metrics that are in sorted_metrics
+    If `include_metrics` is provided, only those metrics are computed (when
+    adapters support filtering) and included in the output DataFrames, in the
+    same order as provided. If not provided, all discovered metrics are returned
+    in alphabetical order.
 
     Returns:
         (measures_df, ci_low_df, ci_high_df)
@@ -297,6 +334,7 @@ def run_metrics_over_samples(
             metric_adapters,
             bootstrap_sampler,
             normalizers,
+            list(include_metrics) if include_metrics is not None else None,
         )
         for (w_size, s_id, win) in items
     ]
@@ -319,11 +357,13 @@ def run_metrics_over_samples(
         all_measure_keys.update(keys)
 
     # Align columns
-    sorted_metrics = list(sorted_metrics or [])
-    ordered_metrics = [key for key in sorted_metrics if key in all_measure_keys]
-    extra_metrics = sorted(all_measure_keys - set(sorted_metrics))
-    all_metrics = ordered_metrics + extra_metrics
-    ordered_cols = ["sample_size", "sample_id"] + all_metrics
+    include_list = list(include_metrics or [])
+    if include_list:
+        ordered_metrics = [key for key in include_list if key in all_measure_keys]
+    else:
+        # If no include list provided, include all discovered metrics (sorted by name)
+        ordered_metrics = sorted(all_measure_keys)
+    ordered_cols = ["sample_size", "sample_id"] + ordered_metrics
 
     measures_df = pd.DataFrame(rows_measures).reindex(columns=ordered_cols)
     ci_low_df = pd.DataFrame(rows_ci_low).reindex(columns=ordered_cols)

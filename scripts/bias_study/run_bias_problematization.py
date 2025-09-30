@@ -71,7 +71,7 @@ def apply_fixes(sample_collection, problems_to_fix=["p1", "p2", "p3"]):
             metric_adapters=metric_adapters,
             bootstrap_sampler=bootstrap_sampler,
             normalizers=normalizers,
-            sorted_metrics=sorted_metrics,
+            include_metrics=sorted_metrics,
         )
 
         results_per_log[log_name] = (measures_df, ci_low_df, ci_high_df)
@@ -124,7 +124,7 @@ def main():
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=default_bootstrap_sampler,
         normalizers=default_normalizers,
-        sorted_metrics=sorted_metrics,
+        include_metrics=sorted_metrics,
     )
 
     results_per_log[log_name] = (measures_df, ci_low_df, ci_high_df)
@@ -250,7 +250,7 @@ def main():
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=default_bootstrap_sampler,
         normalizers=default_normalizers,
-        sorted_metrics=sorted_metrics,
+        include_metrics=sorted_metrics,
     )
 
     results_per_log[log_name] = (measures_df, ci_low_df, ci_high_df)
@@ -308,7 +308,7 @@ def main():
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=default_bootstrap_sampler,
         normalizers=default_normalizers,
-        sorted_metrics=sorted_metrics,
+        include_metrics=sorted_metrics,
     )
 
     results_per_log[log_name] = (measures_df, ci_low_df, ci_high_df)

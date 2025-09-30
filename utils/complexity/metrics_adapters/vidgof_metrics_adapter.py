@@ -24,7 +24,7 @@ try:
         log_complexity,
     )
 except ModuleNotFoundError:  # Fallback when PYTHONPATH does not include plugins dir
-    from plugins.vidgof_complexity.Complexity import (  # type: ignore
+    from plugins.vidgof_complexity.Complexity import (
         build_graph,
         create_c_index,
         generate_log,
@@ -59,8 +59,8 @@ class VidgofMetricsAdapter(MetricsAdapter):
         metric_names = [
             "Variant Entropy",
             "Normalized Variant Entropy",
-            "Trace Entropy",
-            "Normalized Trace Entropy",
+            "Sequence Entropy",
+            "Normalized Sequence Entropy",
             "Number of Partitions",
         ]
         return metric_names
@@ -73,52 +73,118 @@ class VidgofMetricsAdapter(MetricsAdapter):
         return len(list(pa.c_index.keys())[1:])
 
     @staticmethod
-    def _compute_all_from_lib(window: Window) -> Dict[str, Any]:
+    def _compute_from_lib(
+        window: Window, metrics_to_compute: List[str]
+    ) -> List[Measure]:
         traces = window.traces
         log = generate_log(traces, verbose=False)
         pa = build_graph(log, verbose=False, accepting=False)
 
-        # Entropies (tuples: (entropy, normalized_entropy))
-        var_ent = graph_complexity(pa)  # (entropy, normalized_entropy)
-        seq_ent = log_complexity(pa)  # (entropy, normalized_entropy)
+        measures = []
 
-        metrics = {}
-        metrics["Variant Entropy"] = var_ent[0]
-        metrics["Normalized Variant Entropy"] = var_ent[1]
-        metrics["Sequence Entropy"] = seq_ent[0]
-        metrics["Normalized Sequence Entropy"] = seq_ent[1]
+        # Only compute Number of Partitions as hidden if any other metric is requested
+        if any(
+            metric in metrics_to_compute
+            for metric in [
+                "Variant Entropy",
+                "Normalized Variant Entropy",
+                "Sequence Entropy",
+                "Normalized Sequence Entropy",
+            ]
+        ):
+            num_partitions = VidgofMetricsAdapter._get_num_partitions(pa)
+            measures.append(
+                Measure(
+                    name="Number of Partitions",
+                    value=float(num_partitions),
+                    hidden=True,
+                    meta={"source": "vidgof"},
+                )
+            )
 
-        metrics["Number of Partitions"] = VidgofMetricsAdapter._get_num_partitions(pa)
+        # Compute requested metrics
+        if (
+            "Variant Entropy" in metrics_to_compute
+            or "Normalized Variant Entropy" in metrics_to_compute
+        ):
+            var_ent = graph_complexity(pa)  # (entropy, normalized_entropy)
 
-        return metrics
+            if "Variant Entropy" in metrics_to_compute:
+                measures.append(
+                    Measure(
+                        name="Variant Entropy",
+                        value=float(var_ent[0]),
+                        hidden=False,
+                        meta={"source": "vidgof"},
+                    )
+                )
 
-    @staticmethod
-    def _floatify(d: Dict[str, Any]) -> Dict[str, float]:
-        out: Dict[str, float] = {}
-        for k, v in d.items():
-            if isinstance(v, (int, float)):
-                try:
-                    out[k] = float(v)
-                except Exception:
-                    pass
-        return out
+            if "Normalized Variant Entropy" in metrics_to_compute:
+                measures.append(
+                    Measure(
+                        name="Normalized Variant Entropy",
+                        value=float(var_ent[1]),
+                        hidden=False,
+                        meta={"source": "vidgof"},
+                    )
+                )
+
+        if (
+            "Sequence Entropy" in metrics_to_compute
+            or "Normalized Sequence Entropy" in metrics_to_compute
+        ):
+            seq_ent = log_complexity(pa)  # (entropy, normalized_entropy)
+
+            if "Sequence Entropy" in metrics_to_compute:
+                measures.append(
+                    Measure(
+                        name="Sequence Entropy",
+                        value=float(seq_ent[0]),
+                        hidden=False,
+                        meta={"source": "vidgof"},
+                    )
+                )
+
+            if "Normalized Sequence Entropy" in metrics_to_compute:
+                measures.append(
+                    Measure(
+                        name="Normalized Sequence Entropy",
+                        value=float(seq_ent[1]),
+                        hidden=False,
+                        meta={"source": "vidgof"},
+                    )
+                )
+
+        return measures
 
     # --- API ------------------------------------------------------------------
 
     def compute_measures_for_window(
         self,
         window: Window,
-        measures: Optional[Union[MeasureStore, Dict[str, Measure]]] = None,
+        measure_store: Optional[MeasureStore] = None,
+        include_metrics: Optional[Iterable[str]] = None,
+        exclude_metrics: Optional[Iterable[str]] = None,
     ) -> Tuple[MeasureStore, Dict[str, Any]]:
-        store = (
-            measures if isinstance(measures, MeasureStore) else MeasureStore(measures)
-        )
+        store = measure_store or MeasureStore()
 
-        raw = self._compute_all_from_lib(window)
-        floats = self._floatify(raw)
+        # Determine which metrics to compute
+        metrics_to_compute = self.available_metrics()
+        if include_metrics is not None:
+            metrics_to_compute = [m for m in metrics_to_compute if m in include_metrics]
+        if exclude_metrics is not None:
+            metrics_to_compute = [
+                m for m in metrics_to_compute if m not in exclude_metrics
+            ]
 
-        for name, value in floats.items():
-            store.set(name, value, hidden=False, meta={"source": self.name})
+        # Compute only the requested metrics
+        computed_measures = self._compute_from_lib(window, metrics_to_compute)
+
+        # Add all computed measures to the store
+        for measure in computed_measures:
+            store.set(
+                measure.name, measure.value, hidden=measure.hidden, meta=measure.meta
+            )
 
         info = {
             "adapter": self.name,

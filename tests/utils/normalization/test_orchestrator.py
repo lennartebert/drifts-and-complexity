@@ -124,9 +124,9 @@ class TestNormalizationOrchestrator:
 
         # Check specific normalizers are included
         normalizer_types = [type(n).__name__ for n in DEFAULT_NORMALIZERS]
-        assert "NormalizeNumberOfEvents" in normalizer_types
-        assert "NormalizeNumberOfTraces" in normalizer_types
-        assert "NormalizePercentageOfDistinctTraces" in normalizer_types
+        assert "SetToNoneNumberOfEvents" in normalizer_types
+        assert "SetToNoneNumberOfTraces" in normalizer_types
+        assert "SetToNonePercentageOfDistinctTraces" in normalizer_types
         assert "NormalizeDeviationFromRandom" in normalizer_types
         assert "NormalizeLZComplexity" in normalizer_types
 
@@ -145,12 +145,16 @@ class TestNormalizationOrchestrator:
         # Should return the same store
         assert result is store
 
-        # Check that normalizations were applied
+        # Check that set_to_none normalizations were applied
         traces_measure = store.get("Number of Traces")
-        assert traces_measure.value_normalized is not None
+        # Should have set_to_none metadata and value_normalized set to None
+        assert "set_to_none_by" in traces_measure.meta
+        assert traces_measure.value_normalized is None
 
         events_measure = store.get("Number of Events")
-        assert events_measure.value_normalized is not None
+        # Should have set_to_none metadata and value_normalized set to None
+        assert "set_to_none_by" in events_measure.meta
+        assert events_measure.value_normalized is None
 
     def test_normalizer_metadata_preservation(self):
         """Test that normalizers preserve existing metadata."""
@@ -241,29 +245,31 @@ class TestNormalizerIntegration:
         # Apply all normalizers
         apply_normalizers(store, normalizers=DEFAULT_NORMALIZERS)
 
-        # Check that various normalizations were applied
+        # Check that set_to_none normalizations were applied for specific measures
+        if store.has("Number of Traces"):
+            traces_measure = store.get("Number of Traces")
+            assert "set_to_none_by" in traces_measure.meta
+            assert traces_measure.value_normalized is None
+
+        if store.has("Number of Events"):
+            events_measure = store.get("Number of Events")
+            assert "set_to_none_by" in events_measure.meta
+            assert events_measure.value_normalized is None
+
+        if store.has("Percentage of Distinct Traces"):
+            pct_measure = store.get("Percentage of Distinct Traces")
+            assert "set_to_none_by" in pct_measure.meta
+            assert pct_measure.value_normalized is None
+
+        # Check that other measures still have normalized values (those not affected by set_to_none)
         normalized_measures = [
             name
             for name, measure in store.to_dict().items()
             if measure.value_normalized is not None
         ]
 
-        # Should have several normalized measures
+        # Should have some normalized measures (those not set to None)
         assert len(normalized_measures) > 0
-
-        # Check specific normalizations
-        if store.has("Number of Traces"):
-            assert store.get("Number of Traces").value_normalized == 1.0
-
-        if store.has("Number of Events"):
-            # Number of Events is normalized to average trace length, not 1.0
-            assert store.get("Number of Events").value_normalized is not None
-
-        if store.has("Percentage of Distinct Traces"):
-            # Should be normalized (converts percentage to count, so not necessarily in [0,1])
-            assert (
-                store.get("Percentage of Distinct Traces").value_normalized is not None
-            )
 
     def test_error_handling_in_normalizers(self):
         """Test that normalizers handle errors gracefully."""

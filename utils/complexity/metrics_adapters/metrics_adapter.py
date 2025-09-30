@@ -25,7 +25,10 @@ class MetricsAdapter(Protocol):
     def compute_measures_for_window(
         self,
         window: "Window",
-        measures: Optional[Union[MeasureStore, Dict[str, Measure]]] = None,
+        measure_store: Optional[MeasureStore] = None,
+        *,
+        include_metrics: Optional[Iterable[str]] = None,
+        exclude_metrics: Optional[Iterable[str]] = None,
     ) -> Tuple[MeasureStore, Dict]:
         """
         Compute measures for a single window.
@@ -36,9 +39,10 @@ class MetricsAdapter(Protocol):
     def compute_measures_for_windows(
         self,
         windows: List["Window"],
-        measures_by_id: Optional[
-            Dict[Union[str, int], Union[MeasureStore, Dict[str, Measure]]]
-        ] = None,
+        measures_by_id: Optional[Dict[Union[str, int], MeasureStore]] = None,
+        *,
+        include_metrics: Optional[Iterable[str]] = None,
+        exclude_metrics: Optional[Iterable[str]] = None,
     ) -> Dict[Union[str, int], Tuple[MeasureStore, Dict[str, Any]]]:
         """
         Default batch implementation: calls `compute_measures_for_window` for each window.
@@ -54,7 +58,9 @@ class MetricsAdapter(Protocol):
             existing = measures_by_id.get(key)
             store, info = self.compute_measures_for_window(
                 w,
-                measures=existing,
+                measure_store=existing,
+                include_metrics=include_metrics,
+                exclude_metrics=exclude_metrics,
             )
             out[key] = (store, info)
 
@@ -73,7 +79,7 @@ def get_adapters(adapter_names: List[str]) -> List[MetricsAdapter]:
     from .local_metrics_adapter import LocalMetricsAdapter
     from .vidgof_metrics_adapter import VidgofMetricsAdapter
 
-    adapters = []
+    adapters: List[MetricsAdapter] = []
     for name in adapter_names:
         if name == "local":
             adapters.append(LocalMetricsAdapter())

@@ -38,8 +38,8 @@ class TestVidgofMetricsAdapter:
         expected_metrics = [
             "Variant Entropy",
             "Normalized Variant Entropy",
-            "Trace Entropy",
-            "Normalized Trace Entropy",
+            "Sequence Entropy",
+            "Normalized Sequence Entropy",
             "Number of Partitions",
         ]
 
@@ -196,7 +196,7 @@ class TestVidgofMetricsAdapter:
         )
 
         store, info = adapter.compute_measures_for_window(
-            window, measures=existing_store
+            window, measure_store=existing_store
         )
 
         # Should preserve existing values
@@ -322,8 +322,11 @@ class TestVidgofMetricsAdapter:
             assert "source" in measure.meta
             assert measure.meta["source"] == "vidgof"
 
-            # Should not be hidden
-            assert not measure.hidden
+            # Number of Partitions should be hidden, others should not be
+            if name == "Number of Partitions":
+                assert measure.hidden
+            else:
+                assert not measure.hidden
 
             # Should have a value
             assert measure.value is not None
