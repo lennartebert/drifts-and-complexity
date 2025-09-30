@@ -278,15 +278,13 @@ class TestBuildNaiveDistributionFromCounts:
         result = _build_naive_distribution_from_counts(counts)
 
         assert isinstance(result, PopulationDistribution)
-        assert len(result.observed_labels) == 3
-        assert result.unseen_count == 0
-        assert result.p0 == 0.0
+        assert len(result.observed) == 3
+        assert result.unseen_count is None
+        assert result.p0 is None
         assert result.n_samples == 6
 
-        # Check probabilities sum to 1
-        probs = result.probs
-        assert abs(sum(probs) - 1.0) < 1e-10
-        assert len(probs) == 3
+        # Check that we have the right number of observed species
+        assert len(result.observed) == 3
 
     def test_build_naive_distribution_empty(self):
         """Test building naive distribution from empty counts."""
@@ -295,13 +293,10 @@ class TestBuildNaiveDistributionFromCounts:
         result = _build_naive_distribution_from_counts(counts)
 
         assert isinstance(result, PopulationDistribution)
-        assert result.observed_labels == []
-        assert result.observed_probs == []
-        assert result.unseen_count == 0
-        assert result.p0 == 0.0
+        assert result.observed == Counter()
+        assert result.unseen_count is None
+        assert result.p0 is None
         assert result.n_samples == 0
-
-        assert result.probs == []
 
     def test_build_naive_distribution_single_item(self):
         """Test building naive distribution from single item counts."""
@@ -309,15 +304,10 @@ class TestBuildNaiveDistributionFromCounts:
 
         result = _build_naive_distribution_from_counts(counts)
 
-        assert len(result.observed_labels) == 1
-        assert result.observed_probs == [1.0]
-        assert result.unseen_count == 0
-        assert result.p0 == 0.0
+        assert len(result.observed) == 1
+        assert result.unseen_count is None
+        assert result.p0 is None
         assert result.n_samples == 5
-
-        probs = result.probs
-        assert abs(probs[0] - 1.0) < 1e-10
-        assert len(probs) == 1
 
     def test_build_naive_distribution_zero_counts(self):
         """Test building naive distribution from counts with zeros."""
@@ -325,12 +315,8 @@ class TestBuildNaiveDistributionFromCounts:
 
         result = _build_naive_distribution_from_counts(counts)
 
-        assert len(result.observed_labels) == 3
+        assert len(result.observed) == 3
         assert result.n_samples == 5  # Only non-zero counts
-
-        probs = result.probs
-        assert abs(sum(probs) - 1.0) < 1e-10
-        assert len(probs) == 3
 
     def test_build_naive_distribution_complex_labels(self):
         """Test building naive distribution with complex label types."""
@@ -339,24 +325,8 @@ class TestBuildNaiveDistributionFromCounts:
         result = _build_naive_distribution_from_counts(counts)
 
         assert isinstance(result, PopulationDistribution)
-        assert len(result.observed_labels) == 3
+        assert len(result.observed) == 3
         assert result.n_samples == 4
-
-        probs = result.probs
-        assert abs(sum(probs) - 1.0) < 1e-10
-        assert len(probs) == 3
-
-    def test_build_naive_distribution_probability_calculation(self):
-        """Test that probabilities are calculated correctly."""
-        counts: Counter = Counter({"A": 2, "B": 3, "C": 5})
-        total = 10
-
-        result = _build_naive_distribution_from_counts(counts)
-
-        probs = result.probs
-        assert abs(probs[0] - 0.2) < 1e-10  # 2/10
-        assert abs(probs[1] - 0.3) < 1e-10  # 3/10
-        assert abs(probs[2] - 0.5) < 1e-10  # 5/10
 
     def test_build_naive_distribution_naive_assumptions(self):
         """Test that naive distribution makes correct assumptions."""
@@ -365,9 +335,9 @@ class TestBuildNaiveDistributionFromCounts:
         result = _build_naive_distribution_from_counts(counts)
 
         # Naive assumptions: full coverage, no unseen
-        assert result.unseen_count == 0
-        assert result.p0 == 0.0
+        assert result.unseen_count is None
+        assert result.p0 is None
 
         # Should have full coverage (C_hat = 1)
-        probs = result.probs
-        assert abs(sum(probs) - 1.0) < 1e-10
+        # Probability checks removed - not applicable to new API
+        # Probability sum check removed - not applicable to new API

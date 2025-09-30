@@ -1,17 +1,49 @@
+"""
+iNEXT-style individual-based bootstrap sampler.
+
+This module implements the iNEXT methodology for bootstrap sampling from abundance data,
+following the "EstiBootComm.Ind" approach described in Hsieh, Ma & Chao (2016).
+
+The key innovation is the construction of a "bootstrap community" that:
+1. Shrinks observed species probabilities based on rarity
+2. Allocates probability mass to unseen species
+3. Allows multinomial sampling from this corrected community
+
+References:
+- Hsieh, T. C., Ma, K. H., & Chao, A. (2016). iNEXT: an R package for rarefaction and
+  extrapolation of species diversity (Hill numbers). Methods in Ecology and Evolution, 7(12), 1451-1456.
+- Chao, A., & Jost, L. (2012). Coverage-based rarefaction and extrapolation:
+  standardizing samples by completeness rather than size. Ecology, 93(12), 2533-2547.
+"""
+
 from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
 from collections import Counter
 from copy import deepcopy
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
 
 from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
+from utils.population.chao1 import (
+    chao1_unseen_estimation_inext,
+    create_inext_bootstrap_community,
+    inext_center_line_from_counts,
+    inext_richness_at_size_m,
+)
 from utils.population.extractors.chao1_population_extractor import (
     Chao1PopulationExtractor,
 )
 from utils.population.extractors.naive_population_extractor import (
     NaivePopulationExtractor,
+)
+from utils.population.extractors.population_extractor import PopulationExtractor
+from utils.population.population_distribution import (
+    create_bootstrap_population_distribution,
+    create_chao1_population_distribution,
+    get_labels_and_probabilities,
 )
 from utils.population.population_distributions import (
     PopulationDistribution,
@@ -49,171 +81,296 @@ def _multinomial_draw(rng: random.Random, n: int, probs: List[float]) -> List[in
     out = [0] * len(p)
     for _ in range(n):
         u = rng.random()
-        j = 0
-        while j < len(cum) and u > cum[j]:
-            j += 1
-        out[j] += 1
+        for i, c in enumerate(cum):
+            if u <= c:
+                out[i] += 1
+                break
     return out
 
 
-def _draw_counts_for_species(
-    rng: random.Random, pdist: PopulationDistribution
-) -> Counter:
+# iNEXT unseen estimation now handled by chao1_unseen_estimation_inext
+
+
+def bootstrap_inext_curve(
+    labels: List[str],
+    probs: List[float],
+    n_ref: int,
+    m_grid: List[int],
+    B: int,
+    rng: random.Random,
+) -> Dict[str, np.ndarray]:
     """
-    Draw abundance vector ~ Multinomial(n_ref, probs_obs + unseen bins).
-    Observed bins map back to their labels; unseen bins get dummy keys.
+    Draw n_ref from p* once per replicate, then evaluate the iNEXT estimator at each m.
+    Returns dict with arrays: vals (replicate matrix), se, and optionally mean, lo, hi.
     """
-    probs = pdist.probs  # observed probs + equal unseen bins (if any)
-    draws = _multinomial_draw(rng, pdist.n_samples, probs)
-    L = len(pdist.observed_labels)
+    probs_array = np.array(probs, dtype=float)
+    vals = np.empty((B, len(m_grid)), dtype=float)
 
-    counts: Counter = Counter()
-    for j, c in enumerate(draws):
-        if c == 0:
-            continue
-        if j < L:
-            counts[pdist.observed_labels[j]] = c
-        else:
-            counts[("UNSEEN", j - L)] = c
-    return counts
+    for b in range(B):
+        draws = np.random.multinomial(
+            n_ref, probs_array
+        )  # replicate dataset of size n_ref
+        xs = draws.tolist()  # counts per (observed+unseen) bin
+        for j, m in enumerate(m_grid):
+            vals[b, j] = inext_richness_at_size_m(xs, int(m))
+
+    means = vals.mean(axis=0)
+    sds = vals.std(axis=0, ddof=1)
+    ses = sds / np.sqrt(B)
+    lo = means - 1.96 * ses
+    hi = means + 1.96 * ses
+    return {"vals": vals, "mean": means, "se": ses, "lo": lo, "hi": hi}
 
 
-# -----------------
-# iNEXT-style bootstrap (no Chao on the bootstrap)
-# -----------------
-class INextBootstrapSampler(BootstrapSampler):
+def compute_inext_curve_with_cis(
+    original_counts: Counter,
+    m_grid: List[int],
+    B: int = 200,
+    seed: Optional[int] = None,
+) -> Dict[str, np.ndarray]:
     """
-    Performs:
-      - Multinomial resampling from window.population_distributions (activities/dfg_edges/trace_variants)
-      - Optional non-parametric bootstrap of traces with replacement
+    Compute iNEXT curve with CIs centered on the estimator curve.
 
-    It does NOT compute Chao (or any estimator) on the bootstrap result.
-    The resampled abundance vectors are attached on each replicate window as
-    `window._bootstrap_abundances` (dict[str, Counter]) for downstream use.
+    This function:
+    1. Computes the center line (blue) from original counts
+    2. Builds bootstrap community p*
+    3. Generates bootstrap replicates
+    4. Centers CIs around the estimator curve, not bootstrap mean
 
     Parameters
     ----------
-    B : int
+    original_counts : Counter
+        Original abundance counts.
+    m_grid : List[int]
+        Grid of sample sizes to evaluate.
+    B : int, default=200
         Number of bootstrap replicates.
-    ensure_with : {"chao1", "naive"}
-        If the window lacks population_distributions, build them using the
-        chosen extractor. (No estimator is applied on bootstrap outputs.)
-    random_state : Optional[int]
-        Random seed.
-    resample_traces : bool
-        If True, also bootstrap the traces (with replacement).
-    trace_sample_size : Optional[int]
-        If None, uses window.size.
-    store_abundances_on_window : bool
-        If True, store the resampled abundance vectors on each replicate window
-        in `_bootstrap_abundances` for later processing.
+    seed : int, optional
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    Dict[str, np.ndarray]
+        Dictionary containing:
+        - 'center': Center line from original counts
+        - 'se': Standard error from bootstrap
+        - 'ci_lo': Lower CI (center - 1.96*se)
+        - 'ci_hi': Upper CI (center + 1.96*se)
+        - 'vals': Bootstrap replicate matrix
+    """
+    from collections import Counter
+
+    from utils.population.population_distribution import (
+        create_chao1_population_distribution,
+    )
+
+    # Step 1: Compute center line from original counts
+    center = np.array(inext_center_line_from_counts(original_counts, m_grid))
+
+    # Step 2: Build bootstrap community
+    n_ref = sum(original_counts.values())
+    pop_dist = create_chao1_population_distribution(original_counts, n_ref)
+    bootstrap_comm = create_inext_bootstrap_community(pop_dist)
+
+    # Step 3: Get labels and probabilities from bootstrap community
+    labels, probs = get_labels_and_probabilities(bootstrap_comm)
+
+    # Step 4: Generate bootstrap replicates
+    rng = _rng(seed)
+    boot = bootstrap_inext_curve(labels, probs, n_ref, m_grid, B, rng)
+
+    # Step 5: Center CIs around the estimator curve
+    se = boot["se"]
+    ci_lo = center - 1.96 * se
+    ci_hi = center + 1.96 * se
+
+    return {
+        "center": center,
+        "se": se,
+        "ci_lo": ci_lo,
+        "ci_hi": ci_hi,
+        "vals": boot["vals"],
+    }
+
+
+def verify_inext_invariants(original_counts: Counter, m_grid: List[int]) -> None:
+    """
+    Verify iNEXT invariants as per specification.
+
+    This function checks:
+    1. At m=n: Ŝ(n) = S_obs exactly
+    2. If f1=0: a=0, S0=0, p*=p (checked in bootstrap community builder)
+    3. Each replicate's observed richness ≤ m (checked during bootstrap)
+
+    Parameters
+    ----------
+    original_counts : Counter
+        Original abundance counts.
+    m_grid : List[int]
+        Grid of sample sizes to evaluate.
+    """
+    from collections import Counter
+
+    # Invariant 1: At m=n, rarefaction equals S_obs exactly
+    xs0 = [int(c) for c in original_counts.values() if c > 0]
+    n_ref = sum(xs0)
+    S_obs = len(xs0)
+
+    if n_ref in m_grid:
+        richness_at_n = inext_richness_at_size_m(xs0, n_ref)
+        assert (
+            abs(richness_at_n - S_obs) < 1e-12
+        ), f"At m=n, Ŝ(n)={richness_at_n} != S_obs={S_obs}"
+
+    # Invariant 2: If f1=0, check that unseen mass is zero
+    f1 = sum(1 for c in original_counts.values() if c == 1)
+    if f1 == 0:
+        # This should be checked in the bootstrap community builder
+        # but we can verify here that the curve is flat for m >= n
+        for m in m_grid:
+            if m >= n_ref:
+                richness_at_m = inext_richness_at_size_m(xs0, m)
+                assert (
+                    abs(richness_at_m - S_obs) < 1e-12
+                ), f"For f1=0 and m={m}>=n, Ŝ(m)={richness_at_m} != S_obs={S_obs}"
+
+
+def _draw_inext_bootstrap_sample(
+    rng: random.Random, pop_dist: PopulationDistribution
+) -> Tuple[Counter, int]:
+    """
+    Draw a single iNEXT bootstrap sample using the correct iNEXT methodology.
+
+    This function draws n_samples items from the bootstrap community p* and returns
+    the counts and total sample size. The iNEXT estimator should then be applied to
+    these counts for different m values.
+
+    Parameters
+    ----------
+    rng : random.Random
+        Random number generator.
+    pop_dist : PopulationDistribution
+        Population distribution object.
+
+    Returns
+    -------
+    Tuple[Counter, int]
+        Bootstrap sample counts and total number of samples drawn.
+    """
+    # Build iNEXT bootstrap community as PopulationDistribution
+    bootstrap_comm = create_inext_bootstrap_community(pop_dist)
+
+    # Get labels and probabilities from the bootstrap community
+    labels, probs = get_labels_and_probabilities(bootstrap_comm)
+
+    # Draw n_samples from multinomial using bootstrap community
+    draws = _multinomial_draw(rng, pop_dist.n_samples, probs)
+
+    # Map back to counts
+    result: Counter = Counter()
+    for label, count in zip(labels, draws):
+        if count > 0:
+            result[label] = count
+
+    return result, pop_dist.n_samples
+
+
+class INextBootstrapSampler(BootstrapSampler):
+    """
+    iNEXT-style individual-based bootstrap sampler.
+
+    This sampler implements the iNEXT methodology for bootstrap sampling from abundance data,
+    following the "EstiBootComm.Ind" approach. It constructs a bootstrap community that
+    shrinks observed species probabilities and allocates mass to unseen species.
     """
 
     def __init__(
         self,
+        population_extractor: Optional[PopulationExtractor] = None,
         B: int = 200,
-        ensure_with: str = "chao1",
-        random_state: Optional[int] = None,
-        resample_traces: bool = True,
-        trace_sample_size: Optional[int] = None,
-        store_abundances_on_window: bool = True,
+        m: Optional[int] = None,
+        seed: Optional[int] = None,
     ):
-        if ensure_with not in ("chao1", "naive"):
-            raise ValueError("ensure_with must be 'chao1' or 'naive'")
-        self.B = int(B)
-        self.ensure_with = ensure_with
-        self.random_state = random_state
-        self.resample_traces = bool(resample_traces)
-        self.trace_sample_size = trace_sample_size
-        self.store_abundances_on_window = store_abundances_on_window
+        """
+        Initialize the iNEXT bootstrap sampler.
 
-    # ---- internal ----
-    def _ensure_distributions(self, window: Window) -> None:
+        Parameters
+        ----------
+        population_extractor : PopulationExtractor, optional
+            Population extractor to use. Defaults to Chao1PopulationExtractor.
+        B : int, default=200
+            Number of bootstrap replicates.
+        m : int, optional
+            Target draw size. If None, uses the original sample size.
+        seed : int, optional
+            Random seed for reproducibility.
         """
-        Populate window.population_distributions if missing.
-        Uses Chao1PopulationExtractor or NaivePopulationExtractor to build
-        the fitted sampling model (probabilities + unseen mass).
-        """
-        if window.population_distributions is not None:
-            return
-        if self.ensure_with == "chao1":
-            Chao1PopulationExtractor().apply(
-                window
-            )  # sets distributions (and may set counts; counts are ignored here)
-        else:
-            NaivePopulationExtractor().apply(window)
+        self.population_extractor = population_extractor or Chao1PopulationExtractor()
+        self.B = B
+        self.m = m
+        self.seed = seed
 
-    def _resample_traces(self, rng: random.Random, window: Window) -> list:
-        """
-        Non-parametric bootstrap of traces with replacement.
-        Returns a new list of deep-copied traces.
-        """
-        base = list(window.traces)
-        n = len(base)
-        if n == 0:
-            return []
-        m = self.trace_sample_size or n
-        idxs = [rng.randrange(n) for _ in range(m)]
-        return [deepcopy(base[i]) for i in idxs]
-
-    # ---- public ----
     def sample(self, window: Window) -> List[Window]:
-        # make sure we have a fitted probability model to draw from
-        self._ensure_distributions(window)
-        PD: PopulationDistributions = window.population_distributions  # type: ignore
+        """
+        Generate bootstrap replicates using iNEXT methodology.
 
-        rng = _rng(self.random_state)
-        reps: List[Window] = []
+        Parameters
+        ----------
+        window : Window
+            Input window to bootstrap.
+
+        Returns
+        -------
+        List[Window]
+            List of B bootstrap replicate windows.
+        """
+        # Apply population extractor if not already present
+        if window.population_distributions is None:
+            window = self.population_extractor.apply(window)
+
+        # Generate bootstrap replicates
+        rng = _rng(self.seed)
+        replicates = []
 
         for b in range(self.B):
-            # 1) abundance-level multinomial draws (iNEXT-style)
-            acts_count_vector = _draw_counts_for_species(rng, PD.activities)
-            dfg_count_vector = _draw_counts_for_species(rng, PD.dfg_edges)
-            vars_count_vector = _draw_counts_for_species(rng, PD.trace_variants)
+            # Create a copy of the window
+            rep_window = deepcopy(window)
 
-            # build updated population distribution with new count vectors
-            boot_PD = PopulationDistributions(
-                activities=PopulationDistribution(
-                    observed_labels=acts_count_vector.keys(),
-                    observed_probs=acts_count_vector.values(),
-                    unseen_count=0,
-                    p0=0.0,
-                    n_samples=len(acts_count_vector),
-                ),
-                dfg_edges=PopulationDistribution(
-                    observed_labels=dfg_count_vector.keys(),
-                    observed_probs=dfg_count_vector.values(),
-                    unseen_count=0,
-                    p0=0.0,
-                    n_samples=len(dfg_count_vector),
-                ),
-                trace_variants=PopulationDistribution(
-                    observed_labels=vars_count_vector.keys(),
-                    observed_probs=vars_count_vector.values(),
-                    unseen_count=0,
-                    p0=0.0,
-                    n_samples=len(vars_count_vector),
-                ),
-            )
+            # Sample from each population distribution using iNEXT methodology
+            if window.population_distributions is not None:
+                # Sample activities using iNEXT bootstrap community
+                activities_counts, activities_n_samples = _draw_inext_bootstrap_sample(
+                    rng, window.population_distributions.activities
+                )
+                # Apply population extractor to sampled counts to get proper population estimates
+                # This ensures distribution-based metrics work correctly on bootstrap replicates
+                activities_dist = create_chao1_population_distribution(
+                    activities_counts, activities_n_samples
+                )
 
-            # 2) optional non-parametric trace bootstrap (for non-pop metrics)
-            if self.resample_traces:
-                boot_traces = self._resample_traces(rng, window)
-                boot_size = len(boot_traces)
-            else:
-                boot_traces = (
-                    window.traces
-                )  # share original traces (population-only bootstrap)
-                boot_size = window.size
+                # Sample dfg_edges using iNEXT bootstrap community
+                dfg_edges_counts, dfg_edges_n_samples = _draw_inext_bootstrap_sample(
+                    rng, window.population_distributions.dfg_edges
+                )
+                dfg_edges_dist = create_chao1_population_distribution(
+                    dfg_edges_counts, dfg_edges_n_samples
+                )
 
-            # 3) assemble replicate window (DO NOT compute Chao here)
-            boot_win = Window(
-                id=f"{window.id}::boot{b+1}",
-                size=boot_size,
-                traces=boot_traces,
-                population_distributions=boot_PD,  # reuse fitted model
-            )
+                # Sample trace_variants using iNEXT bootstrap community
+                trace_variants_counts, trace_variants_n_samples = (
+                    _draw_inext_bootstrap_sample(
+                        rng, window.population_distributions.trace_variants
+                    )
+                )
+                trace_variants_dist = create_chao1_population_distribution(
+                    trace_variants_counts, trace_variants_n_samples
+                )
 
-            reps.append(boot_win)
+                rep_window.population_distributions = PopulationDistributions(
+                    activities=activities_dist,
+                    dfg_edges=dfg_edges_dist,
+                    trace_variants=trace_variants_dist,
+                )
+            replicates.append(rep_window)
 
-        return reps
+        return replicates

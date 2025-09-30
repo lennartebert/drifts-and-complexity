@@ -78,14 +78,24 @@ def _compute_cis_from_bootstrap(
     normalized_measures_per_rep: List[Dict[str, float]],
     keys: List[str],
     alpha: float = 0.05,
+    method: str = "inext",
 ) -> Dict[str, Dict[str, Optional[float]]]:
     """
-    Percentile CIs for each metric key using bootstrap replicates of *normalized* measures.
+    CIs for each metric key using bootstrap replicates of *normalized* measures.
     Skips replicates where a metric is missing or NaN/None.
+
+    Parameters
+    ----------
+    normalized_measures_per_rep : List[Dict[str, float]]
+        Normalized measures for each bootstrap replicate.
+    keys : List[str]
+        Metric keys to compute CIs for.
+    alpha : float, default=0.05
+        Significance level (1 - confidence level).
+    method : str, default="inext"
+        CI method: "inext" for mean ± 1.96*se, "percentile" for percentile-based.
     """
     cis: Dict[str, Dict[str, Optional[float]]] = {}
-    lo_q = 100.0 * (alpha / 2.0)
-    hi_q = 100.0 * (1.0 - alpha / 2.0)
 
     for k in keys:
         vals: List[float] = []
@@ -101,15 +111,40 @@ def _compute_cis_from_bootstrap(
                 vals.append(x)
 
         if len(vals) == 0:
-            cis[k] = {"low": None, "high": None, "mean": None, "std": None, "n": 0}
+            cis[k] = {
+                "low": None,
+                "high": None,
+                "mean": None,
+                "std": None,
+                "se": None,
+                "n": 0,
+            }
             continue
 
         arr = np.asarray(vals, dtype=float)
-        lo = float(np.percentile(arr, lo_q))
-        hi = float(np.percentile(arr, hi_q))
         mean = float(np.mean(arr))
         std = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
-        cis[k] = {"low": lo, "high": hi, "mean": mean, "std": std, "n": int(len(arr))}
+        se = std / np.sqrt(len(arr)) if len(arr) > 1 else 0.0
+
+        if method == "inext":
+            # iNEXT-style: mean ± 1.96 * se
+            z_score = 1.96  # 95% confidence
+            lo = mean - z_score * se
+            hi = mean + z_score * se
+        else:  # percentile
+            lo_q = 100.0 * (alpha / 2.0)
+            hi_q = 100.0 * (1.0 - alpha / 2.0)
+            lo = float(np.percentile(arr, lo_q))
+            hi = float(np.percentile(arr, hi_q))
+
+        cis[k] = {
+            "low": lo,
+            "high": hi,
+            "mean": mean,
+            "std": std,
+            "se": se,
+            "n": int(len(arr)),
+        }
     return cis
 
 
@@ -193,7 +228,8 @@ def compute_metrics_and_CIs(
 
         rep_norms_visible: List[Dict[str, float]] = []
         for rep_w in reps:
-            # Ensure population info per replicate if the extractor affects estimates
+            # Bootstrap replicates have population_distributions = None
+            # Re-apply population extractor to get proper population distributions
             population_extractor.apply(rep_w)
 
             rep_store, _ = _merge_measures_and_info(
@@ -210,11 +246,13 @@ def compute_metrics_and_CIs(
 
         # CI keys aligned to baseline normalized measures
         ci_keys = list(normalized_measures.keys())
-        cis = _compute_cis_from_bootstrap(rep_norms_visible, ci_keys, alpha=0.05)
+        cis = _compute_cis_from_bootstrap(
+            rep_norms_visible, ci_keys, alpha=0.05, method="inext"
+        )
 
         result["cis"] = cis
         result["info"]["pipeline"]["bootstrap_replicates"] = len(reps)
-        result["info"]["pipeline"]["ci_method"] = "percentile_95"
+        result["info"]["pipeline"]["ci_method"] = "inext_normal_95"
 
     return result
 

@@ -1,169 +1,356 @@
+"""
+Population distribution data class and factory functions.
+
+This module provides a pure data class for representing population distributions
+and factory functions for creating them in different scenarios (bootstrap, non-bootstrap, etc.).
+"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Tuple
+from collections import Counter
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
+from utils.population.chao1 import (
+    chao1_unseen_estimation_inext,
+)
 
 
-@dataclass
+@dataclass(frozen=True)
 class PopulationDistribution:
     """
-    Population distribution with coverage-aware observed mass and imputed unseen mass.
+    Pure data class representing a population distribution.
 
-    Stored fields
-    -------------
-    observed_labels : List[Tuple]
-        Identifiers for observed categories (e.g., activities, DFG edges, variants).
-        Each label may be a tuple (e.g., a variant sequence) or any hashable tuple-like key.
-    observed_probs : List[float]
-        Probabilities assigned to `observed_labels`. Intended to sum to Ĉ = 1 - p0.
-        If they do not, they are rescaled in `__post_init__` to sum to (1 - p0), unless
-        the vector is all zeros (then it remains zeros and is normalized on access).
-    unseen_count : int
+    This is a final, immutable data class that holds all the information
+    needed to represent a population distribution and work directly with
+    iNEXT bootstrap functions. All behavior is handled by factory functions
+    and external utilities.
+
+    Fields
+    ------
+    observed : Counter
+        Observed categories with their counts (e.g., activities, DFG edges, variants).
+        Keys can be any hashable type (e.g., strings, tuples for variants).
+    population : Counter
+        Full population counter including observed categories and unseen species.
+        If unseen_count or p0 are None, equals the observed counter.
+        Unseen species are labeled as "unseen_1", "unseen_2", etc.
+    count : int
+        Total number of categories represented in population counter.
+    unseen_count : Optional[int]
         Number of *unseen* categories M (e.g., round(Ŝ - S_obs)) to be represented
-        as equally likely mass within p0.
-    p0 : float
+        as equally likely mass within p0. If None, no unseen categories are modeled.
+    p0 : Optional[float]
         Unseen probability mass (1 - Ĉ), i.e., mass not covered by observed categories.
-        Must be in [0, 1].
+        Must be in [0, 1] if provided. If None, no unseen mass is modeled.
     n_samples : int
         Reference sample size (e.g., the size of the sample from which the estimates were
-        derived). Kept for traceability/meta-data; not used in computations here.
-
-    Cached derived attributes (properties)
-    --------------------------------------
-    probs : List[float]
-        Full probability vector: observed probabilities (rescaled to sum to 1 - p0)
-        followed by `unseen_count` entries, each equal to p0 / unseen_count.
-        If `unseen_count == 0`, this is just the normalized observed probabilities
-        (summing to 1.0). If both `p0 == 0` and observed mass sums to 0, returns [].
-        This value is cached and recomputed only when (`observed_probs`, `unseen_count`, `p0`) change.
-    count : int
-        Total number of categories represented in `probs`, i.e., len(probs).
-        This value is cached alongside `probs`.
-
-    Notes
-    -----
-    - The cache is *content-aware*: mutations to `observed_probs` are detected because
-      the cache key uses `tuple(observed_probs)`. If you mutate the list in-place, the
-      next access will see the change and recompute.
+        derived). Kept for traceability/meta-data.
     """
 
-    observed_labels: List[Tuple]
-    observed_probs: List[float]
-    unseen_count: int
-    p0: float
-    n_samples: int
+    observed: Counter
+    population: Counter
+    count: int
+    unseen_count: Optional[int] = None
+    p0: Optional[float] = None
+    n_samples: int = 0
 
-    # ---- Internal cache fields (not part of the public API) ----
-    _cache_key: Tuple[Tuple[float, ...], int, float] | None = field(
-        default=None, init=False, repr=False
+    def __post_init__(self):
+        """Validate the population distribution data."""
+        if self.n_samples < 0:
+            raise ValueError("n_samples must be non-negative")
+        if self.p0 is not None and not (0.0 <= self.p0 <= 1.0):
+            raise ValueError("p0 must be in [0, 1] if provided")
+        if self.unseen_count is not None and self.unseen_count < 0:
+            raise ValueError("unseen_count must be non-negative if provided")
+
+
+# Factory Functions
+
+
+def create_naive_population_distribution(
+    observed: Counter, n_samples: int
+) -> PopulationDistribution:
+    """
+    Create a naive population distribution without unseen species modeling.
+
+    Parameters
+    ----------
+    observed : Counter
+        Observed abundance counts.
+    n_samples : int
+        Reference sample size.
+
+    Returns
+    -------
+    PopulationDistribution
+        Population distribution with no unseen species modeling.
+    """
+    return PopulationDistribution(
+        observed=observed,
+        population=observed,  # No unseen species
+        count=len(observed),
+        unseen_count=None,
+        p0=None,
+        n_samples=n_samples,
     )
-    _cached_probs: List[float] | None = field(default=None, init=False, repr=False)
-    _cached_count: int | None = field(default=None, init=False, repr=False)
 
-    def __post_init__(self) -> None:
-        # Basic validation / clipping
-        if self.unseen_count < 0:
-            raise ValueError("unseen_count must be >= 0")
-        if not (0.0 <= self.p0 <= 1.0):
-            raise ValueError("p0 must be within [0, 1]")
-        if len(self.observed_labels) != len(self.observed_probs):
-            raise ValueError(
-                "observed_labels and observed_probs must have the same length"
-            )
 
-        # Rescale observed_probs to sum to (1 - p0) when they have positive mass.
-        target = 1.0 - float(self.p0)
-        s = float(sum(self.observed_probs))
-        if s > 0.0:
-            if target < 0.0:
-                # Shouldn't happen due to p0 ∈ [0,1], but guard anyway
-                raise ValueError("Computed target observed mass < 0. Check p0.")
-            scale = target / s
-            self.observed_probs = [p * scale for p in self.observed_probs]
+def create_chao1_population_distribution(
+    observed: Counter, n_samples: int
+) -> PopulationDistribution:
+    """
+    Create a population distribution with Chao1 unseen species estimation.
 
-        # Initialize cache as empty; the first access will compute and store values.
-        self._invalidate_cache()
+    Parameters
+    ----------
+    observed : Counter
+        Observed abundance counts.
+    n_samples : int
+        Reference sample size.
 
-    # ------- Public cached properties -------
+    Returns
+    -------
+    PopulationDistribution
+        Population distribution with Chao1 unseen species modeling.
+    """
+    f0_hat, S0 = chao1_unseen_estimation_inext(observed)
+    p0 = _compute_unseen_probability_mass(observed, f0_hat)
 
-    @property
-    def probs(self) -> List[float]:
-        """
-        Full probability vector (observed + unseen), normalized and cached.
+    # Build population counter with unseen species
+    population = Counter(observed)
+    if f0_hat > 0 and S0 > 0 and p0 > 0:
+        unseen_mass_per_species = p0 / S0
+        unseen_count_per_species = int(unseen_mass_per_species * n_samples)
 
-        Returns
-        -------
-        List[float]
-            - If unseen_count > 0 and p0 > 0: observed probs (sum to 1 - p0)
-              followed by `unseen_count` entries of p0 / unseen_count.
-            - If unseen_count == 0: normalized observed probs that sum to 1.0.
-            - If there is zero total mass (no observed and p0 == 0): [].
-        """
-        self._ensure_cache()
-        # Return a copy to prevent accidental external mutation of the cached list
-        return list(self._cached_probs or [])
+        for i in range(1, S0 + 1):
+            population[f"unseen_{i}"] = unseen_count_per_species
 
-    @property
-    def count(self) -> int:
-        """
-        Total number of categories represented by the distribution.
+    return PopulationDistribution(
+        observed=observed,
+        population=population,
+        count=len(population),
+        unseen_count=S0 if f0_hat > 0 else None,
+        p0=p0 if f0_hat > 0 else None,
+        n_samples=n_samples,
+    )
 
-        Returns
-        -------
-        int
-            len(probs), i.e., observed categories plus (potential) unseen categories.
-        """
-        self._ensure_cache()
-        return int(self._cached_count or 0)
 
-    # ------- Internal cache helpers -------
+def create_bootstrap_population_distribution(
+    observed: Counter, n_samples: int
+) -> PopulationDistribution:
+    """
+    Create a population distribution for bootstrap sampling.
 
-    def _current_key(self) -> Tuple[Tuple[float, ...], int, float]:
-        """
-        Build a hashable cache key from inputs that affect `probs`/`count`.
-        We round p0 slightly to avoid pathological float jitter in equality checks.
-        """
-        # tuple(observed_probs) captures in-place list mutations
-        probs_tuple = tuple(self.observed_probs)
-        p0_key = round(float(self.p0), 15)
-        return (probs_tuple, int(self.unseen_count), p0_key)
+    This creates a distribution with only observed species (no unseen modeling)
+    for use in bootstrap replicates where we want to recompute metrics from
+    the sampled counts.
 
-    def _ensure_cache(self) -> None:
-        """Compute and cache `probs`/`count` if the inputs changed."""
-        key = self._current_key()
-        if (
-            key == self._cache_key
-            and self._cached_probs is not None
-            and self._cached_count is not None
-        ):
-            return  # Cache is valid
+    Parameters
+    ----------
+    observed : Counter
+        Observed abundance counts from bootstrap sampling.
+    n_samples : int
+        Reference sample size.
 
-        # Recompute
-        obs = list(self.observed_probs)
-        obs_sum = float(sum(obs))
+    Returns
+    -------
+    PopulationDistribution
+        Population distribution for bootstrap replicates.
+    """
+    return PopulationDistribution(
+        observed=observed,
+        population=observed,  # No unseen species for bootstrap replicates
+        count=len(observed),
+        unseen_count=None,
+        p0=None,
+        n_samples=n_samples,
+    )
 
-        if self.unseen_count > 0 and self.p0 > 0.0:
-            # Ensure observed sums to (1 - p0); if zero, keep zeros (mass all in unseen)
-            if obs_sum > 0.0:
-                target = 1.0 - self.p0
-                if abs(obs_sum - target) > 1e-12:
-                    scale = target / obs_sum if obs_sum > 0 else 0.0
-                    obs = [p * scale for p in obs]
-            p_unseen = self.p0 / self.unseen_count
-            full = obs + [p_unseen] * self.unseen_count
-        else:
-            # No unseen categories: normalize observed to sum to 1
-            if obs_sum > 0.0:
-                full = [p / obs_sum for p in obs]
-            else:
-                full = []
 
-        self._cached_probs = full
-        self._cached_count = len(full)
-        self._cache_key = key
+# Helper Functions
 
-    def _invalidate_cache(self) -> None:
-        """Mark cached values as stale (next access will recompute)."""
-        self._cache_key = None
-        self._cached_probs = None
-        self._cached_count = None
+
+def _compute_unseen_probability_mass(observed: Counter, f0_hat: float) -> float:
+    """
+    Compute unseen probability mass using Chao1 methodology.
+
+    Parameters
+    ----------
+    observed : Counter
+        Observed abundance counts.
+    f0_hat : float
+        Expected number of unseen species.
+
+    Returns
+    -------
+    float
+        Unseen probability mass (p0).
+    """
+    n = sum(observed.values())
+    if n == 0:
+        return 0.0
+
+    f1 = sum(1 for c in observed.values() if c == 1)
+    coverage = max(0.0, 1.0 - (f1 / n))
+    return 1.0 - coverage
+
+
+# Utility Functions
+
+
+def get_population_counter(pop_dist: PopulationDistribution) -> Counter:
+    """
+    Get the full population counter including observed and unseen species.
+
+    Parameters
+    ----------
+    pop_dist : PopulationDistribution
+        Population distribution.
+
+    Returns
+    -------
+    Counter
+        Full population counter.
+    """
+    result = Counter(pop_dist.observed)
+
+    if (
+        pop_dist.unseen_count is not None
+        and pop_dist.unseen_count > 0
+        and pop_dist.p0 is not None
+        and pop_dist.p0 > 0
+    ):
+        # Add unseen species with equal probability mass
+        unseen_mass_per_species = pop_dist.p0 / pop_dist.unseen_count
+        unseen_count_per_species = int(unseen_mass_per_species * pop_dist.n_samples)
+
+        for i in range(1, pop_dist.unseen_count + 1):
+            result[f"unseen_{i}"] = unseen_count_per_species
+
+    return result
+
+
+def get_count(pop_dist: PopulationDistribution) -> int:
+    """
+    Get the total number of categories in the population.
+
+    Parameters
+    ----------
+    pop_dist : PopulationDistribution
+        Population distribution.
+
+    Returns
+    -------
+    int
+        Total number of categories.
+    """
+    return len(get_population_counter(pop_dist))
+
+
+def to_dict(pop_dist: PopulationDistribution) -> Dict:
+    """
+    Convert population distribution to dictionary representation.
+
+    Parameters
+    ----------
+    pop_dist : PopulationDistribution
+        Population distribution.
+
+    Returns
+    -------
+    Dict
+        Dictionary representation.
+    """
+    return {
+        "observed": dict(pop_dist.observed),
+        "unseen_count": pop_dist.unseen_count,
+        "p0": pop_dist.p0,
+        "n_samples": pop_dist.n_samples,
+        "population": dict(get_population_counter(pop_dist)),
+        "count": get_count(pop_dist),
+    }
+
+
+def get_inext_parameters(pop_dist: PopulationDistribution) -> Dict:
+    """
+    Get iNEXT-specific parameters for a population distribution.
+
+    Parameters
+    ----------
+    pop_dist : PopulationDistribution
+        Population distribution.
+
+    Returns
+    -------
+    Dict
+        Dictionary containing f0_hat, S0, coverage, and unseen mass.
+    """
+    f0_hat, S0 = chao1_unseen_estimation_inext(pop_dist.observed)
+    a, b, w = _compute_inext_unseen_probability_mass(pop_dist.observed, f0_hat)
+
+    return {
+        "f0_hat": f0_hat,
+        "S0": S0,
+        "coverage": 1.0
+        - (
+            a / sum(pop_dist.observed.values())
+            if sum(pop_dist.observed.values()) > 0
+            else 0.0
+        ),
+        "unseen_mass": a,
+        "shrinkage_weight": w,
+        "shrinkage_denominator": b,
+    }
+
+
+def get_labels_and_probabilities(
+    pop_dist: PopulationDistribution,
+) -> Tuple[List[str], List[float]]:
+    """
+    Builds the exact probability vector p (observed + unseen) without integer rounding.
+
+    Parameters
+    ----------
+    pop_dist : PopulationDistribution
+        The population distribution object.
+
+    Returns
+    -------
+    labels : List[str]
+        Labels for all species (observed + unseen).
+    probs : List[float]
+        Probability vector for all species (sums to 1.0).
+    """
+    labels: List = []
+    probs: List[float] = []
+
+    obs_items = list(pop_dist.observed.items())
+    obs_sum = float(sum(v for _, v in obs_items))
+    p0 = float(pop_dist.p0) if pop_dist.p0 is not None else 0.0
+    observed_mass = 1.0 - p0
+
+    if obs_sum > 0.0 and observed_mass > 0.0:
+        for k, v in obs_items:
+            labels.append(k)
+            probs.append(observed_mass * (float(v) / obs_sum))
+    else:
+        for k, _ in obs_items:
+            labels.append(k)
+            probs.append(0.0)
+
+    if pop_dist.unseen_count is not None and pop_dist.unseen_count > 0 and p0 > 0.0:
+        unseen_each = p0 / float(pop_dist.unseen_count)
+        for i in range(1, pop_dist.unseen_count + 1):
+            labels.append(f"unseen_{i}")
+            probs.append(unseen_each)
+
+    # Normalize to 1.0 defensively and correct small fp drift on the last entry
+    s = float(sum(probs))
+    if s > 0.0:
+        probs = [p / s for p in probs]
+    if probs:
+        # Adjust last element to make exact sum 1.0
+        tail = 1.0 - float(sum(probs[:-1]))
+        probs[-1] = tail
+    return labels, probs

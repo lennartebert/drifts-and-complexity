@@ -65,8 +65,8 @@ def _counts_trace_variants(log: List) -> Counter[Tuple[str, ...]]:
 def _build_naive_distribution_from_counts(counts: Counter) -> PopulationDistribution:
     """Build a distribution assuming full coverage (C_hat=1), no unseen mass.
 
-    Observed probabilities are empirical relative frequencies (sum to 1).
     This is the naive assumption that the sample perfectly represents the population.
+    No unseen species are modeled.
 
     Args:
         counts: Counter with observed frequencies.
@@ -74,18 +74,13 @@ def _build_naive_distribution_from_counts(counts: Counter) -> PopulationDistribu
     Returns:
         PopulationDistribution with full coverage assumption.
     """
-    labels: List = list(counts.keys())
-    obs = list(counts.values())
-    N = int(sum(obs))
-    if N > 0:
-        probs = [c / N for c in obs]
-    else:
-        probs = [0.0 for _ in obs]
+    N = int(sum(counts.values()))
     return PopulationDistribution(
-        observed_labels=labels,
-        observed_probs=probs,
-        unseen_count=0,
-        p0=0.0,
+        observed=counts,
+        population=counts,  # No unseen species
+        count=len(counts),
+        unseen_count=None,  # No unseen species
+        p0=None,  # No unseen mass
         n_samples=N,
     )
 

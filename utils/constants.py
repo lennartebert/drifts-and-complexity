@@ -80,7 +80,7 @@ TRACE_ONLY_METRIC_NAMES = [
 METRIC_SHORTHAND = {
     # Basic counts
     "events": "Number of Events",
-    "activities": "Number of Distinct Activities",
+    "distinct_activities": "Number of Distinct Activities",
     "traces": "Number of Traces",
     "distinct_traces": "Number of Distinct Traces",
     "transitions": "Number of Distinct Activity Transitions",

@@ -29,11 +29,13 @@ from pm4py.algo.filtering.log.variants import variants_filter
 from pm4py.statistics.attributes.log import get as attributes_get
 from pm4py.util import xes_constants as xes
 
+# Chao1 functions are now handled by create_chao1_population_distribution
 from utils.population.extractors.population_extractor import PopulationExtractor
-from utils.population.population_distributions import (
+from utils.population.population_distribution import (
     PopulationDistribution,
-    PopulationDistributions,
+    create_chao1_population_distribution,
 )
+from utils.population.population_distributions import PopulationDistributions
 from utils.windowing.helpers import Window
 
 
@@ -102,155 +104,34 @@ def _counts_trace_variants(log: List) -> Counter[Tuple[str, ...]]:
 
 
 # ---- Chao / coverage helpers ----
-def _chao1_S_hat_from_counts(counts: Counter) -> float:
-    """
-    Compute the Chao1 richness estimator S_hat from observed abundances.
-
-    Chao1 estimates the (asymptotic) number of categories as:
-        S_hat = S_obs + f1^2 / (2 f2), if f2 > 0
-        S_hat = S_obs + f1 (f1 - 1) / 2, if f2 = 0
-    where f1 is the number of singletons and f2 the number of doubletons.
-
-    Parameters
-    ----------
-    counts : Counter
-        Observed abundance counts for categories.
-
-    Returns
-    -------
-    float
-        Estimated total richness Ŝ.
-    """
-    s_obs = len(counts)
-    if s_obs == 0:
-        return 0.0
-    f1 = sum(1 for c in counts.values() if c == 1)
-    f2 = sum(1 for c in counts.values() if c == 2)
-    return (
-        float(s_obs + (f1 * f1) / (2.0 * f2))
-        if f2 > 0
-        else float(s_obs + (f1 * (f1 - 1)) / 2.0)
-    )
+# Chao1 functions now imported from utils.population.chao1
 
 
-def _coverage_hat(N: int, f1: int, f2: int) -> float:
-    """
-    Estimate sample coverage Ĉ (Good–Turing style) using Chao's adjustment.
-
-    We compute an estimate of the probability mass of observed species
-    (coverage) as:
-        Ĉ = 1 - (f1 / N) * A
-    where A is a bias-correction term that depends on f2. For details, see
-    Chao & Jost (2012-2015) on coverage-based rarefaction/extrapolation.
-
-    Parameters
-    ----------
-    N : int
-        Total number of observations (sum of abundances).
-    f1 : int
-        Number of singletons.
-    f2 : int
-        Number of doubletons.
-
-    Returns
-    -------
-    float
-        Estimated coverage Ĉ in [0, 1].
-    """
-    if N == 0 or f1 == 0:
-        # No observations or no singletons -> treat as full coverage
-        return 1.0
-    if f2 > 0:
-        A = (N - 1) * f1 / ((N - 1) * f1 + 2.0 * f2)
-    else:
-        # When no doubletons, use recommended correction
-        A = (N - 1) * (f1 - 1) / ((N - 1) * (f1 - 1) + 2.0) if f1 > 1 else 1.0
-    C = 1.0 - (f1 / N) * A
-    # Clip to [0, 1] to avoid tiny numerical excursions
-    return max(0.0, min(1.0, C))
+# Coverage estimation now handled by chao1_coverage_estimate
 
 
 def _population_distribution_to_counter(pd: PopulationDistribution) -> Counter:
     """
-    Convert a PopulationDistribution back to a Counter by combining observed labels and probabilities.
+    Convert a PopulationDistribution back to a Counter.
 
-    This function reconstructs the observed counts by multiplying the observed probabilities
-    by the reference sample size (n_samples). This is useful when you need to work with
-    the original count-based representation after population modeling.
+    This function simply returns the observed counter from the population distribution.
+    This is useful when you need to work with the original count-based representation
+    after population modeling.
 
     Parameters
     ----------
     pd : PopulationDistribution
-        The population distribution containing observed labels and their probabilities.
+        The population distribution containing observed categories.
 
     Returns
     -------
     Counter
-        A Counter mapping observed labels to their estimated counts.
+        A Counter mapping observed categories to their counts.
     """
-    if not pd.observed_labels or not pd.observed_probs:
-        return Counter()
-
-    # Convert probabilities back to counts by multiplying by reference sample size
-    counts = {}
-    for label, prob in zip(pd.observed_labels, pd.observed_probs):
-        # Round to nearest integer to get count representation
-        counts[label] = int(round(prob * pd.n_samples))
-
-    return Counter(counts)
+    return Counter(pd.observed)
 
 
-def _build_chao_distribution_from_counts(counts: Counter) -> PopulationDistribution:
-    """
-    Fit an iNEXT-like population distribution from observed counts.
-
-    The fitted model includes:
-    - labels: observed category labels
-    - probs: reweighted observed probabilities that sum to Ĉ
-    - unseen_count: M_unseen = round(Ŝ - S_obs) (non-negative)
-    - p0: unseen mass = 1 - Ĉ
-    - n_ref: reference sample size N
-
-    Parameters
-    ----------
-    counts : Counter
-        Observed abundance counts for categories.
-
-    Returns
-    -------
-    PopulationDistribution
-        A parametric representation of the observed+unseen composition.
-    """
-    labels = list(counts.keys())
-    obs = list(counts.values())
-    N = int(sum(obs))
-    s_obs = len(obs)
-    f1 = sum(1 for c in obs if c == 1)
-    f2 = sum(1 for c in obs if c == 2)
-
-    # Richness estimate and implied count of unseen categories
-    S_hat = _chao1_S_hat_from_counts(counts)
-    M_unseen = max(0, int(round(S_hat - s_obs)))
-
-    # Coverage (observed mass) and implied unseen mass p0
-    C_hat = _coverage_hat(N, f1, f2)
-    p0 = max(0.0, 1.0 - C_hat)
-
-    # Reweight observed categories to sum to C_hat; if N==0, distribute uniformly
-    if N > 0:
-        probs_obs = [C_hat * (c / N) for c in obs]
-    elif s_obs > 0:
-        probs_obs = [C_hat / s_obs] * s_obs
-    else:
-        probs_obs = []
-
-    return PopulationDistribution(
-        observed_labels=labels,
-        observed_probs=probs_obs,
-        unseen_count=M_unseen,
-        p0=p0,
-        n_samples=N,
-    )
+# _build_chao_distribution_from_counts removed - use create_chao1_population_distribution directly
 
 
 class Chao1PopulationExtractor(PopulationExtractor):
@@ -299,6 +180,11 @@ class Chao1PopulationExtractor(PopulationExtractor):
             activity_count_vector = _population_distribution_to_counter(PD.activities)
             dfg_count_vector = _population_distribution_to_counter(PD.dfg_edges)
             vars_count_vector = _population_distribution_to_counter(PD.trace_variants)
+
+            # Extract n_samples from existing distributions
+            n_samples_acts = PD.activities.n_samples
+            n_samples_dfg = PD.dfg_edges.n_samples
+            n_samples_vars = PD.trace_variants.n_samples
         else:
             # perform chao estimation on the traces
             log = window.traces
@@ -306,10 +192,19 @@ class Chao1PopulationExtractor(PopulationExtractor):
             dfg_count_vector = _counts_dfg_edges(log)
             vars_count_vector = _counts_trace_variants(log)
 
+            # Use actual trace count as n_samples
+            n_samples_acts = len(log)
+            n_samples_dfg = len(log)
+            n_samples_vars = len(log)
+
         # Build from traces once (observed abundances -> iNEXT-like model)
-        pd_acts = _build_chao_distribution_from_counts(activity_count_vector)
-        pd_dfg = _build_chao_distribution_from_counts(dfg_count_vector)
-        pd_vars = _build_chao_distribution_from_counts(vars_count_vector)
+        pd_acts = create_chao1_population_distribution(
+            activity_count_vector, n_samples_acts
+        )
+        pd_dfg = create_chao1_population_distribution(dfg_count_vector, n_samples_dfg)
+        pd_vars = create_chao1_population_distribution(
+            vars_count_vector, n_samples_vars
+        )
         PD = PopulationDistributions(
             activities=pd_acts, dfg_edges=pd_dfg, trace_variants=pd_vars
         )
