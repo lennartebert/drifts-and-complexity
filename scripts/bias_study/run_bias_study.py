@@ -45,11 +45,12 @@ default_normalizers = None
 def compute_results(
     list_of_logs,
     results_name,
-    out_path,
+    scenario_name,
     population_extractor=default_population_extractor,
     metric_adapters=default_metric_adapters,
     bootstrap_sampler=default_bootstrap_sampler,
     normalizers=default_normalizers,
+    include_metrics=sorted_metrics,
 ):
     print(f"Generating results for {results_name}")
     data_dictionary = helpers.load_data_dictionary(
@@ -77,10 +78,10 @@ def compute_results(
             metric_adapters=metric_adapters,
             bootstrap_sampler=bootstrap_sampler,
             normalizers=normalizers,
-            include_metrics=sorted_metrics,
+            include_metrics=include_metrics,
         )
 
-        out_dir = constants.BIAS_STUDY_RESULTS_DIR / log_name
+        out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name / log_name
         out_dir.mkdir(parents=True, exist_ok=True)
         measures_df.to_csv(out_dir / "measures.csv")
         ci_low_df.to_csv(out_dir / "ci_low.csv")
@@ -101,12 +102,12 @@ def compute_results(
         ci_low_per_log[log_name] = ci_low_df
         ci_high_per_log[log_name] = ci_high_df
 
-    out_dir = constants.BIAS_STUDY_RESULTS_DIR
+    out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name
     out_dir.mkdir(parents=True, exist_ok=True)
     corr_df, pval_df = helpers.get_correlations_for_dictionary(
         sample_metrics_per_log=measures_per_log,
         rename_dictionary_map=None,
-        metric_columns=sorted_metrics,
+        metric_columns=include_metrics,
         base_column="sample_size",
     )
     corr_df.to_csv(out_dir / "correlations_r.csv")
@@ -123,68 +124,90 @@ def compute_results(
 
 
 # --- scenario registry ---
-SCENARIOS = [
-    dict(  # 0
+SCENARIOS = {
+    "synthetic_base": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
-        name="synthetic_base",
-        out="results/correlations/synthetic/base",
         population_extractor=default_population_extractor,
         normalizers=default_normalizers,
     ),
-    dict(  # 1
+    "synthetic_normalized": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
-        name="synthetic_normalized",
-        out="results/correlations/synthetic/normalized",
         population_extractor=default_population_extractor,
         normalizers=DEFAULT_NORMALIZERS,
     ),
-    dict(  # 2
+    "synthetic_normalized_and_population": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
-        name="synthetic_normalized_and_population",
-        out="results/correlations/synthetic/normalized_and_population",
         population_extractor=Chao1PopulationExtractor(),
         normalizers=DEFAULT_NORMALIZERS,
     ),
-    dict(  # 3
+    "real_base": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
-        name="real_base",
-        out="results/correlations/real/base",
         population_extractor=default_population_extractor,
         normalizers=default_normalizers,
     ),
-    dict(  # 4
+    "real_normalized": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
-        name="real_normalized",
-        out="results/correlations/real/normalized",
         population_extractor=default_population_extractor,
         normalizers=DEFAULT_NORMALIZERS,
     ),
-    dict(  # 5
+    "real_normalized_and_population": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
-        name="real_normalized_and_population",
-        out="results/correlations/real/normalized_and_population",
         population_extractor=Chao1PopulationExtractor(),
         normalizers=DEFAULT_NORMALIZERS,
     ),
-    dict(  # 6
+    "real_single_log": dict(
         logs=["BPIC12"],
-        name="real_normalized_and_population",
-        out="results/correlations/real/normalized_and_population",
         population_extractor=Chao1PopulationExtractor(),
         normalizers=DEFAULT_NORMALIZERS,
     ),
-]
+}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run one scenario by integer ID.")
+    parser = argparse.ArgumentParser(description="Run scenarios by ID or name.")
     parser.add_argument(
-        "scenario_id", type=int, help=f"Scenario ID [0..{len(SCENARIOS)-1}]"
+        "scenarios",
+        nargs="*",
+        help=f"Scenario IDs [0..{len(SCENARIOS)-1}] or scenario names: {list(SCENARIOS.keys())}. If none provided, runs all scenarios.",
     )
     parser.add_argument(
         "--test", action="store_true", help="Run in test mode with reduced parameters"
     )
+    parser.add_argument(
+        "--metrics",
+        nargs="*",
+        default=None,
+        help=f"Metrics to calculate. Use shorthand names: {list(constants.METRIC_SHORTHAND.keys())} or full names. Default: all metrics",
+    )
     args = parser.parse_args()
+
+    # Process metrics parameter
+    if args.metrics is None:
+        # Use default sorted_metrics
+        selected_metrics = sorted_metrics
+    else:
+        # Resolve shorthand names to full names
+        selected_metrics = []
+        for metric_input in args.metrics:
+            if metric_input in constants.METRIC_SHORTHAND:
+                # It's a shorthand, resolve to full name
+                full_name = constants.METRIC_SHORTHAND[metric_input]
+                selected_metrics.append(full_name)
+            elif metric_input in constants.ALL_METRIC_NAMES:
+                # It's already a full name
+                selected_metrics.append(metric_input)
+            else:
+                # Invalid metric name
+                available_shorthand = list(constants.METRIC_SHORTHAND.keys())
+                available_full = constants.ALL_METRIC_NAMES
+                raise SystemExit(
+                    f"Invalid metric '{metric_input}'. "
+                    f"Available shorthand: {available_shorthand} "
+                    f"or full names: {available_full}"
+                )
+
+        # Remove duplicates while preserving order
+        selected_metrics = list(dict.fromkeys(selected_metrics))
 
     # Modify global parameters for test mode
     global SAMPLES_PER_SIZE, BOOTSTRAP_SIZE, SIZES
@@ -196,27 +219,60 @@ def main():
         # Create test scenario
         test_scenario = dict(
             logs=["BPIC12"],
-            name="test",
-            out="results/tests/test",
             population_extractor=Chao1PopulationExtractor(),
             normalizers=default_normalizers,
+            include_metrics=selected_metrics,
         )
 
-        sc = test_scenario
+        scenarios_to_run = [("test", test_scenario)]
     else:
-        if args.scenario_id < 0 or args.scenario_id >= len(SCENARIOS):
-            raise SystemExit(f"Invalid scenario_id {args.scenario_id}")
-        sc = SCENARIOS[args.scenario_id]
+        scenarios_to_run = []
+        scenario_names = list(SCENARIOS.keys())
 
-    compute_results(
-        list_of_logs=sc["logs"],
-        results_name=sc["name"],
-        out_path=sc["out"],
-        population_extractor=sc["population_extractor"],
-        metric_adapters=default_metric_adapters,
-        bootstrap_sampler=default_bootstrap_sampler,
-        normalizers=sc["normalizers"],
-    )
+        # If no scenarios specified, run all
+        if not args.scenarios:
+            print("No scenarios specified, running all scenarios...")
+            for scenario_name, scenario_config in SCENARIOS.items():
+                # Add include_metrics to scenario config
+                scenario_config = scenario_config.copy()
+                scenario_config["include_metrics"] = selected_metrics
+                scenarios_to_run.append((scenario_name, scenario_config))
+        else:
+            for scenario_input in args.scenarios:
+                # Try to parse as integer (scenario ID)
+                try:
+                    scenario_id = int(scenario_input)
+                    if scenario_id < 0 or scenario_id >= len(SCENARIOS):
+                        raise SystemExit(
+                            f"Invalid scenario_id {scenario_id}. Valid range: 0-{len(SCENARIOS)-1}"
+                        )
+                    scenario_name = scenario_names[scenario_id]
+                    scenario_config = SCENARIOS[scenario_name].copy()
+                    scenario_config["include_metrics"] = selected_metrics
+                    scenarios_to_run.append((scenario_name, scenario_config))
+                except ValueError:
+                    # Not an integer, treat as scenario name
+                    if scenario_input not in SCENARIOS:
+                        raise SystemExit(
+                            f"Invalid scenario name '{scenario_input}'. Valid names: {scenario_names}"
+                        )
+                    scenario_config = SCENARIOS[scenario_input].copy()
+                    scenario_config["include_metrics"] = selected_metrics
+                    scenarios_to_run.append((scenario_input, scenario_config))
+
+    # Run each scenario
+    for scenario_name, sc in scenarios_to_run:
+        print(f"\n=== Running scenario: {scenario_name} ===")
+        compute_results(
+            list_of_logs=sc["logs"],
+            results_name=scenario_name,
+            scenario_name=scenario_name,
+            population_extractor=sc["population_extractor"],
+            metric_adapters=default_metric_adapters,
+            bootstrap_sampler=default_bootstrap_sampler,
+            normalizers=sc["normalizers"],
+            include_metrics=sc["include_metrics"],
+        )
 
 
 if __name__ == "__main__":

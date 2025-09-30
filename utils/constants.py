@@ -75,3 +75,32 @@ DUAL_VARIANT_METRIC_NAMES = [
 TRACE_ONLY_METRIC_NAMES = [
     name for name in ALL_METRIC_NAMES if name not in DUAL_VARIANT_METRIC_NAMES
 ]
+
+# Metric shorthand handles for command line usage
+METRIC_SHORTHAND = {
+    # Basic counts
+    "events": "Number of Events",
+    "activities": "Number of Distinct Activities",
+    "traces": "Number of Traces",
+    "distinct_traces": "Number of Distinct Traces",
+    "transitions": "Number of Distinct Activity Transitions",
+    # Trace length metrics
+    "min_length": "Min. Trace Length",
+    "avg_length": "Avg. Trace Length",
+    "max_length": "Max. Trace Length",
+    "pct_distinct": "Percentage of Distinct Traces",
+    "avg_activities": "Average Distinct Activities per Trace",
+    # Structural metrics
+    "structure": "Structure",
+    "acyclic_paths": "Estimated Number of Acyclic Paths",
+    "ties": "Number of Ties in Paths to Goal",
+    "lz": "Lempel-Ziv Complexity",
+    "affinity": "Average Affinity",
+    "deviation": "Deviation from Random",
+    "edit_distance": "Average Edit Distance",
+    # Entropy metrics
+    "seq_entropy": "Sequence Entropy",
+    "norm_seq_entropy": "Normalized Sequence Entropy",
+    "var_entropy": "Variant Entropy",
+    "norm_var_entropy": "Normalized Variant Entropy",
+}
