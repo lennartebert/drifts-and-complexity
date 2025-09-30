@@ -170,6 +170,36 @@ def _coverage_hat(N: int, f1: int, f2: int) -> float:
     return max(0.0, min(1.0, C))
 
 
+def _population_distribution_to_counter(pd: PopulationDistribution) -> Counter:
+    """
+    Convert a PopulationDistribution back to a Counter by combining observed labels and probabilities.
+
+    This function reconstructs the observed counts by multiplying the observed probabilities
+    by the reference sample size (n_samples). This is useful when you need to work with
+    the original count-based representation after population modeling.
+
+    Parameters
+    ----------
+    pd : PopulationDistribution
+        The population distribution containing observed labels and their probabilities.
+
+    Returns
+    -------
+    Counter
+        A Counter mapping observed labels to their estimated counts.
+    """
+    if not pd.observed_labels or not pd.observed_probs:
+        return Counter()
+
+    # Convert probabilities back to counts by multiplying by reference sample size
+    counts = {}
+    for label, prob in zip(pd.observed_labels, pd.observed_probs):
+        # Round to nearest integer to get count representation
+        counts[label] = int(round(prob * pd.n_samples))
+
+    return Counter(counts)
+
+
 def _build_chao_distribution_from_counts(counts: Counter) -> PopulationDistribution:
     """
     Fit an iNEXT-like population distribution from observed counts.
@@ -253,7 +283,7 @@ class Chao1PopulationExtractor(PopulationExtractor):
         Parameters
         ----------
         window : Window
-            A time or trace window containing a PM4Py event log (in `window.traces`).
+            A time or trace window containing a PM4Py event log or a population distribution.
 
         Returns
         -------
@@ -263,11 +293,23 @@ class Chao1PopulationExtractor(PopulationExtractor):
             - `population_counts` (richness estimates for the same three domains)
         """
 
+        if window.population_distributions is not None:
+            # perform chao estimation on the population distribution
+            PD = window.population_distributions
+            activity_count_vector = _population_distribution_to_counter(PD.activities)
+            dfg_count_vector = _population_distribution_to_counter(PD.dfg_edges)
+            vars_count_vector = _population_distribution_to_counter(PD.trace_variants)
+        else:
+            # perform chao estimation on the traces
+            log = window.traces
+            activity_count_vector = _counts_activities(log)
+            dfg_count_vector = _counts_dfg_edges(log)
+            vars_count_vector = _counts_trace_variants(log)
+
         # Build from traces once (observed abundances -> iNEXT-like model)
-        log = window.traces
-        pd_acts = _build_chao_distribution_from_counts(_counts_activities(log))
-        pd_dfg = _build_chao_distribution_from_counts(_counts_dfg_edges(log))
-        pd_vars = _build_chao_distribution_from_counts(_counts_trace_variants(log))
+        pd_acts = _build_chao_distribution_from_counts(activity_count_vector)
+        pd_dfg = _build_chao_distribution_from_counts(dfg_count_vector)
+        pd_vars = _build_chao_distribution_from_counts(vars_count_vector)
         PD = PopulationDistributions(
             activities=pd_acts, dfg_edges=pd_dfg, trace_variants=pd_vars
         )

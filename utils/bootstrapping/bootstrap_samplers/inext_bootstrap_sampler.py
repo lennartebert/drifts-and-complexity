@@ -167,9 +167,34 @@ class INextBootstrapSampler(BootstrapSampler):
 
         for b in range(self.B):
             # 1) abundance-level multinomial draws (iNEXT-style)
-            acts_counts = _draw_counts_for_species(rng, PD.activities)
-            dfg_counts = _draw_counts_for_species(rng, PD.dfg_edges)
-            vars_counts = _draw_counts_for_species(rng, PD.trace_variants)
+            acts_count_vector = _draw_counts_for_species(rng, PD.activities)
+            dfg_count_vector = _draw_counts_for_species(rng, PD.dfg_edges)
+            vars_count_vector = _draw_counts_for_species(rng, PD.trace_variants)
+
+            # build updated population distribution with new count vectors
+            boot_PD = PopulationDistributions(
+                activities=PopulationDistribution(
+                    observed_labels=acts_count_vector.keys(),
+                    observed_probs=acts_count_vector.values(),
+                    unseen_count=0,
+                    p0=0.0,
+                    n_samples=len(acts_count_vector),
+                ),
+                dfg_edges=PopulationDistribution(
+                    observed_labels=dfg_count_vector.keys(),
+                    observed_probs=dfg_count_vector.values(),
+                    unseen_count=0,
+                    p0=0.0,
+                    n_samples=len(dfg_count_vector),
+                ),
+                trace_variants=PopulationDistribution(
+                    observed_labels=vars_count_vector.keys(),
+                    observed_probs=vars_count_vector.values(),
+                    unseen_count=0,
+                    p0=0.0,
+                    n_samples=len(vars_count_vector),
+                ),
+            )
 
             # 2) optional non-parametric trace bootstrap (for non-pop metrics)
             if self.resample_traces:
@@ -186,17 +211,8 @@ class INextBootstrapSampler(BootstrapSampler):
                 id=f"{window.id}::boot{b+1}",
                 size=boot_size,
                 traces=boot_traces,
-                population_distributions=PD,  # reuse fitted model
+                population_distributions=boot_PD,  # reuse fitted model
             )
-
-            # Optionally attach abundance draws so we can compute estimators/metrics later
-            if self.store_abundances_on_window:
-                # Attach as a private field to avoid API clashes
-                boot_win._bootstrap_abundances = {  # type: ignore[attr-defined]
-                    "activities": acts_counts,
-                    "dfg_edges": dfg_counts,
-                    "trace_variants": vars_counts,
-                }
 
             reps.append(boot_win)
 
