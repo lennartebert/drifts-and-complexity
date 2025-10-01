@@ -79,10 +79,12 @@ def _build_naive_distribution_from_counts(counts: Counter) -> PopulationDistribu
     return PopulationDistribution(
         observed=counts,
         population=counts,  # No unseen species
+        n_reference=N,
+        n_population=N,
+        observed_count=len(counts),
         population_count=len(counts),
         unseen_count=None,  # No unseen species
         p0=None,  # No unseen mass
-        n_samples=N,
     )
 
 
