@@ -47,10 +47,22 @@ class EstimatedNumberOfAcyclicPaths(TraceMetric):
 
         e = number_of_activity_transitions.value  # i.e., number of edges in DFG
         v = number_of_distinct_activities.value  # i.e., number of vertices in DFG
-        value = 10 ** (0.08 * (1 + e - v))
+
+        # Calculate exponent and check for overflow
+        exponent = 0.08 * (1 + e - v)
+
+        # Cap at float('inf') to prevent overflow (exponent > 308 causes overflow)
+        if exponent > 308:
+            value = float("inf")
+        else:
+            value = 10**exponent
         measures.set(
             self.name,
             float(value),
             hidden=False,
-            meta={"formula": "10**(0.08*(1+e-v))", "basis": "derived"},
+            meta={
+                "formula": "10**(0.08*(1+e-v))",
+                "basis": "derived",
+                "overflow_protected": exponent > 308,
+            },
         )
