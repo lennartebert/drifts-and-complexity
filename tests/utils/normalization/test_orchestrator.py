@@ -38,10 +38,11 @@ class TestNormalizationOrchestrator:
 
         result = apply_normalizers(store, normalizers=None)
 
-        # Should return the same store unchanged
+        # Should return the same store with naive normalization applied
         assert result is store
         assert store.get("Test Metric").value == 42.0
-        assert store.get("Test Metric").value_normalized is None
+        assert store.get("Test Metric").value_normalized == 42.0
+        assert store.get("Test Metric").meta["normalized_by"] == "NaiveNormalizer"
 
     def test_apply_normalizers_empty_list(self):
         """Test applying empty normalizers list."""
@@ -50,10 +51,11 @@ class TestNormalizationOrchestrator:
 
         result = apply_normalizers(store, normalizers=[])
 
-        # Should return the same store unchanged
+        # Should return the same store with naive normalization applied
         assert result is store
         assert store.get("Test Metric").value == 42.0
-        assert store.get("Test Metric").value_normalized is None
+        assert store.get("Test Metric").value_normalized == 42.0
+        assert store.get("Test Metric").meta["normalized_by"] == "NaiveNormalizer"
 
     def test_apply_normalizers_single_normalizer(self):
         """Test applying a single normalizer."""
