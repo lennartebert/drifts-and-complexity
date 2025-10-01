@@ -154,5 +154,11 @@
     "short_name": "CREDIT_S",
     "type": "synthetic",
     "path": "data/synthetic/BPM fundamentals_7.10_credit application process with rework/simulation_logs.xes.gz"
+  },
+  "TEST_BPIC12": {
+    "name": "BPIC 2012 (Loan Applications)",
+    "short_name": "TEST_BPIC12",
+    "type": "real",
+    "path": "data/real/TEST_BPIC12/TEST_BPI_Challenge_2012.xes.gz"
   }
 }

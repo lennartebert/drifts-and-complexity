@@ -41,6 +41,9 @@ class NormalizeNumberOfEvents(Normalizer):
         # Compute normalized value (average trace length)
         norm_val = float(ne) / float(nt)
 
+        # Set has_normalized to True
+        ne_measure.has_normalized = True
+
         # Store normalized value without overwriting the raw value
         ne_measure.value_normalized = norm_val
 

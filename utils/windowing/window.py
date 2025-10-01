@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 
 from pm4py.objects.log.obj import Trace
 
+from utils.population.population_distributions import PopulationDistributions
+
 # PopulationDistributions imported as string annotation to avoid circular import
 
 
@@ -31,7 +33,7 @@ class Window:
     id: str
     size: int
     traces: List[Trace]
-    population_distributions: Optional["PopulationDistributions"] = None
+    population_distributions: Optional[PopulationDistributions] = None
     first_index: Optional[int] = None
     last_index: Optional[int] = None
     start_moment: Optional[datetime] = None

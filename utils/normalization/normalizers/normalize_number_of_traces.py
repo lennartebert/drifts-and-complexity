@@ -27,6 +27,9 @@ class NormalizeNumberOfTraces(Normalizer):
         # Always normalize to 1
         trace_measure.value_normalized = 1.0
 
+        # Set has_normalized to True
+        trace_measure.has_normalized = True
+
         # Update meta
         prev_meta = trace_measure.meta or {}
         trace_measure.meta = {**prev_meta, "normalized_by": type(self).__name__}

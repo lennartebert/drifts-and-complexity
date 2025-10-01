@@ -67,10 +67,14 @@ class VidgofMetricsAdapter(MetricsAdapter):
 
     # --- internal helpers -----------------------------------------------------
     @staticmethod
-    def _get_num_partitions(pa: Any) -> int:
-        # Get number of partitions with same logic used by Vidgof: (re)build c_index, then ignore c=0
+    def _get_num_states(pa) -> int:
+        pa.c_index = create_c_index(pa)  # keep Vidgof’s pattern
+        return len(pa.nodes) - 1  # |S|, root excluded
+
+    @staticmethod
+    def _get_num_partitions(pa) -> int:
         pa.c_index = create_c_index(pa)
-        return len(list(pa.c_index.keys())[1:])
+        return len(pa.c_index) - 1  # ignore c=0 sentinel
 
     @staticmethod
     def _compute_from_lib(
@@ -97,6 +101,16 @@ class VidgofMetricsAdapter(MetricsAdapter):
                 Measure(
                     name="Number of Partitions",
                     value=float(num_partitions),
+                    hidden=True,
+                    meta={"source": "vidgof"},
+                )
+            )
+
+            num_states = VidgofMetricsAdapter._get_num_states(pa)
+            measures.append(
+                Measure(
+                    name="Number of States",
+                    value=float(num_states),
                     hidden=True,
                     meta={"source": "vidgof"},
                 )

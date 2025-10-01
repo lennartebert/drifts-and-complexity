@@ -21,5 +21,7 @@ class SetToNonePercentageOfDistinctTraces(Normalizer):
 
         # Set normalized value to None
         m.value_normalized = None
+        # Set has_normalized to True
+        m.has_normalized = True
         # Update meta
         m.meta = {**m.meta, "set_to_none_by": type(self).__name__}

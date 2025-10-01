@@ -70,6 +70,9 @@ class NormalizeLZComplexity(Normalizer):
         norm_val = float(lz) / denom
         lz_measure.value_normalized = norm_val
 
+        # Set has_normalized to True
+        lz_measure.has_normalized = True
+
         # Update meta
         prev_meta = lz_measure.meta or {}
         lz_measure.meta = {**prev_meta, "normalized_by": type(self).__name__}

@@ -22,10 +22,8 @@ from utils.normalization.orchestrator import DEFAULT_NORMALIZERS
 from utils.pipeline.compute import run_metrics_over_samples
 from utils.plotting.plot_cis import plot_aggregated_measures_cis
 from utils.plotting.plot_correlations import plot_correlation_results
-from utils.plotting.plot_inext_curves import (
-    plot_inext_curves,
-    plot_inext_curves_from_dataframe,
-)
+
+# plot_inext_curves module removed - no longer needed
 from utils.population.extractors.chao1_population_extractor import (
     Chao1PopulationExtractor,
 )
@@ -106,24 +104,7 @@ def compute_results(
                 ncols=3,
             )
 
-            # Generate iNEXT curves for iNEXT metrics
-            inext_metrics = [m for m in include_metrics if "iNEXT" in m]
-            if inext_metrics:
-                # For now, we'll use the existing data to create iNEXT-style plots
-                # In the future, this could be enhanced to generate proper m_grid curves
-                for metric in inext_metrics:
-                    if metric in measures_df.columns:
-                        plot_inext_curves_from_dataframe(
-                            measures_df,
-                            ci_low_df,
-                            ci_high_df,
-                            out_path=str(
-                                out_dir
-                                / f"{metric.replace(' ', '_').replace('(', '').replace(')', '')}_inext_curve.png"
-                            ),
-                            metric_name=metric,
-                            title=f"{log_name} - {metric} iNEXT Curve",
-                        )
+            # iNEXT curve plotting removed - no longer needed
 
         measures_per_log[log_name] = measures_df
         ci_low_per_log[log_name] = ci_low_df
@@ -246,19 +227,19 @@ def main() -> None:
     # Modify global parameters for test mode
     global SAMPLES_PER_SIZE, BOOTSTRAP_SIZE, SIZES
     if args.test:
-        SAMPLES_PER_SIZE = 10
-        BOOTSTRAP_SIZE = 50
+        SAMPLES_PER_SIZE = 1
+        BOOTSTRAP_SIZE = 10
         SIZES = range(50, 201, 50)
 
         # Create test scenario
         test_scenario = dict(
-            logs=["BPIC12"],
+            logs=["TEST_BPIC12"],
             population_extractor=Chao1PopulationExtractor(),
             metric_adapters=default_metric_adapters,
             bootstrap_sampler=INextBootstrapSampler(
                 B=BOOTSTRAP_SIZE
             ),  # Test mode: smaller bootstrap size
-            normalizers=default_normalizers,
+            normalizers=DEFAULT_NORMALIZERS,
             include_metrics=selected_metrics,
         )
 

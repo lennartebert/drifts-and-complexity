@@ -15,7 +15,8 @@ from utils.population.population_distributions import (
     PopulationDistribution,
     PopulationDistributions,
 )
-from utils.windowing.window import Window
+
+# Window imported as string annotation to avoid circular import
 
 
 # ---- observed abundance counters (PM4Py) ----
@@ -78,7 +79,7 @@ def _build_naive_distribution_from_counts(counts: Counter) -> PopulationDistribu
     return PopulationDistribution(
         observed=counts,
         population=counts,  # No unseen species
-        count=len(counts),
+        population_count=len(counts),
         unseen_count=None,  # No unseen species
         p0=None,  # No unseen mass
         n_samples=N,
@@ -103,7 +104,7 @@ class NaivePopulationExtractor(PopulationExtractor):
         >>> # window.population_distributions now contains naive estimates
     """
 
-    def apply(self, window: Window) -> Window:
+    def apply(self, window: "Window") -> "Window":
         """Apply naive population extraction to a window.
 
         Args:

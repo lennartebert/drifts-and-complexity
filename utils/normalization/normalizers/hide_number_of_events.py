@@ -19,6 +19,8 @@ class HideNumberOfEvents(Normalizer):
         if not isinstance(m, Measure):
             return
 
+        # Set has_normalized to True
+        m.has_normalized = True
         # Set normalized value to None
         m.value_normalized = None
         # Hide the measure

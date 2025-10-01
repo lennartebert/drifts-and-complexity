@@ -83,11 +83,43 @@ def plot_aggregated_measures_cis(
 
     for i, m in enumerate(measure_cols):
         ax = axes_flat[i]
-        # center line
-        ax.plot(x, center[m].values, label=f"{agg.capitalize()}", linewidth=2)
-        # CI low/high as lines
-        ax.plot(x, low[m].values, label="CI low", linestyle="--")
-        ax.plot(x, high[m].values, label="CI high", linestyle="--")
+
+        # Check if measure exists in center DataFrame
+        if m not in center.columns:
+            # Measure doesn't exist in center - create empty subplot
+            ax.text(
+                0.5,
+                0.5,
+                "No data",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+                fontsize=12,
+                alpha=0.7,
+            )
+        else:
+            # Check if measure has any non-None values
+            center_values = center[m].values
+            has_valid_data = not all(pd.isna(center_values))
+
+            if has_valid_data:
+                # center line
+                ax.plot(x, center_values, label=f"{agg.capitalize()}", linewidth=2)
+                # CI low/high as lines
+                ax.plot(x, low[m].values, label="CI low", linestyle="--")
+                ax.plot(x, high[m].values, label="CI high", linestyle="--")
+            else:
+                # No valid data - create empty subplot with just title and grid
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No data",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    alpha=0.7,
+                )
 
         ax.set_title(m, fontsize=10)
         ax.set_xlabel("Sample size")

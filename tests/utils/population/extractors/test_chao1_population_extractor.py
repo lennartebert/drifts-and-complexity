@@ -5,7 +5,10 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from utils.population.chao1 import chao1_coverage_estimate, chao1_total_richness_basic
+from utils.population.chao1_helpers import (
+    chao1_coverage_estimate,
+    chao1_total_richness_basic,
+)
 from utils.population.extractors.chao1_population_extractor import (
     Chao1PopulationExtractor,
     _counts_activities,

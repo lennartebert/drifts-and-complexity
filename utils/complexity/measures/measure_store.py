@@ -62,7 +62,7 @@ class MeasureStore:
         m = self._measures.get(name)
         if m is None:
             return None
-        elif (get_normalized_if_available) and (m.value_normalized is not None):
+        elif (get_normalized_if_available) and (m.has_normalized):
             return m.value_normalized
         else:
             return m.value
@@ -82,7 +82,7 @@ class MeasureStore:
         for k, m in self._measures.items():
             if m.hidden:
                 continue
-            if (get_normalized_if_available) and (m.value_normalized is not None):
+            if (get_normalized_if_available) and (m.has_normalized):
                 result_dict[k] = m.value_normalized
             else:
                 result_dict[k] = m.value

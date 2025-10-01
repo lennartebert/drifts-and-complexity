@@ -29,7 +29,9 @@ class NumberOfDistinctActivityTransitions(PopulationDistributionsMetric):
         if measures.has(self.name):
             return
 
-        number_of_activity_transitions = population_distribution.dfg_edges.count
+        number_of_activity_transitions = (
+            population_distribution.dfg_edges.population_count
+        )
         measures.set(
             self.name,
             number_of_activity_transitions,

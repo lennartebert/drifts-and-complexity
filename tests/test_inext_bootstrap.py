@@ -19,7 +19,7 @@ from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import (
     _draw_inext_bootstrap_sample,
     _multinomial_draw,
 )
-from utils.population.chao1 import (
+from utils.population.chao1_helpers import (
     _build_inext_bootstrap_population_distribution,
     _compute_inext_unseen_probability_mass,
     chao1_total_richness_bias_corrected,
@@ -60,7 +60,7 @@ def build_inext_bootstrap_community(
     counts: Dict[str, int], n_ref: int = None
 ) -> PopulationDistribution:
     """Build iNEXT bootstrap community using current API."""
-    from utils.population.chao1 import create_inext_bootstrap_community
+    from utils.population.chao1_helpers import create_inext_bootstrap_community
     from utils.population.population_distribution import (
         create_chao1_population_distribution,
     )

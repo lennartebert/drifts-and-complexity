@@ -29,7 +29,9 @@ class NumberOfDistinctTraces(PopulationDistributionsMetric):
         if measures.has(self.name):
             return
 
-        number_of_distinct_traces = population_distribution.trace_variants.count
+        number_of_distinct_traces = (
+            population_distribution.trace_variants.population_count
+        )
         measures.set(
             self.name,
             number_of_distinct_traces,

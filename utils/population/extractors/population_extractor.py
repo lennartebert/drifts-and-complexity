@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from utils.windowing.window import Window
-
 
 class PopulationExtractor(ABC):
     """Abstract strategy for inferring population data from a Window.
@@ -26,7 +24,7 @@ class PopulationExtractor(ABC):
     """
 
     @abstractmethod
-    def apply(self, window: Window) -> Window:
+    def apply(self, window: "Window") -> "Window":
         """Apply population extraction to a window.
 
         Args:

@@ -41,6 +41,8 @@ class NormalizeDeviationFromRandom(Normalizer):
         norm_val = 1.0 - (1.0 - float(deviation_from_random_value)) / denom
         norm_val = max(0.0, min(1.0, float(norm_val)))
 
+        # Set has_normalized to True
+        deviation_from_random_measure.has_normalized = True
         # add norm value to measure
         deviation_from_random_measure.value_normalized = norm_val
 

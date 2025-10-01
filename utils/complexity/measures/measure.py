@@ -12,6 +12,7 @@ class Measure:
     - value: numeric result
     - hidden: if True, it's stored but not shown by default
     - meta: free-form metadata (e.g., {"source": "observed"})
+    - has_normalized: if True, the value_normalized is available (may still be None)
     - value_normalized: normalized version of the value
     """
 
@@ -19,6 +20,7 @@ class Measure:
     value: float
     hidden: bool = False
     meta: Dict[str, Any] = field(default_factory=dict)
+    has_normalized: bool = False
     value_normalized: Optional[float] = (
         None  # store normalized value separately from non-normalized value
     )

@@ -29,7 +29,9 @@ class NumberOfDistinctActivities(PopulationDistributionsMetric):
         if measures.has(self.name):
             return
 
-        number_of_distinct_activities = population_distribution.activities.count
+        number_of_distinct_activities = (
+            population_distribution.activities.population_count
+        )
         measures.set(
             self.name,
             number_of_distinct_activities,

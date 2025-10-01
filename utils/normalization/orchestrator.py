@@ -7,7 +7,6 @@ from utils.normalization.normalizers.hide_number_of_traces import HideNumberOfTr
 from utils.normalization.normalizers.hide_percentage_of_distinct_traces import (
     HidePercentageOfDistinctTraces,
 )
-from utils.normalization.normalizers.naive_normalizer import NaiveNormalizer
 from utils.normalization.normalizers.normalize_deviation_from_random import (
     NormalizeDeviationFromRandom,
 )
@@ -22,6 +21,9 @@ from utils.normalization.normalizers.normalize_number_of_traces import (
 )
 from utils.normalization.normalizers.normalize_percentage_of_distinct_traces import (
     NormalizePercentageOfDistinctTraces,
+)
+from utils.normalization.normalizers.normalize_sequence_entropy import (
+    NormalizeSequenceEntropy,
 )
 from utils.normalization.normalizers.normalize_variant_entropy import (
     NormalizeVariantEntropy,
@@ -45,6 +47,7 @@ DEFAULT_NORMALIZERS: List[Normalizer] = [
     NormalizeDeviationFromRandom(),
     NormalizeLZComplexity(),
     NormalizeVariantEntropy(),
+    NormalizeSequenceEntropy(),
 ]
 
 
@@ -55,17 +58,10 @@ def apply_normalizers(
     Apply all normalizers IN PLACE on the provided MeasureStore.
     Normalizers must not add new measures; only modify or hide existing ones.
 
-    Always applies NaiveNormalizer at the end to ensure all measures have
-    a normalized value (value_normalized = value if not already set).
-
     Returns a MeasureStore
     """
     if normalizers is not None:
         for n in normalizers:
             n.apply(store)
-
-    # Always apply naive normalizer at the end to ensure all measures have normalized values
-    naive_normalizer = NaiveNormalizer()
-    naive_normalizer.apply(store)
 
     return store

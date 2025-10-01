@@ -49,6 +49,9 @@ class NormalizePercentageOfDistinctTraces(Normalizer):
         # Store normalized value without overwriting raw percentage
         pct_measure.value_normalized = norm_val
 
+        # Set has_normalized to True
+        pct_measure.has_normalized = True
+
         # Update meta
         prev_meta = pct_measure.meta or {}
         pct_measure.meta = {**prev_meta, "normalized_by": type(self).__name__}
