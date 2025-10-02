@@ -120,10 +120,16 @@ def bootstrap_statistic(
         value = metric_fn(counts_vec)
         values.append(value)
 
-    values = np.array(values)
-    mean = float(np.mean(values))
-    sd = float(np.std(values, ddof=1))
-    se = sd / np.sqrt(B)
+    # Use float64 for intermediate calculations to prevent overflow
+    values_array = np.array(values, dtype=np.float64)
+    mean_64 = np.mean(values_array)
+    sd_64 = np.std(values_array, ddof=1)
+    se_64 = sd_64 / np.sqrt(np.float64(B))
+
+    # Cast back to regular float - overflow becomes inf naturally
+    mean = float(mean_64)
+    sd = float(sd_64)
+    se = float(se_64)
 
     # Normal approximation CI
     z = 1.96
@@ -131,8 +137,8 @@ def bootstrap_statistic(
     ci_high = mean + z * se
 
     # Percentile CI
-    p_low = float(np.percentile(values, 2.5))
-    p_high = float(np.percentile(values, 97.5))
+    p_low = float(np.percentile(values_array, 2.5))
+    p_high = float(np.percentile(values_array, 97.5))
 
     return mean, se, (ci_low, ci_high), (p_low, p_high)
 

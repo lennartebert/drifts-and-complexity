@@ -121,10 +121,18 @@ def _compute_cis_from_bootstrap(
             }
             continue
 
-        arr = np.asarray(vals, dtype=float)
-        mean = float(np.mean(arr))
-        std = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
-        se = std / np.sqrt(len(arr)) if len(arr) > 1 else 0.0
+        # Use float64 for intermediate calculations to prevent overflow
+        arr = np.asarray(vals, dtype=np.float64)
+        mean_64 = np.mean(arr)
+        std_64 = np.std(arr, ddof=1) if len(arr) > 1 else np.float64(0.0)
+        se_64 = (
+            std_64 / np.sqrt(np.float64(len(arr))) if len(arr) > 1 else np.float64(0.0)
+        )
+
+        # Cast back to regular float - overflow becomes inf naturally
+        mean = float(mean_64)
+        std = float(std_64)
+        se = float(se_64)
 
         if method == "inext":
             # iNEXT-style: mean ± 1.96 * se
