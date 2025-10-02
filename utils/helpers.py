@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 import pandas as pd
 import yaml
 
@@ -192,8 +193,8 @@ def get_correlations_for_dictionary(
         for col in df.columns:
             if col not in metric_columns:
                 continue
-            # drop missing values pairwise
-            tmp = df[[base_column, col]].dropna()
+            # drop missing values and infinite values pairwise
+            tmp = df[[base_column, col]].replace([np.inf, -np.inf], np.nan).dropna()
             if len(tmp) < 2:
                 r, p = float("nan"), float("nan")
             else:
