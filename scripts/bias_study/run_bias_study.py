@@ -5,11 +5,10 @@
 from __future__ import annotations
 
 import argparse
-import math
-import os
 from pathlib import Path
 from typing import List, Optional
 
+import pandas as pd
 from pm4py.objects.log.importer.xes import importer as xes_importer
 
 from utils import constants, helpers, sampling_helper
@@ -43,7 +42,7 @@ sorted_metrics = constants.ALL_METRIC_NAMES
 
 SAMPLES_PER_SIZE = 200
 RANDOM_STATE = 123
-BOOTSTRAP_SIZE = 50
+BOOTSTRAP_SIZE = 200
 SIZES = range(50, 501, 50)
 
 REF_SIZES = [50, 250, 500]
@@ -68,6 +67,7 @@ def compute_results(
     normalizers=default_normalizers,
     include_metrics: Optional[List[str]] = None,
     sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
+    base_scenario_name: Optional[str] = None,  # type: ignore
 ) -> None:
     print(f"Generating results for {results_name}")
     if include_metrics is None:
@@ -194,20 +194,67 @@ def compute_results(
         report="current",  # or "next"
     )
 
+    if base_scenario_name is not None:
+        # load master_table.csv from base_scenario_name
+        base_csv_path = (
+            constants.BIAS_STUDY_RESULTS_DIR / base_scenario_name / "master_table.csv"
+        )
+        base_df = pd.read_csv(base_csv_path)
+        # Convert to dict keyed by log (exclude mean rows)
+        base_measures_per_log = {}
+        for log in base_df["log"].unique():
+            if log != "" and pd.notna(log):  # Skip mean rows (empty log)
+                base_measures_per_log[log] = base_df[base_df["log"] == log].copy()
+        # Convert current corr_df to dict format expected by compute_significant_improvement
+        current_measures_per_log = {}
+        for log in corr_df.columns:
+            # Convert corr_df column to DataFrame with metric and rho columns
+            log_corr = corr_df[log].reset_index()
+            log_corr.columns = ["metric", "rho"]
+            current_measures_per_log[log] = log_corr
+        # compute if improvement was significant
+        improvement_per_log_df, improvement_summary_df = (
+            helpers.compute_significant_improvement(
+                measures_per_log=current_measures_per_log,  # AFTER
+                base_measures_per_log=base_measures_per_log,  # BEFORE
+                include_metrics=include_metrics,
+                num_window_sizes=len(SIZES),  # <-- k
+                rho_col="rho",
+                alpha=0.05,
+            )
+        )
+    else:
+        improvement_per_log_df, improvement_summary_df = None, None
+
     # 2) Build the master table using precomputed corr/pval and plateau_df
-    csv_path, tex_path = helpers.create_master_table_before_from_corrs(
+    label = f"tab:master_table_{scenario_name}"
+    csv_path, tex_path = helpers.create_master_table(
         measures_per_log=measures_per_log,
         sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
         corr_df=corr_df,
         pval_df=pval_df,
         plateau_df=plateau_df,
-        out_csv_path=str(out_dir / "master_table_before.csv"),
+        out_csv_path=str(out_dir / "master_table.csv"),
         metric_columns=include_metrics,
         ref_sizes=REF_SIZES,
         measure_basis_map=constants.METRIC_BASIS_MAP,
         pretty_plateau=True,  # prints '---' instead of NaN
+        label=label,
+        improvement_per_log_df=improvement_per_log_df,
+        improvement_summary_df=improvement_summary_df,
     )
     print(csv_path, tex_path)
+
+    # print aggregated master table
+
+    means_label = f"tab:master_table_means_{scenario_name}"
+    helpers.write_means_only_table_from_master_csv(
+        master_csv_path=csv_path,
+        means_csv_path=out_dir / "master_table_means.csv",
+        means_tex_path=out_dir / "master_table_means.tex",
+        caption="Assessment of Measures (Means Across Logs)",
+        label=means_label,
+    )
 
 
 # --- scenario registry ---
@@ -217,48 +264,53 @@ SCENARIOS = {
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=None,
-        normalizers=default_normalizers,
+        normalizers=None,
         sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
+        base_scenario_name=None,
     ),
     "synthetic_normalized": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
-        bootstrap_sampler=default_bootstrap_sampler,
+        bootstrap_sampler=None,
         normalizers=DEFAULT_NORMALIZERS,
-        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
+        base_scenario_name="synthetic_base",
     ),
     "synthetic_normalized_and_population": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
         population_extractor=Chao1PopulationExtractor(),
         metric_adapters=default_metric_adapters,
-        bootstrap_sampler=INextBootstrapSampler(B=BOOTSTRAP_SIZE),
+        bootstrap_sampler=None,
         normalizers=DEFAULT_NORMALIZERS,
         sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
+        base_scenario_name="synthetic_base",
     ),
     "real_base": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
-        bootstrap_sampler=default_bootstrap_sampler,
-        normalizers=default_normalizers,
+        bootstrap_sampler=None,
+        normalizers=None,
         sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
+        base_scenario_name=None,
     ),
     "real_normalized": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
-        bootstrap_sampler=default_bootstrap_sampler,
+        bootstrap_sampler=None,
         normalizers=DEFAULT_NORMALIZERS,
         sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
+        base_scenario_name="real_base",
     ),
     "real_normalized_and_population": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
         population_extractor=Chao1PopulationExtractor(),
         metric_adapters=default_metric_adapters,
-        bootstrap_sampler=INextBootstrapSampler(B=BOOTSTRAP_SIZE),
+        bootstrap_sampler=None,
         normalizers=DEFAULT_NORMALIZERS,
         sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
+        base_scenario_name="real_base",
     ),
 }
 
@@ -314,7 +366,7 @@ def main() -> None:
     if args.test:
         SAMPLES_PER_SIZE = 10
         BOOTSTRAP_SIZE = 10
-        SIZES = range(50, 501, 50)
+        SIZES = range(50, 201, 50)
 
         # Create test scenario
         test_scenario = dict(
@@ -325,6 +377,7 @@ def main() -> None:
             normalizers=None,
             include_metrics=selected_metrics,
             sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
+            base_scenario_name="test",
         )
 
         scenarios_to_run = [("test", test_scenario)]
@@ -375,6 +428,7 @@ def main() -> None:
             bootstrap_sampler=sc["bootstrap_sampler"],  # type: ignore
             normalizers=sc["normalizers"],  # type: ignore
             include_metrics=sc["include_metrics"],  # type: ignore
+            base_scenario_name=sc["base_scenario_name"],  # type: ignore
         )
 
 

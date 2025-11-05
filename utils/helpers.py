@@ -221,6 +221,196 @@ def get_correlations_for_dictionary(
     return corr_df, pval_df
 
 
+from typing import Any, Dict, List, Tuple, Union
+
+import numpy as np
+import pandas as pd
+from scipy.stats import norm
+
+
+def compute_significant_improvement(
+    measures_per_log: Dict[str, pd.DataFrame],  # AFTER fixes (contains rho for 'after')
+    base_measures_per_log: Dict[
+        str, pd.DataFrame
+    ],  # BEFORE fixes (contains rho for 'before')
+    include_metrics: List[str],
+    rho_col: str = "rho",  # correlation column name in BOTH inputs
+    log_col: str = "log",
+    metric_col: str = "metric",
+    num_window_sizes: Union[int, Dict[str, int], Dict[Tuple[str, str], int]] = 0,
+    alpha: float = 0.05,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Compare bias before vs after using Fisher's z-test on correlations.
+
+    Significant improvement rule:
+        improved = (abs(rho_after) < abs(rho_before)) AND (p_change < alpha)
+
+    Parameters
+    ----------
+    measures_per_log : dict[log -> DataFrame]
+        AFTER fixes. Must contain columns [metric_col, rho_col] (and optionally p).
+    base_measures_per_log : dict[log -> DataFrame]
+        BEFORE fixes. Must contain columns [metric_col, rho_col] (and optionally p).
+    include_metrics : list[str]
+        Metrics to compare.
+    rho_col : str
+        Column name for correlation (same in both inputs).
+    log_col, metric_col : str
+        Identifier column names.
+    num_window_sizes : int | dict
+        Number of window sizes (k) used per correlation.
+        - If int: same k for all (log, metric).
+        - If dict[str -> int]: per-log k (key = log).
+        - If dict[(log, metric) -> int]: per-(log, metric) k.
+    alpha : float
+        Significance level for Fisher z-test.
+
+    Returns
+    -------
+    per_log_df : DataFrame
+        Columns: [log, metric, rho_before, rho_after, delta_abs_rho, k, z_change, p_change, improved]
+    summary_df : DataFrame
+        Columns: [metric, share_improved, n_logs]
+    """
+    DECIMALS = 4  # harmonize precision across inputs
+
+    def fisher_z_test(r_before: float, r_after: float, k: int) -> Tuple[float, float]:
+        """Two-sided Fisher z-test for difference between two correlations."""
+        if (k is None) or (k < 4) or np.isnan(r_before) or np.isnan(r_after):
+            return np.nan, np.nan
+        # guard against |r| >= 1
+        if not (-0.999999 < r_before < 0.999999) or not (
+            -0.999999 < r_after < 0.999999
+        ):
+            return np.nan, np.nan
+        z1 = np.arctanh(r_before)
+        z2 = np.arctanh(r_after)
+        se = np.sqrt(2.0 / (k - 3))
+        z_stat = (z1 - z2) / se
+        p_val = 2 * (1 - norm.cdf(abs(z_stat)))
+        return float(z_stat), float(p_val)
+
+    def get_k(log: str, metric: str) -> int:
+        if isinstance(num_window_sizes, int):
+            return num_window_sizes
+        if isinstance(num_window_sizes, dict):
+            # try (log, metric) key first
+            if (log, metric) in num_window_sizes:
+                return int(num_window_sizes[(log, metric)])
+            # fall back to per-log
+            if log in num_window_sizes:
+                return int(num_window_sizes[log])
+        return 0  # unknown
+
+    rows = []
+
+    for log in sorted(measures_per_log.keys()):
+        if log not in base_measures_per_log:
+            continue
+
+        df_after = measures_per_log[log].copy()
+        df_before = base_measures_per_log[log].copy()
+
+        # keep only requested metrics
+        df_after = df_after[df_after[metric_col].isin(include_metrics)].copy()
+        df_before = df_before[df_before[metric_col].isin(include_metrics)].copy()
+
+        # ensure rho is numeric and harmonized to 4 decimals
+        for df in (df_after, df_before):
+            if rho_col not in df.columns:
+                raise ValueError(f"Missing column '{rho_col}' in data for log '{log}'.")
+            df[rho_col] = pd.to_numeric(df[rho_col], errors="coerce").round(DECIMALS)
+
+        merged = (
+            pd.merge(
+                df_before[[metric_col, rho_col]].rename(
+                    columns={rho_col: f"{rho_col}_before"}
+                ),
+                df_after[[metric_col, rho_col]].rename(
+                    columns={rho_col: f"{rho_col}_after"}
+                ),
+                on=metric_col,
+                how="inner",
+            )
+            .replace([np.inf, -np.inf], np.nan)
+            .dropna(subset=[f"{rho_col}_before", f"{rho_col}_after"])
+        )
+
+        if merged.empty:
+            continue
+
+        # compute stats per metric
+        merged[log_col] = log
+        abs_before = merged[f"{rho_col}_before"].abs()
+        abs_after = merged[f"{rho_col}_after"].abs()
+        merged["delta_abs_rho"] = (abs_after - abs_before).round(DECIMALS)
+
+        # Fisher z-test
+        k_list = []
+        z_list = []
+        p_list = []
+        imp_list = []
+        for m, rb, ra in zip(
+            merged[metric_col], merged[f"{rho_col}_before"], merged[f"{rho_col}_after"]
+        ):
+            k = get_k(str(log), str(m))
+            z, p = fisher_z_test(rb, ra, k)
+            k_list.append(k)
+            z_list.append(z)
+            p_list.append(p)
+            improved = (abs(ra) < abs(rb)) and (not np.isnan(p)) and (p < alpha)
+            imp_list.append(improved)
+
+        merged["k"] = k_list
+        merged["z_change"] = z_list
+        merged["p_change"] = p_list
+        merged["improved"] = imp_list
+
+        rows.append(
+            merged[
+                [
+                    log_col,
+                    metric_col,
+                    f"{rho_col}_before",
+                    f"{rho_col}_after",
+                    "delta_abs_rho",
+                    "k",
+                    "z_change",
+                    "p_change",
+                    "improved",
+                ]
+            ]
+        )
+
+    if not rows:
+        per_log_df = pd.DataFrame(
+            columns=[
+                log_col,
+                metric_col,
+                f"{rho_col}_before",
+                f"{rho_col}_after",
+                "delta_abs_rho",
+                "k",
+                "z_change",
+                "p_change",
+                "improved",
+            ]
+        )
+        summary_df = pd.DataFrame(columns=[metric_col, "share_improved", "n_logs"])
+        return per_log_df, summary_df
+
+    per_log_df = pd.concat(rows, ignore_index=True)
+
+    # summary across logs per metric
+    summary_df = per_log_df.groupby(metric_col, as_index=False).agg(
+        share_improved=("improved", "mean"),
+        n_logs=("improved", "size"),
+    )
+
+    return per_log_df, summary_df
+
+
 ########################################################
 # plateau detection helpers
 ########################################################
@@ -343,7 +533,60 @@ def detect_plateau_df(
 # Master table builder
 
 
-def create_master_table_before_from_corrs(
+# ----------------------------
+# Helpers
+# ----------------------------
+
+
+def _escape_latex(text: Any) -> str:
+    """Escape underscores in text, preserving \textit{...} wrappers."""
+    if text is None or (isinstance(text, float) and pd.isna(text)):
+        return ""
+    s = str(text)
+    if s.startswith("\\textit{") and s.endswith("}"):
+        return s
+    return s.replace("_", "\\_")
+
+
+def _validate_improvement_inputs(
+    improvement_per_log_df: Optional[pd.DataFrame],
+    improvement_summary_df: Optional[pd.DataFrame],
+) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+    """Light schema checks + type normalization."""
+    ipl = improvement_per_log_df
+    ims = improvement_summary_df
+
+    if ipl is not None:
+        required = {"log", "metric", "improved"}
+        missing = required - set(ipl.columns)
+        if missing:
+            raise ValueError(f"improvement_per_log_df missing columns: {missing}")
+        # normalize dtypes
+        ipl = ipl.copy()
+        ipl["log"] = ipl["log"].astype(str)
+        ipl["metric"] = ipl["metric"].astype(str)
+        # coerce to bool (allow 0/1, 'True'/'False', etc.)
+        ipl["improved"] = ipl["improved"].astype(bool)
+
+    if ims is not None:
+        required = {"metric", "share_improved"}
+        missing = required - set(ims.columns)
+        if missing:
+            raise ValueError(f"improvement_summary_df missing columns: {missing}")
+        ims = ims.copy()
+        ims["metric"] = ims["metric"].astype(str)
+        # numeric share in [0,1]
+        ims["share_improved"] = pd.to_numeric(ims["share_improved"], errors="coerce")
+
+    return ipl, ims
+
+
+# ----------------------------
+# 1) Build & save CSV (returns DataFrame too)
+# ----------------------------
+
+
+def build_master_table_csv(
     measures_per_log: Dict[str, pd.DataFrame],
     sample_ci_rel_width_per_log: Dict[str, pd.DataFrame],
     corr_df: pd.DataFrame,  # rows=metrics, cols=logs -> rho
@@ -353,23 +596,30 @@ def create_master_table_before_from_corrs(
     metric_columns: Optional[List[str]] = None,
     ref_sizes: Optional[List[int]] = None,
     measure_basis_map: Optional[Dict[str, str]] = None,
-    pretty_plateau: bool = True,  # True -> convert NaN to '---'
-) -> Tuple[str, str]:
+    pretty_plateau: bool = True,
+    improvement_per_log_df: Optional[
+        pd.DataFrame
+    ] = None,  # cols: log, metric, improved (bool)
+    improvement_summary_df: Optional[
+        pd.DataFrame
+    ] = None,  # cols: metric, share_improved
+) -> Tuple[str, pd.DataFrame]:
     """
-    Build the 'before' master table by *reading* correlations/p-values/plateau
-    from precomputed DataFrames. Saves CSV and LaTeX.
+    Assemble the master table and write CSV.
+    Returns (csv_path, table_df_with_mean_rows).
 
-    Output columns:
-      log, metric, basis, rho_before, p_before, RelCI_<n1>, RelCI_<n2>, ..., plateau_n
-
-    Notes
-    -----
-    - corr_df/pval_df/plateau_df are matrix-like: rows=metrics, columns=logs.
-    - Table is sorted by metric, basis, then log. A per-(metric,basis) 'MEAN' row
-      is appended *after* each group.
+    - Integrates per-log 'improved' if provided (merged by log+metric).
+    - Integrates mean-row 'share_improved' if provided (merged by metric).
+    - Writes both into a single CSV column 'improvement':
+        * Per-log rows -> "Yes" if improved else ""
+        * Mean rows    -> share_improved formatted to 4 decimals
     """
     if ref_sizes is None:
         ref_sizes = [50, 250, 500]
+
+    improvement_per_log_df, improvement_summary_df = _validate_improvement_inputs(
+        improvement_per_log_df, improvement_summary_df
+    )
 
     rows = []
 
@@ -382,26 +632,24 @@ def create_master_table_before_from_corrs(
             all_metrics.update([c for c in numeric_cols if c not in id_cols])
         metric_columns = sorted(all_metrics)
 
-    # Sorting helpers
+    # Sort helpers
     metric_order = {metric: idx for idx, metric in enumerate(metric_columns)}
     basis_priority = ["ObsCount", "PopCount", "PopDist", "Concrete", "—"]
     basis_order = {b: i for i, b in enumerate(basis_priority)}
 
-    # Build rows
     logs_sorted = sorted(measures_per_log.keys())
+
     for log in logs_sorted:
         rel_df = sample_ci_rel_width_per_log.get(log)
         if rel_df is None:
             raise ValueError(f"Missing relative CI width DF for log '{log}'.")
         rel_df = rel_df.set_index("sample_size").sort_index()
 
-        # Filter metrics to present columns
         metric_cols = [m for m in metric_columns if m in measures_per_log[log].columns]
         if not metric_cols:
             continue
 
         for m in metric_cols:
-            # rho/p
             rho = np.nan
             pval = np.nan
             if (m in corr_df.index) and (log in corr_df.columns):
@@ -409,12 +657,10 @@ def create_master_table_before_from_corrs(
             if (m in pval_df.index) and (log in pval_df.columns):
                 pval = pval_df.at[m, log]
 
-            # plateau
             plateau = np.nan
             if (m in plateau_df.index) and (log in plateau_df.columns):
                 plateau = plateau_df.at[m, log]
 
-            # Rel CI at requested sizes
             relci = {}
             for n in ref_sizes:
                 val = rel_df[m].get(n, np.nan) if m in rel_df.columns else np.nan
@@ -422,58 +668,93 @@ def create_master_table_before_from_corrs(
 
             basis = measure_basis_map.get(m, "—") if measure_basis_map else "—"
 
-            rows.append(
-                {
-                    "log": log,
-                    "metric": m,
-                    "basis": basis,
-                    "rho_before": rho,
-                    "p_before": pval,
-                    **relci,
-                    "plateau_n": (
-                        "---"
-                        if (pretty_plateau and (not np.isfinite(plateau)))
-                        else plateau
-                    ),
-                }
-            )
+            row = {
+                "metric": m,
+                "basis": basis,
+                "log": str(log),
+                "rho": rho,
+                "p": pval,
+                **relci,
+                "plateau_n": (
+                    "---"
+                    if (pretty_plateau and (not np.isfinite(plateau)))
+                    else plateau
+                ),
+            }
+
+            # Merge per-log improvement flag if provided
+            if improvement_per_log_df is not None:
+                sub = improvement_per_log_df[
+                    (improvement_per_log_df["log"] == str(log))
+                    & (improvement_per_log_df["metric"] == str(m))
+                ]
+                if not sub.empty:
+                    row["improved"] = bool(sub.iloc[0]["improved"])
+
+            rows.append(row)
 
     if not rows:
         raise ValueError("No rows produced; check inputs and metric names.")
 
-    # Column order
+    # Build DataFrame in requested order
     ref_cols = [f"RelCI_{n}" for n in ref_sizes]
-    cols_order = (
-        ["log", "metric", "basis", "rho_before", "p_before"] + ref_cols + ["plateau_n"]
-    )
+    base_cols = ["metric", "basis", "log", "rho", "p"] + ref_cols + ["plateau_n"]
+    # keep originals internally (not necessarily in CSV)
+    if any(("improved" in r) for r in rows):
+        base_cols.append("improved")
 
     table_df = pd.DataFrame(rows)
-    table_df = table_df[[c for c in cols_order if c in table_df.columns]]
+    table_df = table_df[[c for c in base_cols if c in table_df.columns]]
 
-    # ---- Append per-(metric, basis) MEAN rows ----
-    # Compute numeric means across logs for each (metric, basis)
-    numeric_cols = ["rho_before", "p_before"] + ref_cols
-    # Coerce plateau_n to numeric temporarily to avoid aggregation issues
-    # (we don't average plateau_n; we will blank it in the MEAN row)
-    tbl_num = table_df.copy()
-    # Identify group means
-    grp = tbl_num.groupby(["metric", "basis"], dropna=False)
+    # ---- Mean rows per (metric, basis) ----
+    numeric_cols = ["rho", "p"] + [c for c in ref_cols if c in table_df.columns]
+    grp = table_df.groupby(["metric", "basis"], dropna=False)
     means = grp[numeric_cols].mean(numeric_only=True).reset_index()
-    means.insert(0, "log", "MEAN")
-    means["plateau_n"] = "---"  # leave blank/pretty for the mean row
+    means.insert(2, "log", "")  # blank identifier on mean row
+    means["_is_mean"] = True
+    means["plateau_n"] = "---"
 
-    # Combine and sort
+    # Merge share_improved on mean rows only
+    if improvement_summary_df is not None:
+        means = means.merge(
+            improvement_summary_df[["metric", "share_improved"]],
+            on="metric",
+            how="left",
+        )
+        # carry the column in per-log rows too (will be blank there)
+        table_df["share_improved"] = np.nan
+
+    # Per-log 'improved' should not appear on mean rows
+    means["improved"] = np.nan
+
+    # Combine
+    table_df["_is_mean"] = False
     table_df = pd.concat([table_df, means], ignore_index=True, sort=False)
 
-    # Sorting keys: metric → basis → log (MEAN comes last)
+    # ---- Create combined 'improvement' column ----
+    # Per-log: "Yes" if improved else ""
+    if "improved" in table_df.columns:
+        table_df["improvement"] = table_df["improved"].apply(
+            lambda v: "Yes" if (isinstance(v, (bool, np.bool_)) and v) else ""
+        )
+    else:
+        table_df["improvement"] = ""
+
+    # Mean rows: write share_improved with 4 decimals (overwriting per-log text in those rows)
+    if "share_improved" in table_df.columns:
+        mean_mask = table_df["_is_mean"] == True
+        table_df.loc[mean_mask, "improvement"] = table_df.loc[
+            mean_mask, "share_improved"
+        ].apply(lambda x: ("" if pd.isna(x) else f"{float(x):.4f}"))
+
+    # Sorting: metric → basis → log; mean rows last
     table_df["_metric_order"] = table_df["metric"].map(
         lambda x: metric_order.get(x, len(metric_columns))
     )
     table_df["_basis_order"] = table_df["basis"].map(
         lambda x: basis_order.get(x, len(basis_order))
     )
-    # Ensure MEAN is last within each (metric,basis) group
-    table_df["_log_order"] = (table_df["log"] == "MEAN").astype(int)
+    table_df["_log_order"] = table_df["_is_mean"].astype(int)
 
     table_df = (
         table_df.sort_values(
@@ -483,37 +764,286 @@ def create_master_table_before_from_corrs(
         .reset_index(drop=True)
     )
 
-    # Save CSV
+    # Final CSV order: include only the combined column (not the separate ones)
+    cols_order = (
+        ["metric", "basis", "log", "rho", "p"] + ref_cols + ["plateau_n", "improvement"]
+    )
+    cols_order_csv = [c for c in cols_order if c in table_df.columns]
+    # keep helper flag at end if present (for downstream LaTeX)
+    if "_is_mean" in table_df.columns:
+        cols_order_csv = cols_order_csv + ["_is_mean"]
+    # (We keep 'improved' and 'share_improved' in the DataFrame but omit from CSV to avoid duplication)
+
     os.makedirs(os.path.dirname(out_csv_path) or ".", exist_ok=True)
-    table_df.to_csv(out_csv_path, index=False)
+    table_df[cols_order_csv].to_csv(out_csv_path, index=False)
 
-    # Save LaTeX next to CSV
-    out_tex_path = os.path.splitext(out_csv_path)[0] + ".tex"
-    os.makedirs(os.path.dirname(out_tex_path) or ".", exist_ok=True)
+    # Return DataFrame (still contains 'improved'/'share_improved' internally if present)
+    return out_csv_path, table_df[cols_order_csv]
 
-    # Compact float formatting in LaTeX
-    def _fmt(x: Any) -> str:
+
+# ----------------------------
+# 2) Render LaTeX
+# ----------------------------
+
+
+def render_master_table_latex(
+    table_df: pd.DataFrame,
+    out_tex_path: str,
+    caption: str = "Assessment of Measures before Applying Remedies",
+    label: str = "tab:master_table_before",
+) -> str:
+    """
+    Pretty LaTeX rendering for the master table DataFrame produced by build_master_table_csv(...).
+    - Suppresses repeats for 'log' and 'basis' within (metric,basis) blocks
+    - Mean rows italicized; metric/basis/log blanked on mean rows
+    - Always 4 decimals for numeric; no scientific notation
+    - Escapes underscores in headers and cell content
+    - Wrapped in a full table environment
+    """
+    disp = table_df.copy()
+
+    # Suppress repeats for 'log' and 'basis' within (metric,basis) blocks
+    suppress_cols = [c for c in ["log", "basis"] if c in disp.columns]
+    last_seen = {c: (None, None) for c in suppress_cols}
+    if suppress_cols:
+        for idx, row in disp.iterrows():
+            group_key = (row["metric"], row["basis"])
+            for c in suppress_cols:
+                prev_val, prev_key = last_seen[c]
+                if prev_key != group_key:
+                    prev_val = None
+                if row[c] == prev_val:
+                    disp.at[idx, c] = ""
+                last_seen[c] = (row[c], group_key)
+
+    # Mean row: blank metric/basis/log completely
+    mean_mask = (
+        disp["_is_mean"] == True
+        if "_is_mean" in disp.columns
+        else pd.Series(False, index=disp.index)
+    )
+    for col in ["metric", "basis", "log"]:
+        if col in disp.columns:
+            disp.loc[mean_mask, col] = ""
+
+    # ---- Fixed 4-decimal formatting for numerics ----
+    ref_cols = [c for c in disp.columns if c.startswith("RelCI_")]
+    numeric_cols_present = [
+        c for c in disp.columns if c in (["rho", "p"] + ref_cols + ["share_improved"])
+    ]
+
+    def fmt_num(x: Any) -> str:
+        if x is None or (isinstance(x, float) and pd.isna(x)):
+            return ""
         try:
-            if pd.isna(x):
-                return ""
-            if isinstance(x, (int, np.integer)) or (
-                isinstance(x, float) and float(x).is_integer()
-            ):
-                return f"{int(x)}"
-            return f"{float(x):.4g}"
+            return f"{float(x):.4f}"
+        except Exception:
+            return _escape_latex(x)
+
+    for col in numeric_cols_present:
+        disp[col] = disp[col].map(fmt_num)
+
+    # Format 'improved' (bool) → Yes / ""
+    if "improved" in disp.columns:
+        disp["improved"] = disp["improved"].map(
+            lambda v: (
+                "Yes"
+                if (isinstance(v, (bool, np.bool_)) and v)
+                else (
+                    ""
+                    if (v is None or (isinstance(v, float) and pd.isna(v)))
+                    else str(v)
+                )
+            )
+        )
+        # blank 'improved' in mean rows explicitly
+        disp.loc[mean_mask, "improved"] = ""
+
+    # Escape underscores in text columns
+    for col in disp.columns:
+        if col in numeric_cols_present or col in {"_is_mean"}:
+            continue
+        disp[col] = disp[col].map(_escape_latex)
+
+    # Italicize entire mean row (after formatting/escaping)
+    for col in disp.columns:
+        if col == "_is_mean":
+            continue
+        disp.loc[mean_mask, col] = disp.loc[mean_mask, col].apply(
+            lambda s: (f"\\textit{{{s}}}" if s not in (None, "", np.nan) else s)
+        )
+
+    # Drop helper
+    if "_is_mean" in disp.columns:
+        disp = disp.drop(columns=["_is_mean"])
+
+    # Escape headers
+    disp.columns = [_escape_latex(c) for c in disp.columns]
+
+    # Build LaTeX tabular
+    tabular_str = disp.to_latex(index=False, escape=False, na_rep="")
+
+    # Wrap with table env
+    os.makedirs(os.path.dirname(out_tex_path) or ".", exist_ok=True)
+    table_env = (
+        "\\begin{table}[ht]\n"
+        "\\centering\n"
+        f"\\caption{{{_escape_latex(caption)}}}\n"
+        "\\small\n"
+        f"{tabular_str}\n"
+        f"\\label{{{_escape_latex(label)}}}\n"
+        "\\end{table}\n"
+    )
+    with open(out_tex_path, "w", encoding="utf-8") as f:
+        f.write(table_env)
+
+    return out_tex_path
+
+
+# ----------------------------
+# Convenience wrapper
+# ----------------------------
+
+
+def create_master_table(
+    measures_per_log: Dict[str, pd.DataFrame],
+    sample_ci_rel_width_per_log: Dict[str, pd.DataFrame],
+    corr_df: pd.DataFrame,
+    pval_df: pd.DataFrame,
+    plateau_df: pd.DataFrame,
+    out_csv_path: str,
+    metric_columns: Optional[List[str]] = None,
+    ref_sizes: Optional[List[int]] = None,
+    measure_basis_map: Optional[Dict[str, str]] = None,
+    pretty_plateau: bool = True,
+    caption: str = "Assessment of Measures before Applying Remedies",
+    label: str = "tab:master_table_before",
+    improvement_per_log_df: Optional[pd.DataFrame] = None,
+    improvement_summary_df: Optional[pd.DataFrame] = None,
+) -> Tuple[str, str]:
+    """
+    Build CSV first, then render LaTeX via the helper.
+    """
+    csv_path, table_df = build_master_table_csv(
+        measures_per_log=measures_per_log,
+        sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
+        corr_df=corr_df,
+        pval_df=pval_df,
+        plateau_df=plateau_df,
+        out_csv_path=out_csv_path,
+        metric_columns=metric_columns,
+        ref_sizes=ref_sizes,
+        measure_basis_map=measure_basis_map,
+        pretty_plateau=pretty_plateau,
+        improvement_per_log_df=improvement_per_log_df,
+        improvement_summary_df=improvement_summary_df,
+    )
+
+    out_tex_path = os.path.splitext(csv_path)[0] + ".tex"
+    render_master_table_latex(
+        table_df=table_df,
+        out_tex_path=out_tex_path,
+        caption=caption,
+        label=label,
+    )
+    return csv_path, out_tex_path
+
+
+def write_means_only_table_from_master_csv(
+    master_csv_path: str,
+    means_csv_path: str,
+    means_tex_path: str,
+    caption: str = "Assessment (Means Across Logs)",
+    label: str = "tab:master_table_means",
+) -> None:
+    """
+    Create a compact 'means-only' table from the full master CSV produced earlier.
+
+    - Keeps 'metric' and 'basis'
+    - Drops the 'log' column entirely
+    - Includes only rows where _is_mean == True
+    - Formats all numeric values with exactly 4 decimals (no scientific notation)
+    - Escapes underscores in headers and cell contents
+    - Wraps LaTeX tabular in a full table environment
+    """
+    df = pd.read_csv(master_csv_path)
+
+    # Guard: must have the mean-flag column
+    if "_is_mean" not in df.columns:
+        raise ValueError(
+            "Master CSV is missing '_is_mean'. Please generate with the full function first."
+        )
+
+    # Filter to mean rows only
+    m = df[df["_is_mean"] == True].copy()
+
+    # Keep columns: metric, basis, (drop log), then the numeric/result columns in original order
+    # Identify likely result columns
+    result_cols = [
+        c for c in m.columns if c not in {"metric", "basis", "log", "_is_mean"}
+    ]
+    # Rebuild ordered columns
+    cols = ["metric", "basis"] + result_cols
+    m = m[cols]
+
+    # ---- Format values: always 4 decimals for numeric, no exponent ----
+    def _fmt_num(x):
+        if pd.isna(x):
+            return ""
+        try:
+            return f"{float(x):.4f}"
         except Exception:
             return str(x)
 
-    table_df.to_latex(
-        out_tex_path,
-        index=False,
-        escape=True,
-        na_rep="",
-        formatters=None,
-        float_format=_fmt,
-    )
+    numeric_cols = [c for c in m.columns if pd.api.types.is_numeric_dtype(m[c])]
+    for c in numeric_cols:
+        m[c] = m[c].map(_fmt_num)
 
-    return out_csv_path, out_tex_path
+    # ---- Escape underscores in headers and in string cells ----
+    def _esc(s: str) -> str:
+        if s is None or s == "":
+            return ""
+        return str(s).replace("_", "\\_")
+
+    # Escape cell contents in non-numeric columns
+    for c in m.columns:
+        if c not in numeric_cols:
+            m[c] = m[c].map(_esc)
+
+    # Escape headers
+    m.columns = [_esc(c) for c in m.columns]
+
+    # ---- Italicize the entire row (means) after formatting & escaping ----
+    def _ital(s):
+        return "" if s in ("", None) else f"\\textit{{{s}}}"
+
+    for c in m.columns:
+        m[c] = m[c].map(_ital)
+
+    # ---- Save CSV (plain, un-italicized, same column order) ----
+    # For CSV, we generally want plain text; write a plain version without italics.
+    csv_plain = pd.read_csv(master_csv_path)
+    csv_means = csv_plain[csv_plain["_is_mean"] == True].copy()
+    csv_means = csv_means.drop(columns=["log", "_is_mean"], errors="ignore")
+    csv_cols = ["metric", "basis"] + [
+        c for c in csv_means.columns if c not in {"metric", "basis"}
+    ]
+    csv_means = csv_means[csv_cols]
+    csv_means.to_csv(means_csv_path, index=False)
+
+    # ---- Build LaTeX table ----
+    tabular_str = m.to_latex(index=False, escape=False, na_rep="")
+    table_env = (
+        "\\begin{table}[ht]\n"
+        "\\centering\n"
+        f"\\caption{{{_esc(caption)}}}\n"
+        "\\small\n"
+        f"{tabular_str}\n"
+        f"\\label{{{_esc(label)}}}\n"
+        "\\end{table}\n"
+    )
+    with open(means_tex_path, "w", encoding="utf-8") as f:
+        f.write(table_env)
 
 
 # LATEX helpers
