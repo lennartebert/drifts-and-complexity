@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# type: ignore
+# pylint: disable=all
+# flake8: noqa
 from __future__ import annotations
 
 import argparse
@@ -20,7 +23,10 @@ from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
 )
 from utils.normalization.orchestrator import DEFAULT_NORMALIZERS
 from utils.pipeline.compute import run_metrics_over_samples
-from utils.plotting.plot_cis import plot_aggregated_measures_cis
+from utils.plotting.plot_cis import (
+    plot_aggregated_measures_bootstrap_cis,
+    plot_aggregated_measures_sample_cis,
+)
 from utils.plotting.plot_correlations import plot_correlation_results
 
 # plot_inext_curves module removed - no longer needed
@@ -30,6 +36,7 @@ from utils.population.extractors.chao1_population_extractor import (
 from utils.population.extractors.naive_population_extractor import (
     NaivePopulationExtractor,
 )
+from utils.SampleConfidenceIntervalExtractor import SampleConfidenceIntervalExtractor
 
 # --- defaults (same as before) ---
 sorted_metrics = constants.ALL_METRIC_NAMES
@@ -39,10 +46,15 @@ RANDOM_STATE = 123
 BOOTSTRAP_SIZE = 50
 SIZES = range(50, 501, 50)
 
+REF_SIZES = [50, 250, 500]
+
 default_population_extractor = NaivePopulationExtractor()
 default_metric_adapters = [LocalMetricsAdapter(), VidgofMetricsAdapter()]
 default_bootstrap_sampler = BootstrapSampler(B=BOOTSTRAP_SIZE)
 default_normalizers: Optional[List] = None
+default_sample_confidence_interval_extractor = SampleConfidenceIntervalExtractor(
+    conf_level=0.95
+)
 
 
 # --- core compute function ---
@@ -55,6 +67,7 @@ def compute_results(
     bootstrap_sampler=default_bootstrap_sampler,
     normalizers=default_normalizers,
     include_metrics: Optional[List[str]] = None,
+    sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
 ) -> None:
     print(f"Generating results for {results_name}")
     if include_metrics is None:
@@ -66,7 +79,14 @@ def compute_results(
         log: info for log, info in data_dictionary.items() if log in list_of_logs
     }
 
-    measures_per_log, ci_low_per_log, ci_high_per_log = {}, {}, {}
+    (
+        measures_per_log,
+        bootstrap_ci_low_per_log,
+        bootstrap_ci_high_per_log,
+        sample_ci_low_per_log,
+        sample_ci_high_per_log,
+        sample_ci_rel_width_per_log,
+    ) = ({}, {}, {}, {}, {}, {})
     for log_name, dataset_info in data_dictionary.items():
         print(f"Computing for {log_name}")
         log_path = Path(dataset_info["path"])
@@ -78,37 +98,71 @@ def compute_results(
             )
         )
 
-        measures_df, ci_low_df, ci_high_df = run_metrics_over_samples(
+        (
+            measures_df,
+            bootstrap_ci_low_df,
+            bootstrap_ci_high_df,
+            sample_ci_low_df,
+            sample_ci_high_df,
+            sample_ci_rel_width_df,
+        ) = run_metrics_over_samples(
             window_samples,
             population_extractor=population_extractor,
             metric_adapters=metric_adapters,
             bootstrap_sampler=bootstrap_sampler,
             normalizers=normalizers,
             include_metrics=include_metrics,
+            sample_confidence_interval_extractor=sample_confidence_interval_extractor,
         )
 
         out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name / log_name
         out_dir.mkdir(parents=True, exist_ok=True)
         measures_df.to_csv(out_dir / "measures.csv")
-        ci_low_df.to_csv(out_dir / "ci_low.csv")
-        ci_high_df.to_csv(out_dir / "ci_high.csv")
 
-        if not ci_low_df.empty:
-            plot_aggregated_measures_cis(
+        if bootstrap_ci_low_df is not None:
+            bootstrap_ci_low_df.to_csv(out_dir / "bootstrap_ci_low.csv")
+
+        if bootstrap_ci_high_df is not None:
+            bootstrap_ci_high_df.to_csv(out_dir / "bootstrap_ci_high.csv")
+
+        if sample_ci_low_df is not None:
+            sample_ci_low_df.to_csv(out_dir / "sample_ci_low.csv")
+
+        if sample_ci_high_df is not None:
+            sample_ci_high_df.to_csv(out_dir / "sample_ci_high.csv")
+
+        if sample_ci_rel_width_df is not None:
+            sample_ci_rel_width_df.to_csv(out_dir / "sample_ci_rel_width.csv")
+
+        # create plots
+        if bootstrap_ci_low_df is not None and bootstrap_ci_high_df is not None:
+            plot_aggregated_measures_bootstrap_cis(
                 measures_df,
-                ci_low_df,
-                ci_high_df,
-                out_path=str(out_dir / "measures_cis_mean.png"),
+                bootstrap_ci_low_df,
+                bootstrap_ci_high_df,
+                out_path=str(out_dir / "measures_bootstrap_cis_mean.png"),
                 agg="mean",
-                title=f"{log_name} - Aggregated measures with CIs (mean)",
+                title=f"{log_name} - Aggregated measures with bootstrap CIs (mean)",
                 ncols=3,
             )
 
-            # iNEXT curve plotting removed - no longer needed
+        if sample_ci_low_df is not None and sample_ci_high_df is not None:
+            plot_aggregated_measures_sample_cis(
+                measures_df,
+                sample_ci_low_df,
+                sample_ci_high_df,
+                out_path=str(out_dir / "measures_sample_cis_mean.png"),
+                agg="mean",
+                title=f"{log_name} - Aggregated measures with sample CIs (mean)",
+                ncols=3,
+            )
 
         measures_per_log[log_name] = measures_df
-        ci_low_per_log[log_name] = ci_low_df
-        ci_high_per_log[log_name] = ci_high_df
+        bootstrap_ci_low_per_log[log_name] = bootstrap_ci_low_df
+        bootstrap_ci_high_per_log[log_name] = bootstrap_ci_high_df
+        sample_ci_low_per_log[log_name] = sample_ci_low_df
+        sample_ci_high_per_log[log_name] = sample_ci_high_df
+        sample_ci_rel_width_per_log[log_name] = sample_ci_rel_width_df
 
     out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -130,6 +184,31 @@ def compute_results(
         corr_df, out_path=out_dir / "correlations_dot_plot.png", plot_type="dot"
     )
 
+    # 1) Compute plateau_df once (same matrix shape as corr_df/pval_df)
+    plateau_df = helpers.detect_plateau_df(
+        measures_per_log=measures_per_log,
+        metric_columns=include_metrics,
+        rel_threshold=0.05,  # your plateau threshold
+        agg="mean",
+        min_runs=1,  # or 2 if you want consecutive confirmations
+        report="current",  # or "next"
+    )
+
+    # 2) Build the master table using precomputed corr/pval and plateau_df
+    csv_path, tex_path = helpers.create_master_table_before_from_corrs(
+        measures_per_log=measures_per_log,
+        sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
+        corr_df=corr_df,
+        pval_df=pval_df,
+        plateau_df=plateau_df,
+        out_csv_path=str(out_dir / "master_table_before.csv"),
+        metric_columns=include_metrics,
+        ref_sizes=REF_SIZES,
+        measure_basis_map=constants.METRIC_BASIS_MAP,
+        pretty_plateau=True,  # prints '---' instead of NaN
+    )
+    print(csv_path, tex_path)
+
 
 # --- scenario registry ---
 SCENARIOS = {
@@ -137,8 +216,9 @@ SCENARIOS = {
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
-        bootstrap_sampler=default_bootstrap_sampler,
+        bootstrap_sampler=None,
         normalizers=default_normalizers,
+        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
     ),
     "synthetic_normalized": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
@@ -146,6 +226,7 @@ SCENARIOS = {
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=default_bootstrap_sampler,
         normalizers=DEFAULT_NORMALIZERS,
+        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
     ),
     "synthetic_normalized_and_population": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
@@ -153,6 +234,7 @@ SCENARIOS = {
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=INextBootstrapSampler(B=BOOTSTRAP_SIZE),
         normalizers=DEFAULT_NORMALIZERS,
+        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
     ),
     "real_base": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
@@ -160,6 +242,7 @@ SCENARIOS = {
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=default_bootstrap_sampler,
         normalizers=default_normalizers,
+        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
     ),
     "real_normalized": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
@@ -167,6 +250,7 @@ SCENARIOS = {
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=default_bootstrap_sampler,
         normalizers=DEFAULT_NORMALIZERS,
+        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
     ),
     "real_normalized_and_population": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
@@ -174,6 +258,7 @@ SCENARIOS = {
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=INextBootstrapSampler(B=BOOTSTRAP_SIZE),
         normalizers=DEFAULT_NORMALIZERS,
+        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
     ),
 }
 
@@ -227,20 +312,19 @@ def main() -> None:
     # Modify global parameters for test mode
     global SAMPLES_PER_SIZE, BOOTSTRAP_SIZE, SIZES
     if args.test:
-        SAMPLES_PER_SIZE = 1
+        SAMPLES_PER_SIZE = 10
         BOOTSTRAP_SIZE = 10
-        SIZES = range(50, 201, 50)
+        SIZES = range(50, 501, 50)
 
         # Create test scenario
         test_scenario = dict(
             logs=["TEST_BPIC12"],
-            population_extractor=Chao1PopulationExtractor(),
+            population_extractor=default_population_extractor,
             metric_adapters=default_metric_adapters,
-            bootstrap_sampler=INextBootstrapSampler(
-                B=BOOTSTRAP_SIZE
-            ),  # Test mode: smaller bootstrap size
-            normalizers=DEFAULT_NORMALIZERS,
+            bootstrap_sampler=None,
+            normalizers=None,
             include_metrics=selected_metrics,
+            sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
         )
 
         scenarios_to_run = [("test", test_scenario)]

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -217,6 +219,301 @@ def get_correlations_for_dictionary(
     print(pval_df)
 
     return corr_df, pval_df
+
+
+########################################################
+# plateau detection helpers
+########################################################
+
+
+def _detect_plateau_1d(
+    sample_sizes: np.ndarray,
+    centers: np.ndarray,
+    rel_threshold: float,
+    min_runs: int = 1,
+    report: str = "current",  # or "next"
+) -> float:
+    """
+    Return the window size where plateau is reached, or np.nan if not found.
+    Plateau when |Δ|/prev < rel_threshold for 'min_runs' consecutive steps.
+    """
+    ss = np.asarray(sample_sizes, dtype=float)
+    vals = np.asarray(centers, dtype=float)
+
+    if len(ss) < 2 or len(ss) != len(vals):
+        return np.nan
+
+    consec = 0
+    for i in range(len(ss) - 1):
+        denom = vals[i]
+        if not np.isfinite(denom) or denom == 0.0:
+            consec = 0
+            continue
+        rel_change = abs(vals[i + 1] - vals[i]) / abs(denom)
+        if np.isfinite(rel_change) and rel_change < rel_threshold:
+            consec += 1
+            if consec >= min_runs:
+                n_report = ss[i] if report == "current" else ss[i + 1]
+                # prefer int-looking numbers as int
+                return int(n_report) if float(int(n_report)) == n_report else n_report
+        else:
+            consec = 0
+
+    return np.nan
+
+
+def detect_plateau_df(
+    measures_per_log: Dict[str, pd.DataFrame],
+    metric_columns: Optional[List[str]] = None,
+    rel_threshold: float = 0.05,
+    agg: str = "mean",
+    min_runs: int = 1,
+    report: str = "current",
+) -> pd.DataFrame:
+    """
+    Compute plateau window size per (metric, log). Returns a matrix-like DataFrame:
+    rows = metrics, columns = logs, values = plateau window size (float/int) or NaN.
+
+    Parameters
+    ----------
+    measures_per_log : dict[log_name -> measures_df]
+        measures_df must have ['sample_size','sample_id', <metric columns...>].
+    metric_columns : list[str], optional
+        List of metric column names to analyze. If None, extracts numeric columns
+        excluding 'sample_size' and 'sample_id' from all DataFrames.
+    rel_threshold : float
+        Relative change threshold between consecutive centers.
+    agg : {'mean','median'}
+        Aggregation across samples at each window size.
+    min_runs : int
+        Require this many consecutive steps below threshold to accept plateau.
+    report : {'current','next'}
+        Report the current or next window size as the plateau location.
+    """
+    agg = agg.lower()
+    if agg not in {"mean", "median"}:
+        raise ValueError("agg must be 'mean' or 'median'.")
+
+    # Collect union of metric names to build a consistent row index
+    if metric_columns is None:
+        all_metrics: set[str] = set()
+        for df in measures_per_log.values():
+            id_cols = {"sample_size", "sample_id"}
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            all_metrics.update([c for c in numeric_cols if c not in id_cols])
+        metrics_sorted = sorted(all_metrics)
+    else:
+        metrics_sorted = sorted(set(metric_columns))
+
+    plateau_by_log: dict[str, pd.Series] = {}
+
+    for log, df in measures_per_log.items():
+        metric_cols = [m for m in metrics_sorted if m in df.columns]
+        if not metric_cols:
+            continue
+        g = df.groupby("sample_size", sort=True, as_index=True)
+        centers = g[metric_cols].mean() if agg == "mean" else g[metric_cols].median()
+        centers = centers.sort_index()
+
+        values = {}
+        x = centers.index.values
+        for m in metric_cols:
+            # Skip if metric was dropped during aggregation (e.g., all NaN values)
+            if m not in centers.columns:
+                continue
+            y = centers[m].values
+            plateau_n = _detect_plateau_1d(
+                sample_sizes=x,
+                centers=y,
+                rel_threshold=rel_threshold,
+                min_runs=min_runs,
+                report=report,
+            )
+            values[m] = plateau_n
+        # Fill missing metrics as NaN for consistent shape
+        plateau_by_log[log] = pd.Series(values, index=metrics_sorted, dtype="float64")
+
+    # Build matrix DataFrame: rows metrics, columns logs
+    plateau_df = pd.DataFrame(plateau_by_log, index=metrics_sorted)
+    plateau_df.index.name = None  # keep similar to your corr_df look
+    return plateau_df
+
+
+########################################################
+# Master table builder
+
+
+def create_master_table_before_from_corrs(
+    measures_per_log: Dict[str, pd.DataFrame],
+    sample_ci_rel_width_per_log: Dict[str, pd.DataFrame],
+    corr_df: pd.DataFrame,  # rows=metrics, cols=logs -> rho
+    pval_df: pd.DataFrame,  # rows=metrics, cols=logs -> p
+    plateau_df: pd.DataFrame,  # rows=metrics, cols=logs -> plateau n (or NaN)
+    out_csv_path: str,
+    metric_columns: Optional[List[str]] = None,
+    ref_sizes: Optional[List[int]] = None,
+    measure_basis_map: Optional[Dict[str, str]] = None,
+    pretty_plateau: bool = True,  # True -> convert NaN to '---'
+) -> Tuple[str, str]:
+    """
+    Build the 'before' master table by *reading* correlations/p-values/plateau
+    from precomputed DataFrames. Saves CSV and LaTeX.
+
+    Output columns:
+      log, metric, basis, rho_before, p_before, RelCI_<n1>, RelCI_<n2>, ..., plateau_n
+
+    Notes
+    -----
+    - corr_df/pval_df/plateau_df are matrix-like: rows=metrics, columns=logs.
+    - Table is sorted by metric, basis, then log. A per-(metric,basis) 'MEAN' row
+      is appended *after* each group.
+    """
+    if ref_sizes is None:
+        ref_sizes = [50, 250, 500]
+
+    rows = []
+
+    # Collect union of all metric columns if not provided
+    if metric_columns is None:
+        all_metrics: set[str] = set()
+        for df in measures_per_log.values():
+            id_cols = {"sample_size", "sample_id"}
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            all_metrics.update([c for c in numeric_cols if c not in id_cols])
+        metric_columns = sorted(all_metrics)
+
+    # Sorting helpers
+    metric_order = {metric: idx for idx, metric in enumerate(metric_columns)}
+    basis_priority = ["ObsCount", "PopCount", "PopDist", "Concrete", "—"]
+    basis_order = {b: i for i, b in enumerate(basis_priority)}
+
+    # Build rows
+    logs_sorted = sorted(measures_per_log.keys())
+    for log in logs_sorted:
+        rel_df = sample_ci_rel_width_per_log.get(log)
+        if rel_df is None:
+            raise ValueError(f"Missing relative CI width DF for log '{log}'.")
+        rel_df = rel_df.set_index("sample_size").sort_index()
+
+        # Filter metrics to present columns
+        metric_cols = [m for m in metric_columns if m in measures_per_log[log].columns]
+        if not metric_cols:
+            continue
+
+        for m in metric_cols:
+            # rho/p
+            rho = np.nan
+            pval = np.nan
+            if (m in corr_df.index) and (log in corr_df.columns):
+                rho = corr_df.at[m, log]
+            if (m in pval_df.index) and (log in pval_df.columns):
+                pval = pval_df.at[m, log]
+
+            # plateau
+            plateau = np.nan
+            if (m in plateau_df.index) and (log in plateau_df.columns):
+                plateau = plateau_df.at[m, log]
+
+            # Rel CI at requested sizes
+            relci = {}
+            for n in ref_sizes:
+                val = rel_df[m].get(n, np.nan) if m in rel_df.columns else np.nan
+                relci[f"RelCI_{n}"] = val
+
+            basis = measure_basis_map.get(m, "—") if measure_basis_map else "—"
+
+            rows.append(
+                {
+                    "log": log,
+                    "metric": m,
+                    "basis": basis,
+                    "rho_before": rho,
+                    "p_before": pval,
+                    **relci,
+                    "plateau_n": (
+                        "---"
+                        if (pretty_plateau and (not np.isfinite(plateau)))
+                        else plateau
+                    ),
+                }
+            )
+
+    if not rows:
+        raise ValueError("No rows produced; check inputs and metric names.")
+
+    # Column order
+    ref_cols = [f"RelCI_{n}" for n in ref_sizes]
+    cols_order = (
+        ["log", "metric", "basis", "rho_before", "p_before"] + ref_cols + ["plateau_n"]
+    )
+
+    table_df = pd.DataFrame(rows)
+    table_df = table_df[[c for c in cols_order if c in table_df.columns]]
+
+    # ---- Append per-(metric, basis) MEAN rows ----
+    # Compute numeric means across logs for each (metric, basis)
+    numeric_cols = ["rho_before", "p_before"] + ref_cols
+    # Coerce plateau_n to numeric temporarily to avoid aggregation issues
+    # (we don't average plateau_n; we will blank it in the MEAN row)
+    tbl_num = table_df.copy()
+    # Identify group means
+    grp = tbl_num.groupby(["metric", "basis"], dropna=False)
+    means = grp[numeric_cols].mean(numeric_only=True).reset_index()
+    means.insert(0, "log", "MEAN")
+    means["plateau_n"] = "---"  # leave blank/pretty for the mean row
+
+    # Combine and sort
+    table_df = pd.concat([table_df, means], ignore_index=True, sort=False)
+
+    # Sorting keys: metric → basis → log (MEAN comes last)
+    table_df["_metric_order"] = table_df["metric"].map(
+        lambda x: metric_order.get(x, len(metric_columns))
+    )
+    table_df["_basis_order"] = table_df["basis"].map(
+        lambda x: basis_order.get(x, len(basis_order))
+    )
+    # Ensure MEAN is last within each (metric,basis) group
+    table_df["_log_order"] = (table_df["log"] == "MEAN").astype(int)
+
+    table_df = (
+        table_df.sort_values(
+            ["_metric_order", "_basis_order", "_log_order", "log", "metric", "basis"]
+        )
+        .drop(columns=["_metric_order", "_basis_order", "_log_order"])
+        .reset_index(drop=True)
+    )
+
+    # Save CSV
+    os.makedirs(os.path.dirname(out_csv_path) or ".", exist_ok=True)
+    table_df.to_csv(out_csv_path, index=False)
+
+    # Save LaTeX next to CSV
+    out_tex_path = os.path.splitext(out_csv_path)[0] + ".tex"
+    os.makedirs(os.path.dirname(out_tex_path) or ".", exist_ok=True)
+
+    # Compact float formatting in LaTeX
+    def _fmt(x: Any) -> str:
+        try:
+            if pd.isna(x):
+                return ""
+            if isinstance(x, (int, np.integer)) or (
+                isinstance(x, float) and float(x).is_integer()
+            ):
+                return f"{int(x)}"
+            return f"{float(x):.4g}"
+        except Exception:
+            return str(x)
+
+    table_df.to_latex(
+        out_tex_path,
+        index=False,
+        escape=True,
+        na_rep="",
+        formatters=None,
+        float_format=_fmt,
+    )
+
+    return out_csv_path, out_tex_path
 
 
 # LATEX helpers

@@ -18,7 +18,7 @@ from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
 )
 from utils.normalization.orchestrator import DEFAULT_NORMALIZERS
 from utils.pipeline.compute import run_metrics_over_samples
-from utils.plotting.plot_cis import plot_aggregated_measures_cis
+from utils.plotting.plot_cis import plot_aggregated_measures_bootstrap_cis
 from utils.population.extractors.chao1_population_extractor import (
     Chao1PopulationExtractor,
 )
@@ -218,7 +218,7 @@ def main():
         ["A", f"B_{i}"] for i in range(0, 10)
     ]  # 10 variants that occur only once
 
-    # Build EventLog with 10,000 traces of two variants
+    # Build EventLog with 10,000 traces
     rare_trace_variant_count = 10
 
     traces = []
@@ -434,7 +434,7 @@ def main():
     ) in results_per_log_p1_p2_p3_fixed.items():
         # Mean
         out_mean = os.path.join(plots_dir, f"{log}_measures_cis_mean.png")
-        plot_aggregated_measures_cis(
+        plot_aggregated_measures_bootstrap_cis(
             measures_df,
             ci_low_df,
             ci_high_df,
@@ -446,7 +446,7 @@ def main():
 
         # Median
         out_median = os.path.join(plots_dir, f"{log}_measures_cis_median.png")
-        plot_aggregated_measures_cis(
+        plot_aggregated_measures_bootstrap_cis(
             measures_df,
             ci_low_df,
             ci_high_df,

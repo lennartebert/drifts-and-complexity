@@ -23,6 +23,7 @@ from utils.population.extractors.naive_population_extractor import (
     NaivePopulationExtractor,
 )
 from utils.population.extractors.population_extractor import PopulationExtractor
+from utils.SampleConfidenceIntervalExtractor import SampleConfidenceIntervalExtractor
 from utils.windowing.window import Window
 
 
@@ -337,11 +338,21 @@ def run_metrics_over_samples(
     bootstrap_sampler: Optional["INextBootstrapSampler"] = None,
     normalizers: Optional[List[Optional["Normalizer"]]] = None,
     include_metrics: Optional[Iterable[str]] = None,
+    sample_confidence_interval_extractor: Optional[
+        "SampleConfidenceIntervalExtractor"
+    ] = None,
     # --- Parallel knobs ---
     parallel_backend: Literal["off", "auto", "processes", "threads"] = "auto",
     n_jobs: Optional[int] = None,
     chunksize: Optional[int] = None,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> Tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    Optional[pd.DataFrame],
+    Optional[pd.DataFrame],
+    Optional[pd.DataFrame],
+]:
     """
     Iterate samples and collect:
       - measures_df:  sample_size, sample_id, [normalized measures]
@@ -359,7 +370,7 @@ def run_metrics_over_samples(
     in alphabetical order.
 
     Returns:
-        (measures_df, ci_low_df, ci_high_df)
+        (measures_df, ci_low_df, ci_high_df, sample_ci_low_df, sample_ci_high_df, sample_ci_rel_width_df)
     """
     rows_measures: List[Dict[str, Any]] = []
     rows_ci_low: List[Dict[str, Any]] = []
@@ -414,4 +425,19 @@ def run_metrics_over_samples(
     ci_low_df = pd.DataFrame(rows_ci_low).reindex(columns=ordered_cols)
     ci_high_df = pd.DataFrame(rows_ci_high).reindex(columns=ordered_cols)
 
-    return measures_df, ci_low_df, ci_high_df
+    # compute sample confidence intervals
+    if sample_confidence_interval_extractor is not None:
+        sample_ci_low_df, sample_ci_high_df, sample_ci_rel_width_df = (
+            sample_confidence_interval_extractor.compute_sample_ci(measures_df)
+        )  #
+    else:
+        sample_ci_low_df, sample_ci_high_df, sample_ci_rel_width_df = None, None, None
+
+    return (
+        measures_df,
+        ci_low_df,
+        ci_high_df,
+        sample_ci_low_df,
+        sample_ci_high_df,
+        sample_ci_rel_width_df,
+    )

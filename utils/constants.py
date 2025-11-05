@@ -71,6 +71,35 @@ DUAL_VARIANT_METRIC_NAMES = [
     "Number of Distinct Activity Transitions",
 ]
 
+METRIC_BASIS_MAP = {
+    # Size (counts)
+    "Number of Events": "ObsCount",
+    "Number of Traces": "ObsCount",
+    # Population counts (richness-style)
+    "Number of Distinct Activities": "PopCount",
+    "Number of Distinct Traces": "PopCount",
+    "Number of Distinct Activity Transitions": "PopCount",
+    "Structure": "PopCount",
+    "Estimated Number of Acyclic Paths": "PopCount",
+    "Percentage of Distinct Traces": "PopCount",
+    # Population distributions (moments / summaries)
+    "Min. Trace Length": "PopDist",
+    "Avg. Trace Length": "PopDist",
+    "Max. Trace Length": "PopDist",
+    "Average Distinct Activities per Trace": "PopDist",
+    # Concrete trace–based (sequence/graph derived)
+    "Number of Ties in Paths to Goal": "Concrete",
+    "Lempel-Ziv Complexity": "Concrete",
+    "Average Affinity": "Concrete",
+    "Deviation from Random": "Concrete",
+    "Average Edit Distance": "Concrete",
+    "Sequence Entropy": "Concrete",
+    "Normalized Sequence Entropy": "Concrete",
+    "Variant Entropy": "Concrete",
+    "Normalized Variant Entropy": "Concrete",
+}
+
+
 # Metrics that are trace-based only
 TRACE_ONLY_METRIC_NAMES = [
     name for name in ALL_METRIC_NAMES if name not in DUAL_VARIANT_METRIC_NAMES
