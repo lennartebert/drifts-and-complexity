@@ -195,13 +195,29 @@ def get_correlations_for_dictionary(
         for col in df.columns:
             if col not in metric_columns:
                 continue
-            # drop missing values and infinite values pairwise
-            tmp = df[[base_column, col]].replace([np.inf, -np.inf], np.nan).dropna()
-            # Check if tmp is empty or contains NaN values
-            if tmp.isnull().values.any() or len(tmp) < 2:
+            # Work on a copy and coerce to numeric, replacing inf/-inf with NaN
+            tmp = df[[base_column, col]].copy()
+            tmp = tmp.replace([np.inf, -np.inf], np.nan)
+            tmp[base_column] = pd.to_numeric(tmp[base_column], errors="coerce")
+            tmp[col] = pd.to_numeric(tmp[col], errors="coerce")
+            # drop rows with any NaN
+            tmp = tmp.dropna()
+            # Need at least 2 observations
+            if len(tmp) < 2:
                 r, p = float("nan"), float("nan")
             else:
-                r, p = stats.pearsonr(tmp[base_column], tmp[col])
+                x = tmp[base_column].to_numpy(dtype=float)
+                y = tmp[col].to_numpy(dtype=float)
+                # Ensure finite and non-constant
+                if not (np.isfinite(x).all() and np.isfinite(y).all()):
+                    r, p = float("nan"), float("nan")
+                elif np.nanstd(x) == 0 or np.nanstd(y) == 0:
+                    r, p = float("nan"), float("nan")
+                else:
+                    try:
+                        r, p = stats.pearsonr(x, y)
+                    except Exception:
+                        r, p = float("nan"), float("nan")
             r_results[col_tag][col] = r
             p_results[col_tag][col] = p
 
