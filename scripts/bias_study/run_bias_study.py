@@ -11,7 +11,7 @@ from typing import List, Optional
 import pandas as pd
 from pm4py.objects.log.importer.xes import importer as xes_importer
 
-from utils import constants, helpers, sampling_helper
+from utils import constants, helpers, master_table, sampling_helper
 from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
 from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import (
     INextBootstrapSampler,
@@ -61,6 +61,7 @@ def compute_results(
     list_of_logs: List[str],
     results_name: str,
     scenario_name: str,
+    clear_name: str,
     population_extractor=default_population_extractor,
     metric_adapters=default_metric_adapters,
     bootstrap_sampler=default_bootstrap_sampler,
@@ -142,7 +143,7 @@ def compute_results(
                 bootstrap_ci_high_df,
                 out_path=str(out_dir / "measures_bootstrap_cis_mean.png"),
                 agg="mean",
-                title=f"{log_name} - Aggregated measures with bootstrap CIs (mean)",
+                title=f"{clear_name} - {log_name} - Aggregated measures with bootstrap CIs (mean)",
                 ncols=3,
             )
 
@@ -153,7 +154,7 @@ def compute_results(
                 sample_ci_high_df,
                 out_path=str(out_dir / "measures_sample_cis_mean.png"),
                 agg="mean",
-                title=f"{log_name} - Aggregated measures with sample CIs (mean)",
+                title=f"{clear_name} - {log_name} - Aggregated measures with sample CIs (mean)",
                 ncols=3,
             )
 
@@ -199,12 +200,20 @@ def compute_results(
         base_csv_path = (
             constants.BIAS_STUDY_RESULTS_DIR / base_scenario_name / "master_table.csv"
         )
-        base_df = pd.read_csv(base_csv_path)
-        # Convert to dict keyed by log (exclude mean rows)
+        base_df = None
         base_measures_per_log = {}
-        for log in base_df["log"].unique():
-            if log != "" and pd.notna(log):  # Skip mean rows (empty log)
-                base_measures_per_log[log] = base_df[base_df["log"] == log].copy()
+        try:
+            base_df = master_table.read_master_csv(base_csv_path)
+        except FileNotFoundError:
+            print(
+                f"[WARNING] base_csv not found at {base_csv_path}, proceeding as if base_csv_path=None."
+            )
+            base_csv_path = None
+        if base_df is not None:
+            # Convert to dict keyed by log (exclude mean rows)
+            for log in base_df["log"].unique():
+                if log != "" and pd.notna(log):  # Skip mean rows (empty log)
+                    base_measures_per_log[log] = base_df[base_df["log"] == log].copy()
         # Convert current corr_df to dict format expected by compute_significant_improvement
         current_measures_per_log = {}
         for log in corr_df.columns:
@@ -228,7 +237,7 @@ def compute_results(
 
     # 2) Build the master table using precomputed corr/pval and plateau_df
     label = f"tab:master_table_{scenario_name}"
-    csv_path, tex_path = helpers.create_master_table(
+    csv_path, tex_path = master_table.create_master_table(
         measures_per_log=measures_per_log,
         sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
         corr_df=corr_df,
@@ -239,6 +248,7 @@ def compute_results(
         ref_sizes=REF_SIZES,
         measure_basis_map=constants.METRIC_BASIS_MAP,
         pretty_plateau=True,  # prints '---' instead of NaN
+        caption=f"Assessment of Measures - {clear_name}",
         label=label,
         improvement_per_log_df=improvement_per_log_df,
         improvement_summary_df=improvement_summary_df,
@@ -248,11 +258,11 @@ def compute_results(
     # print aggregated master table
 
     means_label = f"tab:master_table_means_{scenario_name}"
-    helpers.write_means_only_table_from_master_csv(
+    master_table.write_means_only_table_from_master_csv(
         master_csv_path=csv_path,
         means_csv_path=out_dir / "master_table_means.csv",
         means_tex_path=out_dir / "master_table_means.tex",
-        caption="Assessment of Measures (Means Across Logs)",
+        caption=f"Assessment of Measures (Means Across Logs) - {clear_name}",
         label=means_label,
     )
 
@@ -261,6 +271,7 @@ def compute_results(
 SCENARIOS = {
     "synthetic_base": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
+        clear_name="Synthetic (Base)",
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=None,
@@ -270,6 +281,7 @@ SCENARIOS = {
     ),
     "synthetic_normalized": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
+        clear_name="Synthetic (Normalized)",
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=None,
@@ -278,6 +290,7 @@ SCENARIOS = {
     ),
     "synthetic_normalized_and_population": dict(
         logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
+        clear_name="Synthetic (Normalized + Population)",
         population_extractor=Chao1PopulationExtractor(),
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=None,
@@ -287,6 +300,7 @@ SCENARIOS = {
     ),
     "real_base": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
+        clear_name="Real (Base)",
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=None,
@@ -296,6 +310,7 @@ SCENARIOS = {
     ),
     "real_normalized": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
+        clear_name="Real (Normalized)",
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=None,
@@ -305,6 +320,7 @@ SCENARIOS = {
     ),
     "real_normalized_and_population": dict(
         logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
+        clear_name="Real (Normalized + Population)",
         population_extractor=Chao1PopulationExtractor(),
         metric_adapters=default_metric_adapters,
         bootstrap_sampler=None,
@@ -371,6 +387,7 @@ def main() -> None:
         # Create test scenario
         test_scenario = dict(
             logs=["TEST_BPIC12"],
+            clear_name="Test",
             population_extractor=default_population_extractor,
             metric_adapters=default_metric_adapters,
             bootstrap_sampler=None,
@@ -423,6 +440,7 @@ def main() -> None:
             list_of_logs=sc["logs"],  # type: ignore
             results_name=scenario_name,
             scenario_name=scenario_name,
+            clear_name=sc["clear_name"],  # type: ignore
             population_extractor=sc["population_extractor"],  # type: ignore
             metric_adapters=sc["metric_adapters"],  # type: ignore
             bootstrap_sampler=sc["bootstrap_sampler"],  # type: ignore
