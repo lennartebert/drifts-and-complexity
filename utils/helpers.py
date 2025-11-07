@@ -166,8 +166,8 @@ def get_correlations_for_dictionary(
     rename_dictionary_map: Optional[Dict[str, str]],
     metric_columns: List[str],
     base_column: str = "sample_size",
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Calculate Pearson correlations between sample size and metrics.
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Calculate both Pearson and Spearman correlations between sample size and metrics.
 
     Args:
         sample_metrics_per_log: Dictionary mapping log names to DataFrames with metrics.
@@ -176,21 +176,25 @@ def get_correlations_for_dictionary(
         base_column: Name of the base column for correlation (default: 'sample_size').
 
     Returns:
-        Tuple of (correlation DataFrame, p-value DataFrame).
+        Tuple of (pearson_r_df, pearson_p_df, spearman_r_df, spearman_p_df).
     """
     from scipy import stats
 
     rename_map = rename_dictionary_map
 
-    r_results: Dict[str, Dict[str, float]] = {}
-    p_results: Dict[str, Dict[str, float]] = {}
+    pearson_r_results: Dict[str, Dict[str, float]] = {}
+    pearson_p_results: Dict[str, Dict[str, float]] = {}
+    spearman_r_results: Dict[str, Dict[str, float]] = {}
+    spearman_p_results: Dict[str, Dict[str, float]] = {}
 
     for key, df in sample_metrics_per_log.items():
         col_tag = (
             key if rename_map is None else rename_map[key]
         )  # apply the rename map if available
-        r_results[col_tag] = {}
-        p_results[col_tag] = {}
+        pearson_r_results[col_tag] = {}
+        pearson_p_results[col_tag] = {}
+        spearman_r_results[col_tag] = {}
+        spearman_p_results[col_tag] = {}
 
         for col in df.columns:
             if col not in metric_columns:
@@ -204,38 +208,57 @@ def get_correlations_for_dictionary(
             tmp = tmp.dropna()
             # Need at least 2 observations
             if len(tmp) < 2:
-                r, p = float("nan"), float("nan")
+                pearson_r, pearson_p = float("nan"), float("nan")
+                spearman_r, spearman_p = float("nan"), float("nan")
             else:
                 x = tmp[base_column].to_numpy(dtype=float)
                 y = tmp[col].to_numpy(dtype=float)
                 # Ensure finite and non-constant
                 if not (np.isfinite(x).all() and np.isfinite(y).all()):
-                    r, p = float("nan"), float("nan")
+                    pearson_r, pearson_p = float("nan"), float("nan")
+                    spearman_r, spearman_p = float("nan"), float("nan")
                 elif np.nanstd(x) == 0 or np.nanstd(y) == 0:
-                    r, p = float("nan"), float("nan")
+                    pearson_r, pearson_p = float("nan"), float("nan")
+                    spearman_r, spearman_p = float("nan"), float("nan")
                 else:
                     try:
-                        r, p = stats.pearsonr(x, y)
+                        pearson_r, pearson_p = stats.pearsonr(x, y)
                     except Exception:
-                        r, p = float("nan"), float("nan")
-            r_results[col_tag][col] = r
-            p_results[col_tag][col] = p
+                        pearson_r, pearson_p = float("nan"), float("nan")
+                    try:
+                        spearman_r, spearman_p = stats.spearmanr(x, y)
+                    except Exception:
+                        spearman_r, spearman_p = float("nan"), float("nan")
+            pearson_r_results[col_tag][col] = pearson_r
+            pearson_p_results[col_tag][col] = pearson_p
+            spearman_r_results[col_tag][col] = spearman_r
+            spearman_p_results[col_tag][col] = spearman_p
 
     # Create DataFrames
-    corr_df = pd.DataFrame(r_results)
-    pval_df = pd.DataFrame(p_results)
+    pearson_r_df = pd.DataFrame(pearson_r_results)
+    pearson_p_df = pd.DataFrame(pearson_p_results)
+    spearman_r_df = pd.DataFrame(spearman_r_results)
+    spearman_p_df = pd.DataFrame(spearman_p_results)
 
     # Enforce consistent row order
-    corr_df = corr_df.reindex(metric_columns)
-    pval_df = pval_df.reindex(metric_columns)
+    pearson_r_df = pearson_r_df.reindex(metric_columns)
+    pearson_p_df = pearson_p_df.reindex(metric_columns)
+    spearman_r_df = spearman_r_df.reindex(metric_columns)
+    spearman_p_df = spearman_p_df.reindex(metric_columns)
 
-    print("Correlations:")
-    print(corr_df)
+    print("Pearson correlations:")
+    print(pearson_r_df)
     print()
-    print("P-values:")
-    print(pval_df)
+    print("Pearson p-values:")
+    print(pearson_p_df)
+    print()
+    print("Spearman correlations:")
+    print(spearman_r_df)
+    print()
+    print("Spearman p-values:")
+    print(spearman_p_df)
 
-    return corr_df, pval_df
+    return pearson_r_df, pearson_p_df, spearman_r_df, spearman_p_df
 
 
 from typing import Any, Dict, List, Tuple, Union
@@ -251,14 +274,16 @@ def compute_significant_improvement(
         str, pd.DataFrame
     ],  # BEFORE fixes (contains rho for 'before')
     include_metrics: List[str],
+    n: int,  # sample size (e.g., len(SIZES) * SAMPLES_PER_SIZE)
     rho_col: str = "rho",  # correlation column name in BOTH inputs
     log_col: str = "log",
     metric_col: str = "metric",
-    num_window_sizes: Union[int, Dict[str, int], Dict[Tuple[str, str], int]] = 0,
+    N: Optional[int] = None,  # population size (for FPC, optional)
+    correlation_type: str = "Pearson",  # for column naming
     alpha: float = 0.05,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Compare bias before vs after using Fisher's z-test on correlations.
+    Compare bias before vs after using Fisher's z-test on correlations with FPC.
 
     Significant improvement rule:
         improved = (abs(rho_after) < abs(rho_before)) AND (p_change < alpha)
@@ -271,54 +296,78 @@ def compute_significant_improvement(
         BEFORE fixes. Must contain columns [metric_col, rho_col] (and optionally p).
     include_metrics : list[str]
         Metrics to compare.
+    n : int
+        Sample size (e.g., len(SIZES) * SAMPLES_PER_SIZE).
     rho_col : str
         Column name for correlation (same in both inputs).
     log_col, metric_col : str
         Identifier column names.
-    num_window_sizes : int | dict
-        Number of window sizes (k) used per correlation.
-        - If int: same k for all (log, metric).
-        - If dict[str -> int]: per-log k (key = log).
-        - If dict[(log, metric) -> int]: per-(log, metric) k.
+    N : int, optional
+        Population size for finite population correction (FPC).
+        If None, FPC is not applied.
+    correlation_type : str
+        Type of correlation ("Pearson" or "Spearman") for column naming.
     alpha : float
         Significance level for Fisher z-test.
 
     Returns
     -------
     per_log_df : DataFrame
-        Columns: [log, metric, rho_before, rho_after, delta_abs_rho, k, z_change, p_change, improved]
+        Columns: [log, metric, rho_before, rho_after, delta_abs_rho, n, z_change, p_change, improved]
+        Column names are prefixed with correlation_type (e.g., "Pearson_rho_before").
     summary_df : DataFrame
         Columns: [metric, share_improved, n_logs]
     """
     DECIMALS = 4  # harmonize precision across inputs
 
-    def fisher_z_test(r_before: float, r_after: float, k: int) -> Tuple[float, float]:
-        """Two-sided Fisher z-test for difference between two correlations."""
-        if (k is None) or (k < 4) or np.isnan(r_before) or np.isnan(r_after):
-            return np.nan, np.nan
-        # guard against |r| >= 1
-        if not (-0.999999 < r_before < 0.999999) or not (
-            -0.999999 < r_after < 0.999999
+    def fisher_z_diff_independent(
+        r1: float,
+        r2: float,
+        n1: int,
+        n2: int,
+        N1: Optional[int] = None,
+        N2: Optional[int] = None,
+    ) -> Tuple[float, float]:
+        """
+        Two-sided Fisher r-to-z test for the difference between two *independent* correlations.
+        Supports optional finite population correction (FPC) per group.
+
+        Returns (z_stat, p_value).
+        """
+        # Basic checks
+        if (
+            (n1 is None or n2 is None)
+            or (n1 < 4 or n2 < 4)
+            or np.isnan(r1)
+            or np.isnan(r2)
         ):
             return np.nan, np.nan
-        z1 = np.arctanh(r_before)
-        z2 = np.arctanh(r_after)
-        se = np.sqrt(2.0 / (k - 3))
-        z_stat = (z1 - z2) / se
-        p_val = 2 * (1 - norm.cdf(abs(z_stat)))
-        return float(z_stat), float(p_val)
 
-    def get_k(log: str, metric: str) -> int:
-        if isinstance(num_window_sizes, int):
-            return num_window_sizes
-        if isinstance(num_window_sizes, dict):
-            # try (log, metric) key first
-            if (log, metric) in num_window_sizes:
-                return int(num_window_sizes[(log, metric)])
-            # fall back to per-log
-            if log in num_window_sizes:
-                return int(num_window_sizes[log])
-        return 0  # unknown
+        # Guard |r|<1 to avoid atanh overflow
+        eps = 1e-12
+        if not (-1 + eps < r1 < 1 - eps) or not (-1 + eps < r2 < 1 - eps):
+            return np.nan, np.nan
+
+        # Fisher z transforms
+        z1 = np.arctanh(r1)
+        z2 = np.arctanh(r2)
+
+        # Finite population corrections (default to 1 if not applicable)
+        def fpc(n, N):
+            if N is None or N <= n or N <= 1:
+                return 1.0
+            return math.sqrt((N - n) / (N - 1))
+
+        fpc1 = fpc(n1, N1)
+        fpc2 = fpc(n2, N2)
+
+        # Standard error (independent correlations)
+        # Var(z_r) ≈ 1/(n-3) under SRS; with FPC multiply by FPC^2
+        se = math.sqrt((fpc1**2) / (n1 - 3) + (fpc2**2) / (n2 - 3))
+
+        z_stat = (z1 - z2) / se
+        p_val = 2 * norm.sf(abs(z_stat))
+        return float(z_stat), float(p_val)
 
     rows = []
 
@@ -342,16 +391,21 @@ def compute_significant_improvement(
         merged = (
             pd.merge(
                 df_before[[metric_col, rho_col]].rename(
-                    columns={rho_col: f"{rho_col}_before"}
+                    columns={rho_col: f"{correlation_type}_{rho_col}_before"}
                 ),
                 df_after[[metric_col, rho_col]].rename(
-                    columns={rho_col: f"{rho_col}_after"}
+                    columns={rho_col: f"{correlation_type}_{rho_col}_after"}
                 ),
                 on=metric_col,
                 how="inner",
             )
             .replace([np.inf, -np.inf], np.nan)
-            .dropna(subset=[f"{rho_col}_before", f"{rho_col}_after"])
+            .dropna(
+                subset=[
+                    f"{correlation_type}_{rho_col}_before",
+                    f"{correlation_type}_{rho_col}_after",
+                ]
+            )
         )
 
         if merged.empty:
@@ -359,43 +413,42 @@ def compute_significant_improvement(
 
         # compute stats per metric
         merged[log_col] = log
-        abs_before = merged[f"{rho_col}_before"].abs()
-        abs_after = merged[f"{rho_col}_after"].abs()
-        merged["delta_abs_rho"] = (abs_after - abs_before).round(DECIMALS)
+        abs_before = merged[f"{correlation_type}_{rho_col}_before"].abs()
+        abs_after = merged[f"{correlation_type}_{rho_col}_after"].abs()
+        merged[f"{correlation_type}_delta_abs_rho"] = (abs_after - abs_before).round(
+            DECIMALS
+        )
 
         # Fisher z-test
-        k_list = []
         z_list = []
         p_list = []
         imp_list = []
         for m, rb, ra in zip(
-            merged[metric_col], merged[f"{rho_col}_before"], merged[f"{rho_col}_after"]
+            merged[metric_col],
+            merged[f"{correlation_type}_{rho_col}_before"],
+            merged[f"{correlation_type}_{rho_col}_after"],
         ):
-            k = get_k(str(log), str(m))
-            z, p = fisher_z_test(rb, ra, k)
-            k_list.append(k)
+            z, p = fisher_z_test(rb, ra, n, N)
             z_list.append(z)
             p_list.append(p)
             improved = (abs(ra) < abs(rb)) and (not np.isnan(p)) and (p < alpha)
             imp_list.append(improved)
 
-        merged["k"] = k_list
-        merged["z_change"] = z_list
-        merged["p_change"] = p_list
-        merged["improved"] = imp_list
+        merged[f"{correlation_type}_z_change"] = z_list
+        merged[f"{correlation_type}_p_change"] = p_list
+        merged[f"{correlation_type}_improved"] = imp_list
 
         rows.append(
             merged[
                 [
                     log_col,
                     metric_col,
-                    f"{rho_col}_before",
-                    f"{rho_col}_after",
-                    "delta_abs_rho",
-                    "k",
-                    "z_change",
-                    "p_change",
-                    "improved",
+                    f"{correlation_type}_{rho_col}_before",
+                    f"{correlation_type}_{rho_col}_after",
+                    f"{correlation_type}_delta_abs_rho",
+                    f"{correlation_type}_z_change",
+                    f"{correlation_type}_p_change",
+                    f"{correlation_type}_improved",
                 ]
             ]
         )
@@ -405,24 +458,30 @@ def compute_significant_improvement(
             columns=[
                 log_col,
                 metric_col,
-                f"{rho_col}_before",
-                f"{rho_col}_after",
-                "delta_abs_rho",
-                "k",
-                "z_change",
-                "p_change",
-                "improved",
+                f"{correlation_type}_{rho_col}_before",
+                f"{correlation_type}_{rho_col}_after",
+                f"{correlation_type}_delta_abs_rho",
+                f"{correlation_type}_z_change",
+                f"{correlation_type}_p_change",
+                f"{correlation_type}_improved",
             ]
         )
-        summary_df = pd.DataFrame(columns=[metric_col, "share_improved", "n_logs"])
+        summary_df = pd.DataFrame(
+            columns=[metric_col, f"{correlation_type}_share_improved", "n_logs"]
+        )
         return per_log_df, summary_df
 
     per_log_df = pd.concat(rows, ignore_index=True)
 
     # summary across logs per metric
     summary_df = per_log_df.groupby(metric_col, as_index=False).agg(
-        share_improved=("improved", "mean"),
-        n_logs=("improved", "size"),
+        **{
+            f"{correlation_type}_share_improved": (
+                f"{correlation_type}_improved",
+                "mean",
+            )
+        },
+        n_logs=(f"{correlation_type}_improved", "size"),
     )
 
     return per_log_df, summary_df
@@ -569,7 +628,11 @@ def _stars(p: float) -> str:
 
 
 def corr_p_to_latex_stars(
-    corr_df: pd.DataFrame, pval_df: pd.DataFrame, out_path: Path, label: str
+    corr_df: pd.DataFrame,
+    pval_df: pd.DataFrame,
+    out_path: Path,
+    label: str,
+    correlation_type: str = "Pearson",
 ) -> None:
     """Generate LaTeX table with correlation coefficients and significance stars.
 
@@ -578,6 +641,7 @@ def corr_p_to_latex_stars(
         pval_df: DataFrame with p-values.
         out_path: Path to save the LaTeX file.
         label: LaTeX label for the table.
+        correlation_type: Type of correlation ("Pearson" or "Spearman").
     """
     # keep P1..P4 order if present
     cols = [c for c in ["P1", "P2", "P3", "P4"] if c in corr_df.columns]
@@ -606,9 +670,9 @@ def corr_p_to_latex_stars(
 
     wrapped = rf"""
     \begin{{table}}[htbp]
-    \label{{label}}
+    \label{{{label}}}
     \centering
-    \caption{{Pearson correlation ($r$) between window size and each measure.}}
+    \caption{{{correlation_type} correlation ($r$) between window size and each measure.}}
     \scriptsize
     \setlength{{\tabcolsep}}{{6pt}}
     \renewcommand{{\arraystretch}}{{1.15}}

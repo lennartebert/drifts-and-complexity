@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
+import numpy as np
 import pandas as pd
 from pm4py.objects.log.importer.xes import importer as xes_importer
 
@@ -88,10 +89,14 @@ def compute_results(
         sample_ci_high_per_log,
         sample_ci_rel_width_per_log,
     ) = ({}, {}, {}, {}, {}, {})
+    # Store population sizes (number of traces) for FPC
+    log_population_sizes: Dict[str, int] = {}
     for log_name, dataset_info in data_dictionary.items():
         print(f"Computing for {log_name}")
         log_path = Path(dataset_info["path"])
         pm4py_log = xes_importer.apply(str(log_path))
+        # Store population size (number of traces) for FPC
+        log_population_sizes[log_name] = len(pm4py_log)
 
         window_samples = (
             sampling_helper.sample_random_windows_no_replacement_within_only(
@@ -167,22 +172,61 @@ def compute_results(
 
     out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name
     out_dir.mkdir(parents=True, exist_ok=True)
-    corr_df, pval_df = helpers.get_correlations_for_dictionary(
+    (
+        pearson_r_df,
+        pearson_p_df,
+        spearman_r_df,
+        spearman_p_df,
+    ) = helpers.get_correlations_for_dictionary(
         sample_metrics_per_log=measures_per_log,
         rename_dictionary_map=None,
         metric_columns=include_metrics,
         base_column="sample_size",
     )
-    corr_df.to_csv(out_dir / "correlations_r.csv")
-    pval_df.to_csv(out_dir / "correlations_p.csv")
+    # Save all 4 DataFrames to CSV with "Metric" as index name
+    pearson_r_df.index.name = "Metric"
+    pearson_p_df.index.name = "Metric"
+    spearman_r_df.index.name = "Metric"
+    spearman_p_df.index.name = "Metric"
+    pearson_r_df.to_csv(out_dir / "correlations_pearson_r.csv")
+    pearson_p_df.to_csv(out_dir / "correlations_pearson_p.csv")
+    spearman_r_df.to_csv(out_dir / "correlations_spearman_r.csv")
+    spearman_p_df.to_csv(out_dir / "correlations_spearman_p.csv")
+    # Create LaTeX tables for both
     helpers.corr_p_to_latex_stars(
-        corr_df, pval_df, out_dir / "correlations.tex", f"correlations_{results_name}"
+        pearson_r_df,
+        pearson_p_df,
+        out_dir / "correlations_pearson.tex",
+        f"correlations_pearson_{results_name}",
+        correlation_type="Pearson",
+    )
+    helpers.corr_p_to_latex_stars(
+        spearman_r_df,
+        spearman_p_df,
+        out_dir / "correlations_spearman.tex",
+        f"correlations_spearman_{results_name}",
+        correlation_type="Spearman",
+    )
+    # Create plots for both
+    plot_correlation_results(
+        pearson_r_df,
+        out_path=out_dir / "correlations_pearson_box_plot.png",
+        plot_type="box",
     )
     plot_correlation_results(
-        corr_df, out_path=out_dir / "correlations_box_plot.png", plot_type="box"
+        pearson_r_df,
+        out_path=out_dir / "correlations_pearson_dot_plot.png",
+        plot_type="dot",
     )
     plot_correlation_results(
-        corr_df, out_path=out_dir / "correlations_dot_plot.png", plot_type="dot"
+        spearman_r_df,
+        out_path=out_dir / "correlations_spearman_box_plot.png",
+        plot_type="box",
+    )
+    plot_correlation_results(
+        spearman_r_df,
+        out_path=out_dir / "correlations_spearman_dot_plot.png",
+        plot_type="dot",
     )
 
     # 1) Compute plateau_df once (same matrix shape as corr_df/pval_df)
@@ -195,6 +239,15 @@ def compute_results(
         report="current",  # or "next"
     )
 
+    # Compute sample size for FPC
+    n_samples = len(SIZES) * SAMPLES_PER_SIZE
+
+    # Compute significant improvement for both Pearson and Spearman
+    pearson_improvement_per_log_df = None
+    pearson_improvement_summary_df = None
+    spearman_improvement_per_log_df = None
+    spearman_improvement_summary_df = None
+
     if base_scenario_name is not None:
         # load master_table.csv from base_scenario_name
         base_csv_path = (
@@ -202,46 +255,93 @@ def compute_results(
         )
         base_df = None
         base_measures_per_log = {}
-        try:
-            base_df = master_table.read_master_csv(base_csv_path)
-        except FileNotFoundError:
+        base_df = master_table.read_master_csv(base_csv_path)
+        if base_df is None:
             print(
-                f"[WARNING] base_csv not found at {base_csv_path}, proceeding as if base_csv_path=None."
+                f"[WARNING] base_csv not found at {base_csv_path}, proceeding as if base_scenario_name=None."
             )
-            base_csv_path = None
-        if base_df is not None:
+        else:
             # Convert to dict keyed by log (exclude mean rows)
+            # Extract Pearson and Spearman rho columns from base table
             for log in base_df["log"].unique():
                 if log != "" and pd.notna(log):  # Skip mean rows (empty log)
                     base_measures_per_log[log] = base_df[base_df["log"] == log].copy()
-        # Convert current corr_df to dict format expected by compute_significant_improvement
-        current_measures_per_log = {}
-        for log in corr_df.columns:
-            # Convert corr_df column to DataFrame with metric and rho columns
-            log_corr = corr_df[log].reset_index()
-            log_corr.columns = ["metric", "rho"]
-            current_measures_per_log[log] = log_corr
-        # compute if improvement was significant
-        improvement_per_log_df, improvement_summary_df = (
-            helpers.compute_significant_improvement(
-                measures_per_log=current_measures_per_log,  # AFTER
-                base_measures_per_log=base_measures_per_log,  # BEFORE
-                include_metrics=include_metrics,
-                num_window_sizes=len(SIZES),  # <-- k
-                rho_col="rho",
-                alpha=0.05,
+
+            # Convert Pearson correlations to dict format
+            pearson_current_measures_per_log = {}
+            for log in pearson_r_df.columns:
+                log_corr = pearson_r_df[log].reset_index()
+                log_corr.columns = ["metric", "rho"]
+                pearson_current_measures_per_log[log] = log_corr
+
+            # Convert Spearman correlations to dict format
+            spearman_current_measures_per_log = {}
+            for log in spearman_r_df.columns:
+                log_corr = spearman_r_df[log].reset_index()
+                log_corr.columns = ["metric", "rho"]
+                spearman_current_measures_per_log[log] = log_corr
+
+            # Convert base table to dict format for both correlation types
+            # Base table has "Pearson_rho" and "Spearman_rho" columns
+            base_pearson_measures_per_log = {}
+            base_spearman_measures_per_log = {}
+            for log in base_measures_per_log.keys():
+                base_log_df = base_measures_per_log[log].copy()
+                # Extract Pearson rho
+                if "Pearson_rho" in base_log_df.columns:
+                    base_pearson = base_log_df[["metric", "Pearson_rho"]].copy()
+                    base_pearson.columns = ["metric", "rho"]
+                    base_pearson_measures_per_log[log] = base_pearson
+                # Extract Spearman rho
+                if "Spearman_rho" in base_log_df.columns:
+                    base_spearman = base_log_df[["metric", "Spearman_rho"]].copy()
+                    base_spearman.columns = ["metric", "rho"]
+                    base_spearman_measures_per_log[log] = base_spearman
+
+            # Get population sizes for FPC (use average if log not found)
+            avg_population_size = (
+                int(np.mean(list(log_population_sizes.values())))
+                if log_population_sizes
+                else None
             )
-        )
-    else:
-        improvement_per_log_df, improvement_summary_df = None, None
+
+            # Compute if improvement was significant for Pearson
+            pearson_improvement_per_log_df, pearson_improvement_summary_df = (
+                helpers.compute_significant_improvement(
+                    measures_per_log=pearson_current_measures_per_log,  # AFTER
+                    base_measures_per_log=base_pearson_measures_per_log,  # BEFORE (Pearson)
+                    include_metrics=include_metrics,
+                    n=n_samples,
+                    rho_col="rho",
+                    N=avg_population_size,  # Use average population size for FPC
+                    correlation_type="Pearson",
+                    alpha=0.05,
+                )
+            )
+
+            # Compute if improvement was significant for Spearman
+            spearman_improvement_per_log_df, spearman_improvement_summary_df = (
+                helpers.compute_significant_improvement(
+                    measures_per_log=spearman_current_measures_per_log,  # AFTER
+                    base_measures_per_log=base_spearman_measures_per_log,  # BEFORE (Spearman)
+                    include_metrics=include_metrics,
+                    n=n_samples,
+                    rho_col="rho",
+                    N=avg_population_size,  # Use average population size for FPC
+                    correlation_type="Spearman",
+                    alpha=0.05,
+                )
+            )
 
     # 2) Build the master table using precomputed corr/pval and plateau_df
     label = f"tab:master_table_{scenario_name}"
     csv_path, tex_path = master_table.create_master_table(
         measures_per_log=measures_per_log,
         sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
-        corr_df=corr_df,
-        pval_df=pval_df,
+        pearson_r_df=pearson_r_df,
+        pearson_p_df=pearson_p_df,
+        spearman_r_df=spearman_r_df,
+        spearman_p_df=spearman_p_df,
         plateau_df=plateau_df,
         out_csv_path=str(out_dir / "master_table.csv"),
         metric_columns=include_metrics,
@@ -250,8 +350,10 @@ def compute_results(
         pretty_plateau=True,  # prints '---' instead of NaN
         caption=f"Assessment of Measures - {clear_name}",
         label=label,
-        improvement_per_log_df=improvement_per_log_df,
-        improvement_summary_df=improvement_summary_df,
+        pearson_improvement_per_log_df=pearson_improvement_per_log_df,
+        pearson_improvement_summary_df=pearson_improvement_summary_df,
+        spearman_improvement_per_log_df=spearman_improvement_per_log_df,
+        spearman_improvement_summary_df=spearman_improvement_summary_df,
     )
     print(csv_path, tex_path)
 
