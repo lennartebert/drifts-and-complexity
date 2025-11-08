@@ -9,6 +9,7 @@ import pandas as pd
 def plot_correlation_results(
     correlations_df: pd.DataFrame,
     out_path: Path,
+    correlation_type: str = "Pearson",  # "Pearson" or "Spearman"
     plot_type: str = "box",  # "box" or "dot"
 ) -> None:
     """Plot correlation results (Pearson r) across multiple logs.
@@ -29,27 +30,38 @@ def plot_correlation_results(
         >>> df = pd.DataFrame({'measure1': [0.5, 0.3], 'measure2': [0.8, 0.2]})
         >>> plot_correlation_results(df, Path('output.png'), 'box')
     """
-    measures = correlations_df.index.tolist()
-    data_by_measure = [correlations_df.loc[m].dropna().values for m in measures]
+    # Choose the correct column
+    if correlation_type == "Pearson":
+        col = "Pearson_Rho"
+        ylabel = "Pearson r"
+        title = "Distribution of Pearson r Across Datasets by Measure"
+    elif correlation_type == "Spearman":
+        col = "Spearman_Rho"
+        ylabel = "Spearman r"
+        title = "Distribution of Spearman r Across Datasets by Measure"
+    else:
+        raise ValueError("correlation_type must be 'Pearson' or 'Spearman'")
+
+    measures = correlations_df["Metric"].tolist()
+    values = correlations_df[col].values
 
     plt.figure(figsize=(10, 6))
 
     if plot_type == "box":
-        plt.boxplot(data_by_measure, labels=measures, showfliers=False)
+        plt.boxplot([values], labels=[col], showfliers=False)
+        plt.xticks([1], [col])
     elif plot_type == "dot":
-        for i, vals in enumerate(data_by_measure, start=1):
-            plt.scatter([i] * len(vals), vals, alpha=0.6)
-        plt.xticks(range(1, len(measures) + 1), measures)
+        plt.scatter([1] * len(values), values, alpha=0.6)
+        plt.xticks([1], [col])
     else:
         raise ValueError("plot_type must be 'box' or 'dot'")
 
-    # Common formatting
     plt.axhline(0, linewidth=0.8, color="grey")
-    plt.ylabel("Pearson r")
+    plt.ylabel(ylabel)
     plt.ylim(-1, 1)
     plt.xticks(rotation=90)
     plt.xlabel("Measure")
-    plt.title("Distribution of Pearson r Across Datasets by Measure")
+    plt.title(title)
     plt.tight_layout()
 
     out_path = Path(out_path)

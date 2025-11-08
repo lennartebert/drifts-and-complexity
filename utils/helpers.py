@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+
+ALPHA = 0.05  # Default significance level for Z-test
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -166,7 +168,7 @@ def get_correlations_for_dictionary(
     rename_dictionary_map: Optional[Dict[str, str]],
     metric_columns: List[str],
     base_column: str = "sample_size",
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> pd.DataFrame:
     """Calculate both Pearson and Spearman correlations between sample size and metrics.
 
     Args:
@@ -182,38 +184,27 @@ def get_correlations_for_dictionary(
 
     rename_map = rename_dictionary_map
 
-    pearson_r_results: Dict[str, Dict[str, float]] = {}
-    pearson_p_results: Dict[str, Dict[str, float]] = {}
-    spearman_r_results: Dict[str, Dict[str, float]] = {}
-    spearman_p_results: Dict[str, Dict[str, float]] = {}
-
-    for key, df in sample_metrics_per_log.items():
-        col_tag = (
-            key if rename_map is None else rename_map[key]
-        )  # apply the rename map if available
-        pearson_r_results[col_tag] = {}
-        pearson_p_results[col_tag] = {}
-        spearman_r_results[col_tag] = {}
-        spearman_p_results[col_tag] = {}
-
-        for col in df.columns:
-            if col not in metric_columns:
+    results = []
+    for col in metric_columns:
+        # Aggregate across all logs
+        pearson_r_list = []
+        pearson_p_list = []
+        spearman_r_list = []
+        spearman_p_list = []
+        for key, df in sample_metrics_per_log.items():
+            if col not in df.columns:
                 continue
-            # Work on a copy and coerce to numeric, replacing inf/-inf with NaN
             tmp = df[[base_column, col]].copy()
             tmp = tmp.replace([np.inf, -np.inf], np.nan)
             tmp[base_column] = pd.to_numeric(tmp[base_column], errors="coerce")
             tmp[col] = pd.to_numeric(tmp[col], errors="coerce")
-            # drop rows with any NaN
             tmp = tmp.dropna()
-            # Need at least 2 observations
             if len(tmp) < 2:
                 pearson_r, pearson_p = float("nan"), float("nan")
                 spearman_r, spearman_p = float("nan"), float("nan")
             else:
                 x = tmp[base_column].to_numpy(dtype=float)
                 y = tmp[col].to_numpy(dtype=float)
-                # Ensure finite and non-constant
                 if not (np.isfinite(x).all() and np.isfinite(y).all()):
                     pearson_r, pearson_p = float("nan"), float("nan")
                     spearman_r, spearman_p = float("nan"), float("nan")
@@ -229,43 +220,41 @@ def get_correlations_for_dictionary(
                         spearman_r, spearman_p = stats.spearmanr(x, y)
                     except Exception:
                         spearman_r, spearman_p = float("nan"), float("nan")
-            pearson_r_results[col_tag][col] = pearson_r
-            pearson_p_results[col_tag][col] = pearson_p
-            spearman_r_results[col_tag][col] = spearman_r
-            spearman_p_results[col_tag][col] = spearman_p
+            pearson_r_list.append(pearson_r)
+            pearson_p_list.append(pearson_p)
+            spearman_r_list.append(spearman_r)
+            spearman_p_list.append(spearman_p)
 
-    # Create DataFrames
-    pearson_r_df = pd.DataFrame(pearson_r_results)
-    pearson_p_df = pd.DataFrame(pearson_p_results)
-    spearman_r_df = pd.DataFrame(spearman_r_results)
-    spearman_p_df = pd.DataFrame(spearman_p_results)
+        # Aggregate across logs (mean, ignoring NaN)
+        def nanmean(lst):
+            arr = np.array(lst, dtype=float)
+            return float(np.nanmean(arr)) if len(arr) > 0 else float("nan")
 
-    # Enforce consistent row order
-    pearson_r_df = pearson_r_df.reindex(metric_columns)
-    pearson_p_df = pearson_p_df.reindex(metric_columns)
-    spearman_r_df = spearman_r_df.reindex(metric_columns)
-    spearman_p_df = spearman_p_df.reindex(metric_columns)
-
-    print("Pearson correlations:")
-    print(pearson_r_df)
-    print()
-    print("Pearson p-values:")
-    print(pearson_p_df)
-    print()
-    print("Spearman correlations:")
-    print(spearman_r_df)
-    print()
-    print("Spearman p-values:")
-    print(spearman_p_df)
-
-    return pearson_r_df, pearson_p_df, spearman_r_df, spearman_p_df
+        results.append(
+            {
+                "Metric": col,
+                "Pearson_Rho": nanmean(pearson_r_list),
+                "Pearson_P": nanmean(pearson_p_list),
+                "Spearman_Rho": nanmean(spearman_r_list),
+                "Spearman_P": nanmean(spearman_p_list),
+            }
+        )
+    df = pd.DataFrame(results)
+    return df
 
 
+import math
 from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
+
+# Configuration constants for comparison table generation
+TAU = 0.15  # threshold for |Pearson − Spearman|
+APPLY_FPC = True  # whether to apply finite population correction
+DEFAULT_N = 2000  # default sample size if missing
+DEFAULT_NPOP = 10000  # default population size if missing
 
 
 def compute_significant_improvement(
@@ -286,7 +275,7 @@ def compute_significant_improvement(
     Compare bias before vs after using Fisher's z-test on correlations with FPC.
 
     Significant improvement rule:
-        improved = (abs(rho_after) < abs(rho_before)) AND (p_change < alpha)
+        improved = (Z_test_p < alpha) AND (Delta_Chosen_Rho > 0)
 
     Parameters
     ----------
@@ -353,7 +342,7 @@ def compute_significant_improvement(
         z2 = np.arctanh(r2)
 
         # Finite population corrections (default to 1 if not applicable)
-        def fpc(n, N):
+        def fpc(n: int, N: Optional[int]) -> float:
             if N is None or N <= n or N <= 1:
                 return 1.0
             return math.sqrt((N - n) / (N - 1))
@@ -428,7 +417,7 @@ def compute_significant_improvement(
             merged[f"{correlation_type}_{rho_col}_before"],
             merged[f"{correlation_type}_{rho_col}_after"],
         ):
-            z, p = fisher_z_test(rb, ra, n, N)
+            z, p = fisher_z_diff_independent(rb, ra, n, n, N, N)
             z_list.append(z)
             p_list.append(p)
             improved = (abs(ra) < abs(rb)) and (not np.isnan(p)) and (p < alpha)

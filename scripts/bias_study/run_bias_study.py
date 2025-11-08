@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from pm4py.objects.log.importer.xes import importer as xes_importer
 
-from utils import constants, helpers, master_table, sampling_helper
+from utils import constants, helpers, sampling_helper
 from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
 from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import (
     INextBootstrapSampler,
@@ -20,6 +20,14 @@ from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import (
 from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetricsAdapter
 from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
     VidgofMetricsAdapter,
+)
+from utils.csv_table_generation import (
+    generate_comparison_csv,
+    generate_master_csv,
+)
+from utils.latex_table_generation import (
+    write_comparison_latex_tables,
+    write_master_latex_tables,
 )
 from utils.normalization.orchestrator import DEFAULT_NORMALIZERS
 from utils.pipeline.compute import run_metrics_over_samples
@@ -172,60 +180,37 @@ def compute_results(
 
     out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name
     out_dir.mkdir(parents=True, exist_ok=True)
-    (
-        pearson_r_df,
-        pearson_p_df,
-        spearman_r_df,
-        spearman_p_df,
-    ) = helpers.get_correlations_for_dictionary(
+    correlations_df = helpers.get_correlations_for_dictionary(
         sample_metrics_per_log=measures_per_log,
         rename_dictionary_map=None,
         metric_columns=include_metrics,
         base_column="sample_size",
     )
-    # Save all 4 DataFrames to CSV with "Metric" as index name
-    pearson_r_df.index.name = "Metric"
-    pearson_p_df.index.name = "Metric"
-    spearman_r_df.index.name = "Metric"
-    spearman_p_df.index.name = "Metric"
-    pearson_r_df.to_csv(out_dir / "correlations_pearson_r.csv")
-    pearson_p_df.to_csv(out_dir / "correlations_pearson_p.csv")
-    spearman_r_df.to_csv(out_dir / "correlations_spearman_r.csv")
-    spearman_p_df.to_csv(out_dir / "correlations_spearman_p.csv")
-    # Create LaTeX tables for both
-    helpers.corr_p_to_latex_stars(
-        pearson_r_df,
-        pearson_p_df,
-        out_dir / "correlations_pearson.tex",
-        f"correlations_pearson_{results_name}",
-        correlation_type="Pearson",
-    )
-    helpers.corr_p_to_latex_stars(
-        spearman_r_df,
-        spearman_p_df,
-        out_dir / "correlations_spearman.tex",
-        f"correlations_spearman_{results_name}",
-        correlation_type="Spearman",
-    )
+    correlations_df.to_csv(out_dir / "correlations.csv", index=False)
+
     # Create plots for both
     plot_correlation_results(
-        pearson_r_df,
+        correlations_df,
         out_path=out_dir / "correlations_pearson_box_plot.png",
+        correlation_type="Pearson",
         plot_type="box",
     )
     plot_correlation_results(
-        pearson_r_df,
+        correlations_df,
         out_path=out_dir / "correlations_pearson_dot_plot.png",
+        correlation_type="Pearson",
         plot_type="dot",
     )
     plot_correlation_results(
-        spearman_r_df,
+        correlations_df,
         out_path=out_dir / "correlations_spearman_box_plot.png",
+        correlation_type="Spearman",
         plot_type="box",
     )
     plot_correlation_results(
-        spearman_r_df,
+        correlations_df,
         out_path=out_dir / "correlations_spearman_dot_plot.png",
+        correlation_type="Spearman",
         plot_type="dot",
     )
 
@@ -242,131 +227,120 @@ def compute_results(
     # Compute sample size for FPC
     n_samples = len(SIZES) * SAMPLES_PER_SIZE
 
-    # Compute significant improvement for both Pearson and Spearman
-    pearson_improvement_per_log_df = None
-    pearson_improvement_summary_df = None
-    spearman_improvement_per_log_df = None
-    spearman_improvement_summary_df = None
+    # 2) Build the master table (CSV-first, scenario-agnostic)
+    # Compute average population size for FPC
+    avg_population_size = (
+        int(np.mean(list(log_population_sizes.values())))
+        if log_population_sizes
+        else None
+    )
 
-    if base_scenario_name is not None:
-        # load master_table.csv from base_scenario_name
-        base_csv_path = (
-            constants.BIAS_STUDY_RESULTS_DIR / base_scenario_name / "master_table.csv"
-        )
-        base_df = None
-        base_measures_per_log = {}
-        base_df = master_table.read_master_csv(base_csv_path)
-        if base_df is None:
-            print(
-                f"[WARNING] base_csv not found at {base_csv_path}, proceeding as if base_scenario_name=None."
-            )
-        else:
-            # Convert to dict keyed by log (exclude mean rows)
-            # Extract Pearson and Spearman rho columns from base table
-            for log in base_df["log"].unique():
-                if log != "" and pd.notna(log):  # Skip mean rows (empty log)
-                    base_measures_per_log[log] = base_df[base_df["log"] == log].copy()
-
-            # Convert Pearson correlations to dict format
-            pearson_current_measures_per_log = {}
-            for log in pearson_r_df.columns:
-                log_corr = pearson_r_df[log].reset_index()
-                log_corr.columns = ["metric", "rho"]
-                pearson_current_measures_per_log[log] = log_corr
-
-            # Convert Spearman correlations to dict format
-            spearman_current_measures_per_log = {}
-            for log in spearman_r_df.columns:
-                log_corr = spearman_r_df[log].reset_index()
-                log_corr.columns = ["metric", "rho"]
-                spearman_current_measures_per_log[log] = log_corr
-
-            # Convert base table to dict format for both correlation types
-            # Base table has "Pearson_rho" and "Spearman_rho" columns
-            base_pearson_measures_per_log = {}
-            base_spearman_measures_per_log = {}
-            for log in base_measures_per_log.keys():
-                base_log_df = base_measures_per_log[log].copy()
-                # Extract Pearson rho
-                if "Pearson_rho" in base_log_df.columns:
-                    base_pearson = base_log_df[["metric", "Pearson_rho"]].copy()
-                    base_pearson.columns = ["metric", "rho"]
-                    base_pearson_measures_per_log[log] = base_pearson
-                # Extract Spearman rho
-                if "Spearman_rho" in base_log_df.columns:
-                    base_spearman = base_log_df[["metric", "Spearman_rho"]].copy()
-                    base_spearman.columns = ["metric", "rho"]
-                    base_spearman_measures_per_log[log] = base_spearman
-
-            # Get population sizes for FPC (use average if log not found)
-            avg_population_size = (
-                int(np.mean(list(log_population_sizes.values())))
-                if log_population_sizes
-                else None
-            )
-
-            # Compute if improvement was significant for Pearson
-            pearson_improvement_per_log_df, pearson_improvement_summary_df = (
-                helpers.compute_significant_improvement(
-                    measures_per_log=pearson_current_measures_per_log,  # AFTER
-                    base_measures_per_log=base_pearson_measures_per_log,  # BEFORE (Pearson)
-                    include_metrics=include_metrics,
-                    n=n_samples,
-                    rho_col="rho",
-                    N=avg_population_size,  # Use average population size for FPC
-                    correlation_type="Pearson",
-                    alpha=0.05,
-                )
-            )
-
-            # Compute if improvement was significant for Spearman
-            spearman_improvement_per_log_df, spearman_improvement_summary_df = (
-                helpers.compute_significant_improvement(
-                    measures_per_log=spearman_current_measures_per_log,  # AFTER
-                    base_measures_per_log=base_spearman_measures_per_log,  # BEFORE (Spearman)
-                    include_metrics=include_metrics,
-                    n=n_samples,
-                    rho_col="rho",
-                    N=avg_population_size,  # Use average population size for FPC
-                    correlation_type="Spearman",
-                    alpha=0.05,
-                )
-            )
-
-    # 2) Build the master table using precomputed corr/pval and plateau_df
-    label = f"tab:master_table_{scenario_name}"
-    csv_path, tex_path = master_table.create_master_table(
+    master_csv_path = str(out_dir / "master.csv")
+    csv_path = generate_master_csv(
         measures_per_log=measures_per_log,
         sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
-        pearson_r_df=pearson_r_df,
-        pearson_p_df=pearson_p_df,
-        spearman_r_df=spearman_r_df,
-        spearman_p_df=spearman_p_df,
+        correlations_df=correlations_df,
         plateau_df=plateau_df,
-        out_csv_path=str(out_dir / "master_table.csv"),
+        out_csv_path=master_csv_path,
         metric_columns=include_metrics,
         ref_sizes=REF_SIZES,
         measure_basis_map=constants.METRIC_BASIS_MAP,
-        pretty_plateau=True,  # prints '---' instead of NaN
-        caption=f"Assessment of Measures - {clear_name}",
-        label=label,
-        pearson_improvement_per_log_df=pearson_improvement_per_log_df,
-        pearson_improvement_summary_df=pearson_improvement_summary_df,
-        spearman_improvement_per_log_df=spearman_improvement_per_log_df,
-        spearman_improvement_summary_df=spearman_improvement_summary_df,
+        n=n_samples,
+        N_pop=avg_population_size,
     )
-    print(csv_path, tex_path)
+    print(f"Master table saved to: {csv_path}")
 
-    # print aggregated master table
+    # 3) Build comparison table if base scenario exists
+    if base_scenario_name is not None:
+        before_master_csv_path = str(
+            constants.BIAS_STUDY_RESULTS_DIR / base_scenario_name / "master.csv"
+        )
+        # Save comparison table in the current scenario folder (same as master.csv)
+        comparison_csv_path = str(out_dir / "metrics_comparison.csv")
 
-    means_label = f"tab:master_table_means_{scenario_name}"
-    master_table.write_means_only_table_from_master_csv(
-        master_csv_path=csv_path,
-        means_csv_path=out_dir / "master_table_means.csv",
-        means_tex_path=out_dir / "master_table_means.tex",
-        caption=f"Assessment of Measures (Means Across Logs) - {clear_name}",
-        label=means_label,
-    )
+        # Check that before master CSV exists, otherwise print a warning and skip
+        if not Path(before_master_csv_path).exists():
+            print(
+                f"[WARNING] Before master CSV not found at {before_master_csv_path}. "
+                f"Skipping comparison table creation."
+            )
+        else:
+            try:
+                generate_comparison_csv(
+                    before_csv_path=before_master_csv_path,
+                    after_csv_path=csv_path,
+                    out_csv_path=comparison_csv_path,
+                )
+                print(f"Comparison table saved to: {comparison_csv_path}")
+            except Exception as e:
+                print(f"[WARNING] Could not build comparison table: {e}")
+
+    # 4) Generate LaTeX tables from CSVs
+    latex_out_dir = out_dir / "latex"
+    latex_out_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        write_master_latex_tables(
+            master_csv_path=csv_path,
+            out_dir=str(latex_out_dir),
+            scenario_key=scenario_name,
+            scenario_title=clear_name,
+        )
+        print(f"Master LaTeX tables saved to: {latex_out_dir}")
+    except Exception as e:
+        print(f"[WARNING] Could not generate master LaTeX tables: {e}")
+
+    # Generate comparison LaTeX tables if comparison CSV exists
+    if base_scenario_name is not None:
+        comparison_csv_path = str(out_dir / "metrics_comparison.csv")
+        if Path(comparison_csv_path).exists():
+            try:
+                write_comparison_latex_tables(
+                    comparison_csv_path=comparison_csv_path,
+                    out_dir=str(latex_out_dir),
+                    scenario_key=scenario_name,
+                    scenario_title=clear_name,
+                )
+                print(f"Comparison LaTeX tables saved to: {latex_out_dir}")
+            except Exception as e:
+                print(f"[WARNING] Could not generate comparison LaTeX tables: {e}")
+
+    # TODO(Re-enable LaTeX generation after CSV refactor validated)
+    # LaTeX generation is temporarily commented out for CSV-first refactor
+    #
+    # label = f"tab:master_table_{scenario_name}"
+    # csv_path, tex_path = master_table.create_master_table(
+    #     measures_per_log=measures_per_log,
+    #     sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
+    #     pearson_r_df=pearson_r_df,
+    #     pearson_p_df=pearson_p_df,
+    #     spearman_r_df=spearman_r_df,
+    #     spearman_p_df=spearman_p_df,
+    #     plateau_df=plateau_df,
+    #     out_csv_path=str(out_dir / "master_table.csv"),
+    #     metric_columns=include_metrics,
+    #     ref_sizes=REF_SIZES,
+    #     measure_basis_map=constants.METRIC_BASIS_MAP,
+    #     pretty_plateau=True,  # prints '---' instead of NaN
+    #     caption=f"Assessment of Measures - {clear_name}",
+    #     label=label,
+    #     pearson_improvement_per_log_df=pearson_improvement_per_log_df,
+    #     pearson_improvement_summary_df=pearson_improvement_summary_df,
+    #     spearman_improvement_per_log_df=spearman_improvement_per_log_df,
+    #     spearman_improvement_summary_df=spearman_improvement_summary_df,
+    # )
+    # print(csv_path, tex_path)
+    #
+    # # print aggregated master table
+    #
+    # means_label = f"tab:master_table_means_{scenario_name}"
+    # master_table.write_means_only_table_from_master_csv(
+    #     master_csv_path=csv_path,
+    #     means_csv_path=out_dir / "master_table_means.csv",
+    #     means_tex_path=out_dir / "master_table_means.tex",
+    #     caption=f"Assessment of Measures (Means Across Logs) - {clear_name}",
+    #     label=means_label,
+    # )
 
 
 # --- scenario registry ---
@@ -482,9 +456,9 @@ def main() -> None:
     # Modify global parameters for test mode
     global SAMPLES_PER_SIZE, BOOTSTRAP_SIZE, SIZES
     if args.test:
-        SAMPLES_PER_SIZE = 10
-        BOOTSTRAP_SIZE = 10
-        SIZES = range(50, 201, 50)
+        SAMPLES_PER_SIZE = 2
+        BOOTSTRAP_SIZE = 2
+        SIZES = range(50, 101, 50)
 
         # Create test scenario
         test_scenario = dict(
@@ -496,7 +470,7 @@ def main() -> None:
             normalizers=None,
             include_metrics=selected_metrics,
             sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
-            base_scenario_name="test",
+            base_scenario_name="test1",
         )
 
         scenarios_to_run = [("test", test_scenario)]
