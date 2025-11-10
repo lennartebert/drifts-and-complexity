@@ -71,7 +71,13 @@ def _create_table_rows(
 
         # Determine if we should repeat Metric and Basis
         repeat_metric = (metric == prev_metric) if prev_metric is not None else False
-        repeat_basis = (basis == prev_basis) if prev_basis is not None else False
+        # Basis should be shown whenever metric is repeated OR when metric changes
+        # Only collapse basis if both metric AND basis are the same as previous
+        repeat_basis = (
+            ((metric == prev_metric) and (basis == prev_basis))
+            if (prev_metric is not None and prev_basis is not None)
+            else False
+        )
 
         # Build row cells
         cells = []
@@ -278,7 +284,13 @@ def write_latex_comparison_correlation_table(
         is_mean = log == "MEAN"
 
         repeat_metric = (metric == prev_metric) if prev_metric is not None else False
-        repeat_basis = (basis == prev_basis) if prev_basis is not None else False
+        # Basis should be shown whenever metric is repeated OR when metric changes
+        # Only collapse basis if both metric AND basis are the same as previous
+        repeat_basis = (
+            ((metric == prev_metric) and (basis == prev_basis))
+            if (prev_metric is not None and prev_basis is not None)
+            else False
+        )
 
         metric_str = _escape_latex(metric) if not repeat_metric else ""
         basis_str = _escape_latex(basis) if not repeat_basis else ""
@@ -390,7 +402,13 @@ def write_latex_comparison_correlation_means_table(
         is_mean = log == "MEAN"
 
         repeat_metric = (metric == prev_metric) if prev_metric is not None else False
-        repeat_basis = (basis == prev_basis) if prev_basis is not None else False
+        # Basis should be shown whenever metric is repeated OR when metric changes
+        # Only collapse basis if both metric AND basis are the same as previous
+        repeat_basis = (
+            ((metric == prev_metric) and (basis == prev_basis))
+            if (prev_metric is not None and prev_basis is not None)
+            else False
+        )
 
         metric_str = _escape_latex(metric) if not repeat_metric else ""
         basis_str = _escape_latex(basis) if not repeat_basis else ""
@@ -593,7 +611,13 @@ def write_latex_comparison_ci_plateau_table(
         is_mean = log == "MEAN"
 
         repeat_metric = (metric == prev_metric) if prev_metric is not None else False
-        repeat_basis = (basis == prev_basis) if prev_basis is not None else False
+        # Basis should be shown whenever metric is repeated OR when metric changes
+        # Only collapse basis if both metric AND basis are the same as previous
+        repeat_basis = (
+            ((metric == prev_metric) and (basis == prev_basis))
+            if (prev_metric is not None and prev_basis is not None)
+            else False
+        )
 
         metric_str = _escape_latex(metric) if not repeat_metric else ""
         basis_str = _escape_latex(basis) if not repeat_basis else ""
