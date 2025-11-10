@@ -73,30 +73,30 @@ DUAL_VARIANT_METRIC_NAMES = [
 
 METRIC_BASIS_MAP = {
     # Size (counts)
-    "Number of Events": "ObsCount",
-    "Number of Traces": "ObsCount",
+    "Number of Events": "OC",
+    "Number of Traces": "OC",
     # Population counts (richness-style)
-    "Number of Distinct Activities": "PopCount",
-    "Number of Distinct Traces": "PopCount",
-    "Number of Distinct Activity Transitions": "PopCount",
-    "Structure": "PopCount",
-    "Estimated Number of Acyclic Paths": "PopCount",
-    "Percentage of Distinct Traces": "PopCount",
+    "Number of Distinct Activities": "PC",
+    "Number of Distinct Traces": "PC",
+    "Number of Distinct Activity Transitions": "PC",
+    "Structure": "PC",
+    "Estimated Number of Acyclic Paths": "PC",
+    "Percentage of Distinct Traces": "PC",
     # Population distributions (moments / summaries)
-    "Min. Trace Length": "PopDist",
-    "Avg. Trace Length": "PopDist",
-    "Max. Trace Length": "PopDist",
-    "Average Distinct Activities per Trace": "PopDist",
+    "Min. Trace Length": "PD",
+    "Avg. Trace Length": "PD",
+    "Max. Trace Length": "PD",
+    "Average Distinct Activities per Trace": "PD",
     # Concrete trace–based (sequence/graph derived)
-    "Number of Ties in Paths to Goal": "Concrete",
-    "Lempel-Ziv Complexity": "Concrete",
-    "Average Affinity": "Concrete",
-    "Deviation from Random": "Concrete",
-    "Average Edit Distance": "Concrete",
-    "Sequence Entropy": "Concrete",
-    "Normalized Sequence Entropy": "Concrete",
-    "Variant Entropy": "Concrete",
-    "Normalized Variant Entropy": "Concrete",
+    "Number of Ties in Paths to Goal": "CT",
+    "Lempel-Ziv Complexity": "CT",
+    "Average Affinity": "CT",
+    "Deviation from Random": "CT",
+    "Average Edit Distance": "CT",
+    "Sequence Entropy": "CT",
+    "Normalized Sequence Entropy": "CT",
+    "Variant Entropy": "CT",
+    "Normalized Variant Entropy": "CT",
 }
 
 

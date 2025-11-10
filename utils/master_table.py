@@ -70,7 +70,7 @@ def _escape_latex(text: Any) -> str:
     return s.replace("_", "\\_")
 
 
-def build_master_table_csv(
+def build_and_save_master_csv(
     measures_per_log: Dict[str, pd.DataFrame],
     sample_ci_rel_width_per_log: Dict[str, pd.DataFrame],
     correlations_df: pd.DataFrame,  # columns: Metric, Pearson_Rho, Pearson_P, Spearman_Rho, Spearman_P
@@ -147,20 +147,30 @@ def build_master_table_csv(
             )
 
             # Get RelCI values for this log
+            # sample_ci_rel_width_df has: columns=['sample_size', ...metric_names...]
+            # We need to find the row where sample_size == ref_size, then get the metric column value
             relci = {}
             if log in sample_ci_rel_width_per_log:
                 relci_df = sample_ci_rel_width_per_log[log]
-                for ref_size in ref_sizes:
-                    col_name = f"RelCI_{ref_size}"
-                    if col_name in relci_df.columns:
-                        # Get value for this metric
-                        metric_relci = relci_df[relci_df.index == m]
-                        if len(metric_relci) > 0:
-                            relci[col_name] = metric_relci[col_name].iloc[0]
+                if (
+                    relci_df is not None
+                    and not relci_df.empty
+                    and "sample_size" in relci_df.columns
+                ):
+                    for ref_size in ref_sizes:
+                        col_name = f"RelCI_{ref_size}"
+                        # Find row where sample_size matches ref_size
+                        size_rows = relci_df[relci_df["sample_size"] == ref_size]
+                        if len(size_rows) > 0 and m in relci_df.columns:
+                            # Get the metric value for this sample_size
+                            relci[col_name] = (
+                                size_rows[m].iloc[0] if len(size_rows) > 0 else np.nan
+                            )
                         else:
                             relci[col_name] = np.nan
-                    else:
-                        relci[col_name] = np.nan
+                else:
+                    for ref_size in ref_sizes:
+                        relci[f"RelCI_{ref_size}"] = np.nan
             else:
                 for ref_size in ref_sizes:
                     relci[f"RelCI_{ref_size}"] = np.nan
@@ -269,26 +279,12 @@ def build_master_table_csv(
             # Set non-numeric columns appropriately
             for col in table_df.columns:
                 if col not in mean_row:
-                    if col in ["Shape", "Preferred_Correlation"]:
-                        # Use the most common value
-                        group = table_df[
-                            (table_df["Metric"] == row["Metric"])
-                            & (table_df["Basis"] == row["Basis"])
-                        ]
-                        if len(group) > 0 and col in group.columns:
-                            mean_row[col] = (
-                                group[col].mode()[0]
-                                if len(group[col].mode()) > 0
-                                else ""
-                            )
-                        else:
-                            mean_row[col] = ""
-                    else:
-                        mean_row[col] = ""
+                    # String columns should be left empty for MEAN rows (no aggregation)
+                    mean_row[col] = ""
 
             mean_rows.append(mean_row)
 
-    # Add mean rows to table_df
+    # Add mean rows to table_df, inserting each MEAN row immediately after its (Metric, Basis) group
     if mean_rows:
         mean_df = pd.DataFrame(mean_rows)
         # Ensure all columns from table_df are present in mean_df
@@ -297,7 +293,47 @@ def build_master_table_csv(
                 mean_df[col] = ""
         # Reorder columns to match table_df
         mean_df = mean_df[table_df.columns]
-        table_df = pd.concat([table_df, mean_df], ignore_index=True)
+
+        # Insert each MEAN row immediately after the last per-log row for its (Metric, Basis) group
+        # Preserve the original metric order from the input
+        # Create a list to hold the final rows in order
+        final_rows = []
+        current_group = None
+
+        # Iterate through rows preserving the original order
+        for idx, row in table_df.iterrows():
+            metric = row["Metric"]
+            basis = row["Basis"]
+            log = row["Log"]
+            group_key = (metric, basis)
+
+            # If we're starting a new (Metric, Basis) group, insert MEAN row for previous group
+            if current_group is not None and group_key != current_group:
+                # Insert MEAN row for previous group before starting new group
+                prev_mean = mean_df[
+                    (mean_df["Metric"] == current_group[0])
+                    & (mean_df["Basis"] == current_group[1])
+                ]
+                if len(prev_mean) > 0:
+                    final_rows.append(prev_mean.iloc[0].to_dict())
+
+            # Add the current row (only if it's not a MEAN row - MEAN rows are inserted separately)
+            if log != "MEAN":
+                final_rows.append(row.to_dict())
+
+            current_group = group_key
+
+        # Insert MEAN row for the last group
+        if current_group is not None:
+            last_mean = mean_df[
+                (mean_df["Metric"] == current_group[0])
+                & (mean_df["Basis"] == current_group[1])
+            ]
+            if len(last_mean) > 0:
+                final_rows.append(last_mean.iloc[0].to_dict())
+
+        # Convert back to DataFrame, preserving the original metric order
+        table_df = pd.DataFrame(final_rows)
 
     # Format floats as strings for CSV output to ensure fixed format
     def format_float(x: Any) -> str:

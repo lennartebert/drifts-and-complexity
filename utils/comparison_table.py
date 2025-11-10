@@ -68,7 +68,7 @@ def fisher_z_test_independent(
     return float(z_stat), float(p_val)
 
 
-def build_comparison_table_csv(
+def build_and_save_comparison_csv(
     before_csv_path: str,
     after_csv_path: str,
     out_csv_path: str,
@@ -357,7 +357,10 @@ def build_comparison_table_csv(
 
     # Compute MEAN rows per (Metric, Basis) - same logic as master_table.py
     # Filter out any existing MEAN rows to avoid double-averaging
-    per_log_df = comparison_df[comparison_df["Row_Status"] != "MEAN"].copy()
+    # Check both Row_Status and Log columns to filter MEAN rows
+    per_log_df = comparison_df[
+        (comparison_df["Row_Status"] != "MEAN") & (comparison_df["Log"] != "MEAN")
+    ].copy()
 
     # Identify numeric columns for mean computation
     numeric_cols = [
@@ -392,38 +395,16 @@ def build_comparison_table_csv(
             for col in per_log_df.columns:
                 if col not in mean_row:
                     if col in ["Chosen_Correlation", "z_type"]:
-                        # Use the most common value or first value
-                        group = per_log_df[
-                            (per_log_df["Metric"] == row["Metric"])
-                            & (per_log_df["Basis"] == row["Basis"])
-                        ]
-                        if len(group) > 0:
-                            mean_row[col] = (
-                                group[col].mode()[0]
-                                if len(group[col].mode()) > 0
-                                else group[col].iloc[0]
-                            )
-                        else:
-                            mean_row[col] = ""
+                        # String columns should be left empty for MEAN rows (no aggregation)
+                        mean_row[col] = ""
                     elif col in [
                         "Shape_before",
                         "Shape_after",
                         "Preferred_Correlation_before",
                         "Preferred_Correlation_after",
                     ]:
-                        # Use the most common value
-                        group = per_log_df[
-                            (per_log_df["Metric"] == row["Metric"])
-                            & (per_log_df["Basis"] == row["Basis"])
-                        ]
-                        if len(group) > 0 and col in group.columns:
-                            mean_row[col] = (
-                                group[col].mode()[0]
-                                if len(group[col].mode()) > 0
-                                else group[col].iloc[0]
-                            )
-                        else:
-                            mean_row[col] = ""
+                        # String columns should be left empty for MEAN rows (no aggregation)
+                        mean_row[col] = ""
                     elif col in ["n_before", "n_after", "N_pop_before", "N_pop_after"]:
                         # Use mean for these (they're numeric but we want to include them)
                         group = per_log_df[
@@ -495,7 +476,51 @@ def build_comparison_table_csv(
             ).fillna(0.0)
         # Reorder columns to match comparison_df
         mean_df = mean_df[comparison_df.columns]
-        comparison_df = pd.concat([comparison_df, mean_df], ignore_index=True)
+        # Remove any existing MEAN rows before adding new ones to avoid duplicates
+        comparison_df = comparison_df[
+            (comparison_df["Row_Status"] != "MEAN") & (comparison_df["Log"] != "MEAN")
+        ].copy()
+
+        # Insert each MEAN row immediately after the last per-log row for its (Metric, Basis) group
+        # Preserve the original metric order from the input
+        # Create a list to hold the final rows in order
+        final_rows = []
+        current_group = None
+
+        # Iterate through rows preserving the original order
+        for idx, row in comparison_df.iterrows():
+            metric = row["Metric"]
+            basis = row["Basis"]
+            log = row["Log"]
+            group_key = (metric, basis)
+
+            # If we're starting a new (Metric, Basis) group, insert MEAN row for previous group
+            if current_group is not None and group_key != current_group:
+                # Insert MEAN row for previous group before starting new group
+                prev_mean = mean_df[
+                    (mean_df["Metric"] == current_group[0])
+                    & (mean_df["Basis"] == current_group[1])
+                ]
+                if len(prev_mean) > 0:
+                    final_rows.append(prev_mean.iloc[0].to_dict())
+
+            # Add the current row (only if it's not a MEAN row - MEAN rows are inserted separately)
+            if log != "MEAN":
+                final_rows.append(row.to_dict())
+
+            current_group = group_key
+
+        # Insert MEAN row for the last group
+        if current_group is not None:
+            last_mean = mean_df[
+                (mean_df["Metric"] == current_group[0])
+                & (mean_df["Basis"] == current_group[1])
+            ]
+            if len(last_mean) > 0:
+                final_rows.append(last_mean.iloc[0].to_dict())
+
+        # Convert back to DataFrame, preserving the original metric order
+        comparison_df = pd.DataFrame(final_rows)
 
     # Reorder columns now that Significant_Improvement is added (before formatting)
     comparison_df = _reorder_comparison_columns(comparison_df)

@@ -22,8 +22,8 @@ from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
     VidgofMetricsAdapter,
 )
 from utils.csv_table_generation import (
-    generate_comparison_csv,
-    generate_master_csv,
+    build_and_save_comparison_csv,
+    build_and_save_master_csv,
 )
 from utils.latex_table_generation import (
     write_comparison_latex_tables,
@@ -236,7 +236,7 @@ def compute_results(
     )
 
     master_csv_path = str(out_dir / "master.csv")
-    csv_path = generate_master_csv(
+    csv_path = build_and_save_master_csv(
         measures_per_log=measures_per_log,
         sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
         correlations_df=correlations_df,
@@ -266,7 +266,7 @@ def compute_results(
             )
         else:
             try:
-                generate_comparison_csv(
+                build_and_save_comparison_csv(
                     before_csv_path=before_master_csv_path,
                     after_csv_path=csv_path,
                     out_csv_path=comparison_csv_path,

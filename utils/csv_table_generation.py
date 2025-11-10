@@ -13,65 +13,24 @@ from .comparison_table import (
     _add_comparison_columns,
     _reorder_comparison_columns,
 )
-from .comparison_table import build_comparison_table_csv as _build_comparison_table_csv
+from .comparison_table import (
+    build_and_save_comparison_csv as _build_and_save_comparison_csv_base,
+)
 from .helpers import TAU
-from .master_table import build_master_table_csv as _build_master_table_csv
+from .master_table import build_and_save_master_csv
+
+# Re-export build_and_save_master_csv for convenience
+__all__ = ["build_and_save_master_csv", "build_and_save_comparison_csv"]
 
 
-def generate_master_csv(
-    measures_per_log: Dict[str, pd.DataFrame],
-    sample_ci_rel_width_per_log: Dict[str, pd.DataFrame],
-    correlations_df: pd.DataFrame,
-    plateau_df: pd.DataFrame,
-    out_csv_path: str,
-    metric_columns: Optional[List[str]] = None,
-    ref_sizes: List[int] = [50, 250, 500],
-    measure_basis_map: Optional[Dict[str, str]] = None,
-    n: Optional[int] = None,
-    N_pop: Optional[int] = None,
-) -> str:
-    """Generate master.csv for a scenario.
-
-    This is a wrapper around build_master_table_csv that provides
-    a consistent interface for CSV generation.
-
-    Args:
-        measures_per_log: Dict mapping log names to DataFrames with measures.
-        sample_ci_rel_width_per_log: Dict mapping log names to DataFrames with RelCI values.
-        correlations_df: DataFrame with columns: Metric, Pearson_Rho, Pearson_P, Spearman_Rho, Spearman_P.
-        plateau_df: DataFrame with metrics as rows, logs as columns, values are plateau n (or NaN).
-        out_csv_path: Path to save the CSV file.
-        metric_columns: Optional list of metric names to include.
-        ref_sizes: List of reference sizes for RelCI columns.
-        measure_basis_map: Optional dict mapping metric names to basis names.
-        n: Sample size used for correlation.
-        N_pop: Population size (for FPC).
-
-    Returns:
-        Path to the saved CSV file.
-    """
-    return _build_master_table_csv(
-        measures_per_log=measures_per_log,
-        sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
-        correlations_df=correlations_df,
-        plateau_df=plateau_df,
-        out_csv_path=out_csv_path,
-        metric_columns=metric_columns,
-        ref_sizes=ref_sizes,
-        measure_basis_map=measure_basis_map,
-        n=n,
-        N_pop=N_pop,
-    )
-
-
-def generate_comparison_csv(
+def build_and_save_comparison_csv(
     before_csv_path: str,
     after_csv_path: str,
     out_csv_path: str,
 ) -> str:
-    """Generate metrics_comparison.csv from before and after master CSVs.
+    """Build and save metrics_comparison.csv from before and after master CSVs.
 
-    This extends build_comparison_table_csv to add delta columns for
+    This extends the base build_and_save_comparison_csv to add delta columns for
     RelCI and Plateau_n values.
 
     Args:
@@ -82,8 +41,8 @@ def generate_comparison_csv(
     Returns:
         Path to the saved CSV file.
     """
-    # First build the comparison table using the existing function
-    comparison_path = _build_comparison_table_csv(
+    # First build the comparison table using the base function
+    comparison_path = _build_and_save_comparison_csv_base(
         before_csv_path=before_csv_path,
         after_csv_path=after_csv_path,
         out_csv_path=out_csv_path,

@@ -106,8 +106,8 @@ def _create_table_rows(
                     cell = str(val)
                 cell = _escape_latex(cell)
 
-            # For MEAN rows, italicize each cell individually
-            if is_mean:
+            # For MEAN rows, italicize each cell individually (only in full tables, not means-only)
+            if is_mean and not is_means_only:
                 if cell == "":
                     # Empty cell - use \textit{} to maintain column count
                     cell = "\\textit{}"
@@ -136,9 +136,14 @@ def write_latex_master_correlation_table(
     df = pd.read_csv(master_csv_path)
 
     # Sort: MEAN rows at end for each (Metric, Basis) group
+    # Preserve original metric order from CSV (don't sort alphabetically)
     df["_sort_key"] = df["Log"].apply(lambda x: 1 if x == "MEAN" else 0)
-    df = df.sort_values(by=["Metric", "Basis", "_sort_key", "Log"])
-    df = df.drop(columns=["_sort_key"])
+    # Create a metric order mapping to preserve CSV order
+    unique_metrics = df["Metric"].unique()
+    metric_order = {metric: idx for idx, metric in enumerate(unique_metrics)}
+    df["_metric_order"] = df["Metric"].map(metric_order)
+    df = df.sort_values(by=["_metric_order", "Basis", "_sort_key", "Log"])
+    df = df.drop(columns=["_sort_key", "_metric_order"])
 
     # Columns: Metric, Basis, Log, Pearson_Rho, Spearman_Rho, Delta_PearsonSpearman, Shape, Preferred_Correlation
     columns = [
@@ -157,6 +162,7 @@ def write_latex_master_correlation_table(
 
     latex = f"""\\begin{{table}}[htbp]
 \\centering
+\\tiny
 \\caption{{Correlation table — {_escape_latex(scenario_title)}}}
 \\label{{tab:master_correlation_full_{scenario_key}}}
 \\begin{{tabular}}{{l l l c c c l l}}
@@ -185,25 +191,27 @@ def write_latex_master_correlation_means_table(
     df = pd.read_csv(master_csv_path)
     means_df = df[df["Log"] == "MEAN"].copy()
 
-    # Columns: Metric, Basis, Pearson_Rho, Spearman_Rho, Delta_PearsonSpearman
+    # Columns: Same as full table (Metric, Basis, Log, Pearson_Rho, Spearman_Rho, Delta_PearsonSpearman, Shape, Preferred_Correlation)
     columns = [
         "Metric",
         "Basis",
+        "Log",
         "Pearson_Rho",
         "Spearman_Rho",
         "Delta_PearsonSpearman",
+        "Shape",
+        "Preferred_Correlation",
     ]
 
     rows = _create_table_rows(means_df, columns, is_means_only=True)
-    header = (
-        "Metric & Basis & Pearson\\_Rho & Spearman\\_Rho & Delta\\_PearsonSpearman \\\\"
-    )
+    header = "Metric & Basis & Log & Pearson\\_Rho & Spearman\\_Rho & Delta\\_PearsonSpearman & Shape & Preferred\\_Correlation \\\\"
 
     latex = f"""\\begin{{table}}[htbp]
 \\centering
+\\tiny
 \\caption{{Correlation means — {_escape_latex(scenario_title)}}}
 \\label{{tab:master_correlation_means_{scenario_key}}}
-\\begin{{tabular}}{{l l c c c}}
+\\begin{{tabular}}{{l l l c c c l l}}
 \\toprule
 {header}
 \\midrule
@@ -229,9 +237,14 @@ def write_latex_comparison_correlation_table(
     df = pd.read_csv(comparison_csv_path)
 
     # Sort: MEAN rows at end for each (Metric, Basis) group
+    # Preserve original metric order from CSV (don't sort alphabetically)
     df["_sort_key"] = df["Log"].apply(lambda x: 1 if x == "MEAN" else 0)
-    df = df.sort_values(by=["Metric", "Basis", "_sort_key", "Log"])
-    df = df.drop(columns=["_sort_key"])
+    # Create a metric order mapping to preserve CSV order
+    unique_metrics = df["Metric"].unique()
+    metric_order = {metric: idx for idx, metric in enumerate(unique_metrics)}
+    df["_metric_order"] = df["Metric"].map(metric_order)
+    df = df.sort_values(by=["_metric_order", "Basis", "_sort_key", "Log"])
+    df = df.drop(columns=["_sort_key", "_metric_order"])
 
     # Format Significant_Improvement
     def format_sig_improvement(val: Any, is_mean: bool) -> str:
@@ -324,6 +337,7 @@ def write_latex_comparison_correlation_table(
 
     latex = f"""\\begin{{table}}[htbp]
 \\centering
+\\tiny
 \\caption{{Comparison correlation table — {_escape_latex(scenario_title)}}}
 \\label{{tab:comparison_correlation_full_{scenario_key}}}
 \\begin{{tabular}}{{l l l l l l l l c c c c c}}
@@ -353,7 +367,7 @@ def write_latex_comparison_correlation_means_table(
     means_df = df[df["Log"] == "MEAN"].copy()
 
     # Format Significant_Improvement as percentage
-    def format_sig_improvement(val: Any) -> str:
+    def format_sig_improvement(val: Any, is_mean: bool = True) -> str:
         if pd.isna(val) or val == "":
             return ""
         try:
@@ -364,7 +378,7 @@ def write_latex_comparison_correlation_means_table(
             pass
         return ""
 
-    # Columns: Metric, Basis, Chosen_Rho_before, Chosen_Rho_after, Delta_Chosen_Rho, Significant_Improvement
+    # Columns: Same as full table (Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Delta_Chosen_Rho, Z_test_p, Significant_Improvement)
     rows = []
     prev_metric = None
     prev_basis = None
@@ -372,32 +386,51 @@ def write_latex_comparison_correlation_means_table(
     for idx, row in means_df.iterrows():
         metric = row["Metric"]
         basis = row["Basis"]
+        log = row["Log"]
+        is_mean = log == "MEAN"
 
         repeat_metric = (metric == prev_metric) if prev_metric is not None else False
         repeat_basis = (basis == prev_basis) if prev_basis is not None else False
 
         metric_str = _escape_latex(metric) if not repeat_metric else ""
         basis_str = _escape_latex(basis) if not repeat_basis else ""
+        log_str = "" if is_mean else _escape_latex(log)
+        shape_before = _escape_latex(
+            str(row.get("Shape_before", "")) if not is_mean else ""
+        )
+        shape_after = _escape_latex(
+            str(row.get("Shape_after", "")) if not is_mean else ""
+        )
+        preferred_correlation_before = _escape_latex(
+            str(row.get("Preferred_Correlation_before", "")) if not is_mean else ""
+        )
+        preferred_correlation_after = _escape_latex(
+            str(row.get("Preferred_Correlation_after", "")) if not is_mean else ""
+        )
+        chosen_correlation = _escape_latex(str(row.get("Chosen_Correlation", "")))
         chosen_rho_before = _format_num(row.get("Chosen_Rho_before", ""))
         chosen_rho_after = _format_num(row.get("Chosen_Rho_after", ""))
         delta_chosen_rho = _format_num(row.get("Delta_Chosen_Rho", ""))
+        z_test_p = _format_pvalue(row.get("Z_test_p", ""))
         significant_improvement = format_sig_improvement(
-            row.get("Significant_Improvement", "")
+            row.get("Significant_Improvement", ""), is_mean
         )
 
-        # Build cells list for MEAN row italicization (all rows are MEAN)
+        # Build cells list (no italicization for means-only tables)
         cells_list = [
             metric_str,
             basis_str,
+            log_str,
+            shape_before,
+            shape_after,
+            preferred_correlation_before,
+            preferred_correlation_after,
+            chosen_correlation,
             chosen_rho_before,
             chosen_rho_after,
             delta_chosen_rho,
+            z_test_p,
             significant_improvement,
-        ]
-
-        # Italicize each cell individually
-        cells_list = [
-            f"\\textit{{{cell}}}" if cell != "" else "\\textit{}" for cell in cells_list
         ]
 
         row_str = " & ".join(cells_list) + " \\\\"
@@ -405,13 +438,14 @@ def write_latex_comparison_correlation_means_table(
         prev_metric = metric
         prev_basis = basis
 
-    header = "Metric & Basis & Chosen\\_Rho\\_before & Chosen\\_Rho\\_after & Delta\\_Chosen\\_Rho & Significant\\_Improvement \\\\"
+    header = "Metric & Basis & Log & Shape\\_before & Shape\\_after & Preferred\\_Correlation\\_before & Preferred\\_Correlation\\_after & Chosen\\_Correlation & Chosen\\_Rho\\_before & Chosen\\_Rho\\_after & Delta\\_Chosen\\_Rho & Z\\_test\\_p & Significant\\_Improvement \\\\"
 
     latex = f"""\\begin{{table}}[htbp]
 \\centering
+\\tiny
 \\caption{{Comparison correlation means — {_escape_latex(scenario_title)}}}
 \\label{{tab:comparison_correlation_means_{scenario_key}}}
-\\begin{{tabular}}{{l l c c c c}}
+\\begin{{tabular}}{{l l l l l l l l c c c c c}}
 \\toprule
 {header}
 \\midrule
@@ -439,9 +473,14 @@ def write_latex_master_ci_plateau_table(
     df = pd.read_csv(master_csv_path)
 
     # Sort: MEAN rows at end for each (Metric, Basis) group
+    # Preserve original metric order from CSV (don't sort alphabetically)
     df["_sort_key"] = df["Log"].apply(lambda x: 1 if x == "MEAN" else 0)
-    df = df.sort_values(by=["Metric", "Basis", "_sort_key", "Log"])
-    df = df.drop(columns=["_sort_key"])
+    # Create a metric order mapping to preserve CSV order
+    unique_metrics = df["Metric"].unique()
+    metric_order = {metric: idx for idx, metric in enumerate(unique_metrics)}
+    df["_metric_order"] = df["Metric"].map(metric_order)
+    df = df.sort_values(by=["_metric_order", "Basis", "_sort_key", "Log"])
+    df = df.drop(columns=["_sort_key", "_metric_order"])
 
     # Columns: Metric, Basis, Log, RelCI_50, RelCI_250, RelCI_500, Plateau_n
     columns = [
@@ -459,6 +498,7 @@ def write_latex_master_ci_plateau_table(
 
     latex = f"""\\begin{{table}}[htbp]
 \\centering
+\\tiny
 \\caption{{CI/Plateau table — {_escape_latex(scenario_title)}}}
 \\label{{tab:master_ci_plateau_{scenario_key}}}
 \\begin{{tabular}}{{l l l c c c c}}
@@ -487,56 +527,26 @@ def write_latex_master_ci_plateau_means_table(
     df = pd.read_csv(master_csv_path)
     means_df = df[df["Log"] == "MEAN"].copy()
 
-    # Columns: Metric, Basis, RelCI_50, RelCI_250, RelCI_500, Plateau_n
+    # Columns: Same as full table (Metric, Basis, Log, RelCI_50, RelCI_250, RelCI_500, Plateau_n)
     columns = [
         "Metric",
         "Basis",
+        "Log",
         "RelCI_50",
         "RelCI_250",
         "RelCI_500",
         "Plateau_n",
     ]
 
-    rows = []
-    prev_metric = None
-    prev_basis = None
-
-    for idx, row in means_df.iterrows():
-        metric = row["Metric"]
-        basis = row["Basis"]
-
-        repeat_metric = (metric == prev_metric) if prev_metric is not None else False
-        repeat_basis = (basis == prev_basis) if prev_basis is not None else False
-
-        metric_str = _escape_latex(metric) if not repeat_metric else ""
-        basis_str = _escape_latex(basis) if not repeat_basis else ""
-        relci_50 = _format_num(row.get("RelCI_50", ""))
-        relci_250 = _format_num(row.get("RelCI_250", ""))
-        relci_500 = _format_num(row.get("RelCI_500", ""))
-        plateau_n = _format_num(row.get("Plateau_n", ""))
-
-        # Build cells list for MEAN row italicization (all rows are MEAN)
-        cells_list = [metric_str, basis_str, relci_50, relci_250, relci_500, plateau_n]
-
-        # Italicize each cell individually
-        cells_list = [
-            f"\\textit{{{cell}}}" if cell != "" else "\\textit{}" for cell in cells_list
-        ]
-
-        row_str = " & ".join(cells_list) + " \\\\"
-        rows.append(row_str)
-        prev_metric = metric
-        prev_basis = basis
-
-    header = (
-        "Metric & Basis & RelCI\\_50 & RelCI\\_250 & RelCI\\_500 & Plateau\\_n \\\\"
-    )
+    rows = _create_table_rows(means_df, columns, is_means_only=True)
+    header = "Metric & Basis & Log & RelCI\\_50 & RelCI\\_250 & RelCI\\_500 & Plateau\\_n \\\\"
 
     latex = f"""\\begin{{table}}[htbp]
 \\centering
+\\tiny
 \\caption{{CI/Plateau means — {_escape_latex(scenario_title)}}}
 \\label{{tab:master_ci_plateau_means_{scenario_key}}}
-\\begin{{tabular}}{{l l c c c c}}
+\\begin{{tabular}}{{l l l c c c c}}
 \\toprule
 {header}
 \\midrule
@@ -562,9 +572,14 @@ def write_latex_comparison_ci_plateau_table(
     df = pd.read_csv(comparison_csv_path)
 
     # Sort: MEAN rows at end for each (Metric, Basis) group
+    # Preserve original metric order from CSV (don't sort alphabetically)
     df["_sort_key"] = df["Log"].apply(lambda x: 1 if x == "MEAN" else 0)
-    df = df.sort_values(by=["Metric", "Basis", "_sort_key", "Log"])
-    df = df.drop(columns=["_sort_key"])
+    # Create a metric order mapping to preserve CSV order
+    unique_metrics = df["Metric"].unique()
+    metric_order = {metric: idx for idx, metric in enumerate(unique_metrics)}
+    df["_metric_order"] = df["Metric"].map(metric_order)
+    df = df.sort_values(by=["_metric_order", "Basis", "_sort_key", "Log"])
+    df = df.drop(columns=["_sort_key", "_metric_order"])
 
     # Columns: Metric, Basis, Log, RelCI_50_before, RelCI_50_after, RelCI_50_delta, RelCI_250_before, RelCI_250_after, RelCI_250_delta, RelCI_500_before, RelCI_500_after, RelCI_500_delta, Plateau_n_before, Plateau_n_after, Plateau_n_delta
     rows = []
@@ -633,6 +648,7 @@ def write_latex_comparison_ci_plateau_table(
 
     latex = f"""\\begin{{table}}[htbp]
 \\centering
+\\tiny
 \\caption{{Comparison CI/Plateau table — {_escape_latex(scenario_title)}}}
 \\label{{tab:comparison_ci_plateau_{scenario_key}}}
 \\begin{{tabular}}{{l l l c c c c c c c c c c c c c}}
@@ -661,70 +677,34 @@ def write_latex_comparison_ci_plateau_means_table(
     df = pd.read_csv(comparison_csv_path)
     means_df = df[df["Log"] == "MEAN"].copy()
 
-    # Columns: Metric, Basis, RelCI_50_before, RelCI_50_after, RelCI_50_delta, RelCI_250_before, RelCI_250_after, RelCI_250_delta, RelCI_500_before, RelCI_500_after, RelCI_500_delta, Plateau_n_before, Plateau_n_after, Plateau_n_delta
-    rows = []
-    prev_metric = None
-    prev_basis = None
+    # Columns: Same as full table (Metric, Basis, Log, RelCI_50_before, RelCI_50_after, RelCI_50_delta, RelCI_250_before, RelCI_250_after, RelCI_250_delta, RelCI_500_before, RelCI_500_after, RelCI_500_delta, Plateau_n_before, Plateau_n_after, Plateau_n_delta)
+    columns = [
+        "Metric",
+        "Basis",
+        "Log",
+        "RelCI_50_before",
+        "RelCI_50_after",
+        "RelCI_50_delta",
+        "RelCI_250_before",
+        "RelCI_250_after",
+        "RelCI_250_delta",
+        "RelCI_500_before",
+        "RelCI_500_after",
+        "RelCI_500_delta",
+        "Plateau_n_before",
+        "Plateau_n_after",
+        "Plateau_n_delta",
+    ]
 
-    for idx, row in means_df.iterrows():
-        metric = row["Metric"]
-        basis = row["Basis"]
-
-        repeat_metric = (metric == prev_metric) if prev_metric is not None else False
-        repeat_basis = (basis == prev_basis) if prev_basis is not None else False
-
-        metric_str = _escape_latex(metric) if not repeat_metric else ""
-        basis_str = _escape_latex(basis) if not repeat_basis else ""
-
-        # Format CI and Plateau values
-        relci_50_before = _format_num(row.get("RelCI_50_before", ""))
-        relci_50_after = _format_num(row.get("RelCI_50_after", ""))
-        relci_50_delta = _format_num(row.get("RelCI_50_delta", ""))
-        relci_250_before = _format_num(row.get("RelCI_250_before", ""))
-        relci_250_after = _format_num(row.get("RelCI_250_after", ""))
-        relci_250_delta = _format_num(row.get("RelCI_250_delta", ""))
-        relci_500_before = _format_num(row.get("RelCI_500_before", ""))
-        relci_500_after = _format_num(row.get("RelCI_500_after", ""))
-        relci_500_delta = _format_num(row.get("RelCI_500_delta", ""))
-        plateau_n_before = _format_num(row.get("Plateau_n_before", ""))
-        plateau_n_after = _format_num(row.get("Plateau_n_after", ""))
-        plateau_n_delta = _format_num(row.get("Plateau_n_delta", ""))
-
-        # Build cells list for MEAN row italicization (all rows are MEAN)
-        cells_list = [
-            metric_str,
-            basis_str,
-            relci_50_before,
-            relci_50_after,
-            relci_50_delta,
-            relci_250_before,
-            relci_250_after,
-            relci_250_delta,
-            relci_500_before,
-            relci_500_after,
-            relci_500_delta,
-            plateau_n_before,
-            plateau_n_after,
-            plateau_n_delta,
-        ]
-
-        # Italicize each cell individually
-        cells_list = [
-            f"\\textit{{{cell}}}" if cell != "" else "\\textit{}" for cell in cells_list
-        ]
-
-        row_str = " & ".join(cells_list) + " \\\\"
-        rows.append(row_str)
-        prev_metric = metric
-        prev_basis = basis
-
-    header = "Metric & Basis & RelCI\\_50\\_before & RelCI\\_50\\_after & RelCI\\_50\\_delta & RelCI\\_250\\_before & RelCI\\_250\\_after & RelCI\\_250\\_delta & RelCI\\_500\\_before & RelCI\\_500\\_after & RelCI\\_500\\_delta & Plateau\\_n\\_before & Plateau\\_n\\_after & Plateau\\_n\\_delta \\\\"
+    rows = _create_table_rows(means_df, columns, is_means_only=True)
+    header = "Metric & Basis & Log & RelCI\\_50\\_before & RelCI\\_50\\_after & RelCI\\_50\\_delta & RelCI\\_250\\_before & RelCI\\_250\\_after & RelCI\\_250\\_delta & RelCI\\_500\\_before & RelCI\\_500\\_after & RelCI\\_500\\_delta & Plateau\\_n\\_before & Plateau\\_n\\_after & Plateau\\_n\\_delta \\\\"
 
     latex = f"""\\begin{{table}}[htbp]
 \\centering
+\\tiny
 \\caption{{Comparison CI/Plateau means — {_escape_latex(scenario_title)}}}
 \\label{{tab:comparison_ci_plateau_means_{scenario_key}}}
-\\begin{{tabular}}{{l l c c c c c c c c c c c c c c}}
+\\begin{{tabular}}{{l l l c c c c c c c c c c c c c}}
 \\toprule
 {header}
 \\midrule
