@@ -41,9 +41,9 @@ from utils.normalization.normalizers.set_to_none_percentage_of_distinct_traces i
 
 # Default pipeline (instances, in order)
 DEFAULT_NORMALIZERS: List[Normalizer] = [
-    SetToNoneNumberOfEvents(),
-    SetToNoneNumberOfTraces(),
-    SetToNonePercentageOfDistinctTraces(),
+    NormalizeNumberOfEvents(),
+    NormalizeNumberOfTraces(),
+    NormalizePercentageOfDistinctTraces(),
     NormalizeDeviationFromRandom(),
     NormalizeLZComplexity(),
     NormalizeVariantEntropy(),

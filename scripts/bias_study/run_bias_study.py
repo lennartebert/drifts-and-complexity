@@ -305,43 +305,6 @@ def compute_results(
             except Exception as e:
                 print(f"[WARNING] Could not generate comparison LaTeX tables: {e}")
 
-    # TODO(Re-enable LaTeX generation after CSV refactor validated)
-    # LaTeX generation is temporarily commented out for CSV-first refactor
-    #
-    # label = f"tab:master_table_{scenario_name}"
-    # csv_path, tex_path = master_table.create_master_table(
-    #     measures_per_log=measures_per_log,
-    #     sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
-    #     pearson_r_df=pearson_r_df,
-    #     pearson_p_df=pearson_p_df,
-    #     spearman_r_df=spearman_r_df,
-    #     spearman_p_df=spearman_p_df,
-    #     plateau_df=plateau_df,
-    #     out_csv_path=str(out_dir / "master_table.csv"),
-    #     metric_columns=include_metrics,
-    #     ref_sizes=REF_SIZES,
-    #     measure_basis_map=constants.METRIC_BASIS_MAP,
-    #     pretty_plateau=True,  # prints '---' instead of NaN
-    #     caption=f"Assessment of Measures - {clear_name}",
-    #     label=label,
-    #     pearson_improvement_per_log_df=pearson_improvement_per_log_df,
-    #     pearson_improvement_summary_df=pearson_improvement_summary_df,
-    #     spearman_improvement_per_log_df=spearman_improvement_per_log_df,
-    #     spearman_improvement_summary_df=spearman_improvement_summary_df,
-    # )
-    # print(csv_path, tex_path)
-    #
-    # # print aggregated master table
-    #
-    # means_label = f"tab:master_table_means_{scenario_name}"
-    # master_table.write_means_only_table_from_master_csv(
-    #     master_csv_path=csv_path,
-    #     means_csv_path=out_dir / "master_table_means.csv",
-    #     means_tex_path=out_dir / "master_table_means.tex",
-    #     caption=f"Assessment of Measures (Means Across Logs) - {clear_name}",
-    #     label=means_label,
-    # )
-
 
 # --- scenario registry ---
 SCENARIOS = {

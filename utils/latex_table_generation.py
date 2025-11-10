@@ -160,7 +160,7 @@ def write_latex_master_correlation_table(
     rows = _create_table_rows(df, columns, is_means_only=False)
     header = "Metric & Basis & Log & Pearson\\_Rho & Spearman\\_Rho & Delta\\_PearsonSpearman & Shape & Preferred\\_Correlation \\\\"
 
-    latex = f"""\\begin{{table}}[htbp]
+    latex = f"""\\begin{{table}}[Htbp]
 \\centering
 \\tiny
 \\caption{{Correlation table — {_escape_latex(scenario_title)}}}
@@ -206,7 +206,7 @@ def write_latex_master_correlation_means_table(
     rows = _create_table_rows(means_df, columns, is_means_only=True)
     header = "Metric & Basis & Log & Pearson\\_Rho & Spearman\\_Rho & Delta\\_PearsonSpearman & Shape & Preferred\\_Correlation \\\\"
 
-    latex = f"""\\begin{{table}}[htbp]
+    latex = f"""\\begin{{table}}[Htbp]
 \\centering
 \\tiny
 \\caption{{Correlation means — {_escape_latex(scenario_title)}}}
@@ -335,7 +335,7 @@ def write_latex_comparison_correlation_table(
 
     header = "Metric & Basis & Log & Shape\\_before & Shape\\_after & Preferred\\_Correlation\\_before & Preferred\\_Correlation\\_after & Chosen\\_Correlation & Chosen\\_Rho\\_before & Chosen\\_Rho\\_after & Delta\\_Chosen\\_Rho & Z\\_test\\_p & Significant\\_Improvement \\\\"
 
-    latex = f"""\\begin{{table}}[htbp]
+    latex = f"""\\begin{{table}}[Htbp]
 \\centering
 \\tiny
 \\caption{{Comparison correlation table — {_escape_latex(scenario_title)}}}
@@ -440,7 +440,7 @@ def write_latex_comparison_correlation_means_table(
 
     header = "Metric & Basis & Log & Shape\\_before & Shape\\_after & Preferred\\_Correlation\\_before & Preferred\\_Correlation\\_after & Chosen\\_Correlation & Chosen\\_Rho\\_before & Chosen\\_Rho\\_after & Delta\\_Chosen\\_Rho & Z\\_test\\_p & Significant\\_Improvement \\\\"
 
-    latex = f"""\\begin{{table}}[htbp]
+    latex = f"""\\begin{{table}}[Htbp]
 \\centering
 \\tiny
 \\caption{{Comparison correlation means — {_escape_latex(scenario_title)}}}
@@ -496,7 +496,7 @@ def write_latex_master_ci_plateau_table(
     rows = _create_table_rows(df, columns, is_means_only=False)
     header = "Metric & Basis & Log & RelCI\\_50 & RelCI\\_250 & RelCI\\_500 & Plateau\\_n \\\\"
 
-    latex = f"""\\begin{{table}}[htbp]
+    latex = f"""\\begin{{table}}[Htbp]
 \\centering
 \\tiny
 \\caption{{CI/Plateau table — {_escape_latex(scenario_title)}}}
@@ -541,7 +541,7 @@ def write_latex_master_ci_plateau_means_table(
     rows = _create_table_rows(means_df, columns, is_means_only=True)
     header = "Metric & Basis & Log & RelCI\\_50 & RelCI\\_250 & RelCI\\_500 & Plateau\\_n \\\\"
 
-    latex = f"""\\begin{{table}}[htbp]
+    latex = f"""\\begin{{table}}[Htbp]
 \\centering
 \\tiny
 \\caption{{CI/Plateau means — {_escape_latex(scenario_title)}}}
@@ -646,7 +646,7 @@ def write_latex_comparison_ci_plateau_table(
 
     header = "Metric & Basis & Log & RelCI\\_50\\_before & RelCI\\_50\\_after & RelCI\\_50\\_delta & RelCI\\_250\\_before & RelCI\\_250\\_after & RelCI\\_250\\_delta & RelCI\\_500\\_before & RelCI\\_500\\_after & RelCI\\_500\\_delta & Plateau\\_n\\_before & Plateau\\_n\\_after & Plateau\\_n\\_delta \\\\"
 
-    latex = f"""\\begin{{table}}[htbp]
+    latex = f"""\\begin{{table}}[Htbp]
 \\centering
 \\tiny
 \\caption{{Comparison CI/Plateau table — {_escape_latex(scenario_title)}}}
@@ -699,7 +699,7 @@ def write_latex_comparison_ci_plateau_means_table(
     rows = _create_table_rows(means_df, columns, is_means_only=True)
     header = "Metric & Basis & Log & RelCI\\_50\\_before & RelCI\\_50\\_after & RelCI\\_50\\_delta & RelCI\\_250\\_before & RelCI\\_250\\_after & RelCI\\_250\\_delta & RelCI\\_500\\_before & RelCI\\_500\\_after & RelCI\\_500\\_delta & Plateau\\_n\\_before & Plateau\\_n\\_after & Plateau\\_n\\_delta \\\\"
 
-    latex = f"""\\begin{{table}}[htbp]
+    latex = f"""\\begin{{table}}[Htbp]
 \\centering
 \\tiny
 \\caption{{Comparison CI/Plateau means — {_escape_latex(scenario_title)}}}
