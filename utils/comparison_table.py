@@ -331,10 +331,11 @@ def build_and_save_comparison_csv(
         "RelCI_250_after",
         "RelCI_500_after",
         "Plateau_n_after",
+        "RelCI_50_delta",
+        "RelCI_250_delta",
+        "RelCI_500_delta",
+        "Plateau_n_delta",
     ]
-    for col in float_cols:
-        if col in comparison_df.columns:
-            comparison_df[col] = comparison_df[col].round(10)
 
     # Add Significant_Improvement column (before MEAN row computation and reordering)
     from utils.helpers import ALPHA
@@ -527,6 +528,71 @@ def build_and_save_comparison_csv(
 
     # Ensure Row_Status is "MEAN" for MEAN rows (in case it got overwritten)
     comparison_df.loc[comparison_df["Log"] == "MEAN", "Row_Status"] = "MEAN"
+
+    # Add delta columns for RelCI and Plateau_n (before formatting)
+    # Convert RelCI and Plateau columns to numeric if they're strings
+    def convert_to_numeric(col: str) -> None:
+        if col in comparison_df.columns:
+            comparison_df[col] = pd.to_numeric(comparison_df[col], errors="coerce")
+
+    # Convert RelCI and Plateau columns to numeric
+    for col in [
+        "RelCI_50_before",
+        "RelCI_250_before",
+        "RelCI_500_before",
+        "Plateau_n_before",
+        "RelCI_50_after",
+        "RelCI_250_after",
+        "RelCI_500_after",
+        "Plateau_n_after",
+    ]:
+        convert_to_numeric(col)
+
+    # Compute delta columns
+    comparison_df["RelCI_50_delta"] = (
+        comparison_df["RelCI_50_after"] - comparison_df["RelCI_50_before"]
+    )
+    comparison_df["RelCI_250_delta"] = (
+        comparison_df["RelCI_250_after"] - comparison_df["RelCI_250_before"]
+    )
+    comparison_df["RelCI_500_delta"] = (
+        comparison_df["RelCI_500_after"] - comparison_df["RelCI_500_before"]
+    )
+    comparison_df["Plateau_n_delta"] = (
+        comparison_df["Plateau_n_after"] - comparison_df["Plateau_n_before"]
+    )
+
+    # Round delta columns to 10 decimal places
+    for col in [
+        "RelCI_50_delta",
+        "RelCI_250_delta",
+        "RelCI_500_delta",
+        "Plateau_n_delta",
+    ]:
+        if col in comparison_df.columns:
+            comparison_df[col] = comparison_df[col].round(10)
+
+    # Reorder columns to include delta columns after their corresponding after columns
+    cols = list(comparison_df.columns)
+
+    # Find positions to insert delta columns
+    delta_insertions = [
+        ("RelCI_50_after", "RelCI_50_delta"),
+        ("RelCI_250_after", "RelCI_250_delta"),
+        ("RelCI_500_after", "RelCI_500_delta"),
+        ("Plateau_n_after", "Plateau_n_delta"),
+    ]
+
+    for after_col, delta_col in delta_insertions:
+        if after_col in cols and delta_col in cols:
+            # Remove delta_col from its current position
+            if delta_col in cols:
+                cols.remove(delta_col)
+            # Insert delta_col right after after_col
+            after_idx = cols.index(after_col)
+            cols.insert(after_idx + 1, delta_col)
+
+    comparison_df = comparison_df[cols]
 
     # Format floats as strings for CSV output to ensure fixed format
     def format_float(x: Any) -> str:

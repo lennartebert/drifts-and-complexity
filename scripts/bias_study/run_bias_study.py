@@ -17,18 +17,16 @@ from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSa
 from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import (
     INextBootstrapSampler,
 )
+from utils.comparison_table import build_and_save_comparison_csv
 from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetricsAdapter
 from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
     VidgofMetricsAdapter,
-)
-from utils.csv_table_generation import (
-    build_and_save_comparison_csv,
-    build_and_save_master_csv,
 )
 from utils.latex_table_generation import (
     write_comparison_latex_tables,
     write_master_latex_tables,
 )
+from utils.master_table import build_and_save_master_csv
 from utils.normalization.orchestrator import DEFAULT_NORMALIZERS
 from utils.pipeline.compute import run_metrics_over_samples
 from utils.plotting.plot_cis import (
