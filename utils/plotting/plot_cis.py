@@ -276,7 +276,7 @@ def plot_aggregated_measures_sample_cis(
         axes_flat[j].set_visible(False)
 
     if title:
-        fig.suptitle(title, fontsize=12, y=1.02)
+        fig.suptitle(title, fontsize=12)  # , y=1.02)
 
     fig.tight_layout()
 

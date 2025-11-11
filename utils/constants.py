@@ -99,6 +99,8 @@ METRIC_BASIS_MAP = {
     "Normalized Variant Entropy": "CT",
 }
 
+PC_METRICS = [metric for metric, basis in METRIC_BASIS_MAP.items() if basis == "PC"]
+
 
 # Metrics that are trace-based only
 TRACE_ONLY_METRIC_NAMES = [

@@ -45,7 +45,7 @@ from utils.population.extractors.naive_population_extractor import (
 from utils.SampleConfidenceIntervalExtractor import SampleConfidenceIntervalExtractor
 
 # --- defaults (same as before) ---
-sorted_metrics = constants.ALL_METRIC_NAMES
+SORTED_METRICS = constants.PC_METRICS  # constants.ALL_METRIC_NAMES
 
 SAMPLES_PER_SIZE = 200
 RANDOM_STATE = 123
@@ -79,7 +79,7 @@ def compute_results(
 ) -> None:
     print(f"Generating results for {results_name}")
     if include_metrics is None:
-        include_metrics = sorted_metrics
+        include_metrics = SORTED_METRICS
     data_dictionary = helpers.load_data_dictionary(
         constants.DATA_DICTIONARY_FILE_PATH, get_real=True, get_synthetic=True
     )
@@ -389,7 +389,7 @@ def main() -> None:
     # Process metrics parameter
     if args.metrics is None:
         # Use default sorted_metrics
-        selected_metrics = sorted_metrics
+        selected_metrics = SORTED_METRICS
     else:
         # Resolve shorthand names to full names
         selected_metrics = []
