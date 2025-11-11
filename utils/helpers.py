@@ -275,7 +275,9 @@ def compute_significant_improvement(
     Compare bias before vs after using Fisher's z-test on correlations with FPC.
 
     Significant improvement rule:
-        improved = (Z_test_p < alpha) AND (Delta_Chosen_Rho > 0)
+        improved = (Z_test_p < alpha) AND (Abs_Delta_Chosen_Rho < 0)
+        where Abs_Delta_Chosen_Rho = abs(rho_after) - abs(rho_before)
+        (negative delta means improvement: correlation moved closer to 0)
 
     Parameters
     ----------

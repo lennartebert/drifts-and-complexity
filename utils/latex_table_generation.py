@@ -55,7 +55,7 @@ def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
 
     Returns:
         Tuple of (header_string, column_spec_string).
-        Column spec uses p{15pt} for Metric column, appropriate types for others.
+        Column spec uses p{30pt} for Metric column, appropriate types for others.
     """
     header_parts = []
     colspec_parts = []
@@ -67,7 +67,7 @@ def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
 
         # Build column spec
         if col == "Metric":
-            colspec_parts.append("p{15pt}")
+            colspec_parts.append("p{30pt}")
         elif col in [
             "Basis",
             "Log",
@@ -88,7 +88,7 @@ def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
             "Delta_PearsonSpearman",
             "Chosen_Rho_before",
             "Chosen_Rho_after",
-            "Delta_Chosen_Rho",
+            "Abs_Delta_Chosen_Rho",
             "Delta_Pearson",
             "Delta_Spearman",
             "Z_test_stat",
@@ -361,7 +361,7 @@ def write_latex_comparison_correlation_table(
                 return "No"
             return str(val)
 
-    # Columns: Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Delta_Chosen_Rho, Z_test_p, Significant_Improvement
+    # Columns: Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Abs_Delta_Chosen_Rho, Z_test_p, Significant_Improvement
     rows = []
     prev_metric = None
     prev_basis = None
@@ -399,7 +399,7 @@ def write_latex_comparison_correlation_table(
         chosen_correlation = _escape_latex(str(row.get("Chosen_Correlation", "")))
         chosen_rho_before = _format_num(row.get("Chosen_Rho_before", ""))
         chosen_rho_after = _format_num(row.get("Chosen_Rho_after", ""))
-        delta_chosen_rho = _format_num(row.get("Delta_Chosen_Rho", ""))
+        delta_chosen_rho = _format_num(row.get("Abs_Delta_Chosen_Rho", ""))
         z_test_p = _format_pvalue(row.get("Z_test_p", ""))
         significant_improvement = format_sig_improvement(
             row.get("Significant_Improvement", ""), is_mean
@@ -434,7 +434,7 @@ def write_latex_comparison_correlation_table(
         prev_metric = metric
         prev_basis = basis
 
-    # Columns: Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Delta_Chosen_Rho, Z_test_p, Significant_Improvement
+    # Columns: Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Abs_Delta_Chosen_Rho, Z_test_p, Significant_Improvement
     columns = [
         "Metric",
         "Basis",
@@ -446,7 +446,7 @@ def write_latex_comparison_correlation_table(
         "Chosen_Correlation",
         "Chosen_Rho_before",
         "Chosen_Rho_after",
-        "Delta_Chosen_Rho",
+        "Abs_Delta_Chosen_Rho",
         "Z_test_p",
         "Significant_Improvement",
     ]
@@ -507,7 +507,7 @@ def write_latex_comparison_correlation_means_table(
             pass
         return ""
 
-    # Columns: Same as full table (Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Delta_Chosen_Rho, Z_test_p, Significant_Improvement)
+    # Columns: Same as full table (Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Abs_Delta_Chosen_Rho, Z_test_p, Significant_Improvement)
     columns = [
         "Metric",
         "Basis",
@@ -519,7 +519,7 @@ def write_latex_comparison_correlation_means_table(
         "Chosen_Correlation",
         "Chosen_Rho_before",
         "Chosen_Rho_after",
-        "Delta_Chosen_Rho",
+        "Abs_Delta_Chosen_Rho",
         "Z_test_p",
         "Significant_Improvement",
     ]
@@ -593,8 +593,8 @@ def write_latex_comparison_correlation_means_table(
                 cells_list.append(_format_num(row.get("Chosen_Rho_before", "")))
             elif col == "Chosen_Rho_after":
                 cells_list.append(_format_num(row.get("Chosen_Rho_after", "")))
-            elif col == "Delta_Chosen_Rho":
-                cells_list.append(_format_num(row.get("Delta_Chosen_Rho", "")))
+            elif col == "Abs_Delta_Chosen_Rho":
+                cells_list.append(_format_num(row.get("Abs_Delta_Chosen_Rho", "")))
             elif col == "Z_test_p":
                 cells_list.append(_format_pvalue(row.get("Z_test_p", "")))
             elif col == "Significant_Improvement":
@@ -1005,7 +1005,18 @@ def write_comparison_latex_tables(
         comparison_csv_path, out_dir, scenario_key, scenario_title
     )
     write_latex_comparison_correlation_means_table(
-        comparison_csv_path, out_dir, scenario_key, scenario_title, hide_columns=["Log"]
+        comparison_csv_path,
+        out_dir,
+        scenario_key,
+        scenario_title,
+        hide_columns=[
+            "Log",
+            "Shape_before",
+            "Shape_after",
+            "Preferred_Correlation_before",
+            "Preferred_Correlation_after",
+            "Chosen_Correlation",
+        ],
     )
     write_latex_comparison_ci_plateau_table(
         comparison_csv_path, out_dir, scenario_key, scenario_title

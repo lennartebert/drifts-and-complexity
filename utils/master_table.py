@@ -747,7 +747,7 @@ def write_latex_comparison_tables(
             chosen_correlation = str(row.get("Chosen_Correlation", ""))
             chosen_rho_before = format_num(row.get("Chosen_Rho_before", ""))
             chosen_rho_after = format_num(row.get("Chosen_Rho_after", ""))
-            delta_chosen_rho = format_num(row.get("Delta_Chosen_Rho", ""))
+            delta_chosen_rho = format_num(row.get("Abs_Delta_Chosen_Rho", ""))
             z_test_p = format_num(row.get("Z_test_p", ""))
             significant_improvement = format_sig_improvement(
                 row.get("Significant_Improvement", ""), is_mean
@@ -767,10 +767,10 @@ def write_latex_comparison_tables(
 
             # Build row
             if is_means_only:
-                # Means only table: Metric, Basis, Chosen_Rho_before, Chosen_Rho_after, Delta_Chosen_Rho, Significant_Improvement
+                # Means only table: Metric, Basis, Chosen_Rho_before, Chosen_Rho_after, Abs_Delta_Chosen_Rho, Significant_Improvement
                 row_str = f"{metric_str} & {basis_str} & {chosen_rho_before} & {chosen_rho_after} & {delta_chosen_rho} & {significant_improvement} \\\\"
             else:
-                # Full table: Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Delta_Chosen_Rho, Z_test_p, Significant_Improvement
+                # Full table: Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Abs_Delta_Chosen_Rho, Z_test_p, Significant_Improvement
                 row_str = f"{metric_str} & {basis_str} & {log_str} & {shape_before_str} & {shape_after_str} & {preferred_correlation_before_str} & {preferred_correlation_after_str} & {chosen_correlation_str} & {chosen_rho_before} & {chosen_rho_after} & {delta_chosen_rho} & {z_test_p} & {significant_improvement} \\\\"
 
             # Italicize MEAN rows

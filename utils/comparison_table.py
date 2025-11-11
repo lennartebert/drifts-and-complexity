@@ -318,7 +318,7 @@ def build_and_save_comparison_csv(
         "Delta_PearsonSpearman_after",
         "Chosen_Rho_before",
         "Chosen_Rho_after",
-        "Delta_Chosen_Rho",
+        "Abs_Delta_Chosen_Rho",
         "Delta_Pearson",
         "Delta_Spearman",
         "Z_test_stat",
@@ -342,15 +342,17 @@ def build_and_save_comparison_csv(
 
     def sig_impr(row: pd.Series) -> str:
         z_p = row.get("Z_test_p", np.nan)
-        delta_rho = row.get("Delta_Chosen_Rho", np.nan)
+        abs_delta_rho = row.get("Abs_Delta_Chosen_Rho", np.nan)
         # Use pd.isna() instead of np.isnan() for better compatibility
+        # Improvement means absolute correlation decreased (moved closer to 0)
+        # So Abs_Delta_Chosen_Rho < 0 means improvement
         val = (
             pd.notna(z_p)
-            and pd.notna(delta_rho)
+            and pd.notna(abs_delta_rho)
             and np.isfinite(z_p)
-            and np.isfinite(delta_rho)
+            and np.isfinite(abs_delta_rho)
             and float(z_p) < ALPHA
-            and float(delta_rho) > 0
+            and float(abs_delta_rho) < 0
         )
         return "TRUE" if val else "FALSE"
 
@@ -696,7 +698,11 @@ def _add_comparison_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     df["Chosen_Rho_before"] = df.apply(get_chosen_rho_before, axis=1)
     df["Chosen_Rho_after"] = df.apply(get_chosen_rho_after, axis=1)
-    df["Delta_Chosen_Rho"] = df["Chosen_Rho_after"] - df["Chosen_Rho_before"]
+    # Compute absolute delta: abs(after) - abs(before)
+    # Negative values mean improvement (correlation moved closer to 0)
+    df["Abs_Delta_Chosen_Rho"] = (
+        df["Chosen_Rho_after"].abs() - df["Chosen_Rho_before"].abs()
+    )
 
     # Optional raw deltas
     df["Delta_Pearson"] = df["Pearson_Rho_after"] - df["Pearson_Rho_before"]
@@ -782,7 +788,7 @@ def _reorder_comparison_columns(df: pd.DataFrame) -> pd.DataFrame:
         # Chosen rhos and deltas
         "Chosen_Rho_before",
         "Chosen_Rho_after",
-        "Delta_Chosen_Rho",
+        "Abs_Delta_Chosen_Rho",
         # Optional raw deltas
         "Delta_Pearson",
         "Delta_Spearman",
