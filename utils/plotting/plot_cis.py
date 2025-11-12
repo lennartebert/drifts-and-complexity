@@ -2,15 +2,81 @@ from __future__ import annotations
 
 import math
 import os
+from pathlib import Path
 from typing import Iterable, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from ..constants import METRIC_BASIS_MAP, METRIC_DIMENSION_MAP
+
 
 def _get_measure_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c not in ("sample_size", "sample_id")]
+
+
+def _group_measures_by_breakdown(
+    measure_cols: List[str], plot_breakdown: str | None
+) -> dict[str | None, list[str]]:
+    """Group measures by breakdown type (basis or dimension).
+
+    Args:
+        measure_cols: List of measure column names.
+        plot_breakdown: None, "basis", or "dimension".
+
+    Returns:
+        Dictionary mapping breakdown key to list of measure columns.
+    """
+    measure_groups: dict[str | None, list[str]] = {}
+    if plot_breakdown is None:
+        # Single plot with all measures
+        measure_groups[None] = measure_cols
+    elif plot_breakdown == "basis":
+        # Group by basis from METRIC_BASIS_MAP
+        for col in measure_cols:
+            basis = METRIC_BASIS_MAP.get(col, "Unknown")
+            if basis not in measure_groups:
+                measure_groups[basis] = []
+            measure_groups[basis].append(col)
+    elif plot_breakdown == "dimension":
+        # Group by dimension from METRIC_DIMENSION_MAP
+        for col in measure_cols:
+            dimension = METRIC_DIMENSION_MAP.get(col, "Unknown")
+            if dimension not in measure_groups:
+                measure_groups[dimension] = []
+            measure_groups[dimension].append(col)
+    return measure_groups
+
+
+def _prepare_breakdown_path_and_title(
+    out_path: str, title: str | None, group_key: str | None
+) -> tuple[str, str | None]:
+    """Prepare output path and title for a breakdown group.
+
+    Args:
+        out_path: Original output path.
+        title: Original title (may be None).
+        group_key: Breakdown group key (None if no breakdown).
+
+    Returns:
+        Tuple of (modified_out_path, modified_title).
+    """
+    if group_key is None:
+        # No breakdown - use original path and title
+        return out_path, title
+    else:
+        # Add breakdown value to filename
+        path_obj = Path(out_path)
+        stem = path_obj.stem
+        suffix = path_obj.suffix
+        group_out_path = str(path_obj.parent / f"{stem}_{group_key}{suffix}")
+        # Add breakdown to title if title is not None
+        if title is not None:
+            group_title = f"{title} — {group_key}"
+        else:
+            group_title = None
+        return group_out_path, group_title
 
 
 def plot_aggregated_measures_bootstrap_cis(
@@ -22,6 +88,7 @@ def plot_aggregated_measures_bootstrap_cis(
     title: str | None = None,
     ncols: int = 3,
     figsize_per_panel: Tuple[float, float] = (5.0, 3.2),
+    plot_breakdown: str | None = None,
 ) -> str:
     """
     Create a multi-panel plot (one subplot per measure) that shows, over sample_size:
@@ -39,14 +106,20 @@ def plot_aggregated_measures_bootstrap_cis(
     title       : Optional figure title
     ncols       : Number of subplot columns
     figsize_per_panel : Size per subplot; overall size is scaled by number of panels.
+    plot_breakdown : None, "basis", or "dimension" — if specified, creates separate plots
+                     grouped by metric basis or dimension. Each plot is saved with the
+                     breakdown value appended to the filename.
 
     Returns
     -------
-    str : The path where the figure was saved.
+    str : The path where the figure was saved (or last path if multiple plots created).
     """
     agg = agg.lower()
     if agg not in ("mean", "median"):
         raise ValueError("agg must be 'mean' or 'median'.")
+
+    if plot_breakdown not in (None, "basis", "dimension"):
+        raise ValueError("plot_breakdown must be None, 'basis', or 'dimension'.")
 
     # Ensure columns align and pick measure columns
     measure_cols = _get_measure_columns(measures_df)
@@ -56,6 +129,51 @@ def plot_aggregated_measures_bootstrap_cis(
         for c in measure_cols
         if c in bootstrap_ci_low_df.columns and c in bootstrap_ci_high_df.columns
     ]
+
+    # Group measures by breakdown type if specified
+    measure_groups = _group_measures_by_breakdown(measure_cols, plot_breakdown)
+
+    # Generate plots for each group
+    saved_paths = []
+    for group_key, group_measures in measure_groups.items():
+        if not group_measures:
+            continue  # Skip empty groups
+
+        # Prepare file path and title with breakdown suffix
+        group_out_path, group_title = _prepare_breakdown_path_and_title(
+            out_path, title, group_key
+        )
+
+        # Create plot for this group
+        saved_path = _create_bootstrap_ci_plot(
+            measures_df,
+            bootstrap_ci_low_df,
+            bootstrap_ci_high_df,
+            group_measures,
+            group_out_path,
+            agg,
+            group_title,
+            ncols,
+            figsize_per_panel,
+        )
+        saved_paths.append(saved_path)
+
+    # Return the last saved path (or first if only one)
+    return saved_paths[-1] if saved_paths else out_path
+
+
+def _create_bootstrap_ci_plot(
+    measures_df: pd.DataFrame,
+    bootstrap_ci_low_df: pd.DataFrame,
+    bootstrap_ci_high_df: pd.DataFrame,
+    measure_cols: List[str],
+    out_path: str,
+    agg: str,
+    title: str | None,
+    ncols: int,
+    figsize_per_panel: Tuple[float, float],
+) -> str:
+    """Helper function to create a single bootstrap CI plot for a set of measures."""
 
     # Group by sample_size and aggregate
     group = measures_df.groupby("sample_size", as_index=True)
@@ -170,6 +288,7 @@ def plot_aggregated_measures_sample_cis(
     title: str | None = None,
     ncols: int = 3,
     figsize_per_panel: Tuple[float, float] = (5.0, 3.2),
+    plot_breakdown: str | None = None,
 ) -> str:
     """
     Create a multi-panel plot (one subplot per measure) that shows, over sample_size:
@@ -197,15 +316,21 @@ def plot_aggregated_measures_sample_cis(
         Number of subplot columns.
     figsize_per_panel : (float, float)
         Size per subplot; overall size scales with number of panels.
+    plot_breakdown : None, "basis", or "dimension" — if specified, creates separate plots
+                     grouped by metric basis or dimension. Each plot is saved with the
+                     breakdown value appended to the filename.
 
     Returns
     -------
     str
-        The saved figure path.
+        The saved figure path (or last path if multiple plots created).
     """
     agg = agg.lower()
     if agg not in {"mean", "median"}:
         raise ValueError("agg must be 'mean' or 'median'.")
+
+    if plot_breakdown not in (None, "basis", "dimension"):
+        raise ValueError("plot_breakdown must be None, 'basis', or 'dimension'.")
 
     # Determine measure columns and ensure they exist in all inputs
     measure_cols = _get_measure_columns_sample(measures_df)
@@ -216,6 +341,51 @@ def plot_aggregated_measures_sample_cis(
     ]
     if not measure_cols:
         raise ValueError("No overlapping metric columns found in the three DataFrames.")
+
+    # Group measures by breakdown type if specified
+    measure_groups = _group_measures_by_breakdown(measure_cols, plot_breakdown)
+
+    # Generate plots for each group
+    saved_paths = []
+    for group_key, group_measures in measure_groups.items():
+        if not group_measures:
+            continue  # Skip empty groups
+
+        # Prepare file path and title with breakdown suffix
+        group_out_path, group_title = _prepare_breakdown_path_and_title(
+            out_path, title, group_key
+        )
+
+        # Create plot for this group
+        saved_path = _create_sample_ci_plot(
+            measures_df,
+            sample_ci_low_df,
+            sample_ci_high_df,
+            group_measures,
+            group_out_path,
+            agg,
+            group_title,
+            ncols,
+            figsize_per_panel,
+        )
+        saved_paths.append(saved_path)
+
+    # Return the last saved path (or first if only one)
+    return saved_paths[-1] if saved_paths else out_path
+
+
+def _create_sample_ci_plot(
+    measures_df: pd.DataFrame,
+    sample_ci_low_df: pd.DataFrame,
+    sample_ci_high_df: pd.DataFrame,
+    measure_cols: List[str],
+    out_path: str,
+    agg: str,
+    title: str | None,
+    ncols: int,
+    figsize_per_panel: Tuple[float, float],
+) -> str:
+    """Helper function to create a single sample CI plot for a set of measures."""
 
     # ---- Aggregate center (mean/median) across samples for each size ----
     g = measures_df.groupby("sample_size", as_index=True, sort=True)
@@ -276,7 +446,7 @@ def plot_aggregated_measures_sample_cis(
         axes_flat[j].set_visible(False)
 
     if title:
-        fig.suptitle(title, fontsize=12)  # , y=1.02)
+        fig.suptitle(title, fontsize=12, y=1.02)
 
     fig.tight_layout()
 

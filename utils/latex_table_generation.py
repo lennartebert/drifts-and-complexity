@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Optional
 
 import numpy as np
 import pandas as pd
+
+from .constants import BASIS_ORDER, COLUMN_NAME_MAP, METRIC_BASIS_MAP
 
 
 def _escape_latex(text: Any) -> str:
@@ -19,7 +21,7 @@ def _escape_latex(text: Any) -> str:
     return s.replace("_", "\\_")
 
 
-def _format_num(x: Any, decimals: int = 3) -> str:
+def _format_num(x: Any, decimals: int = 4) -> str:
     """Format numeric value with specified decimal places."""
     if pd.isna(x) or x == "":
         return ""
@@ -47,27 +49,44 @@ def _format_pvalue(x: Any) -> str:
         return str(x)
 
 
+def _format_boolean(x: Any) -> str:
+    """Format boolean value as T or F."""
+    if pd.isna(x) or x == "":
+        return ""
+    val_str = str(x).upper().strip()
+    if val_str in ("TRUE", "T", "1", "YES", "Y"):
+        return "T"
+    elif val_str in ("FALSE", "F", "0", "NO", "N"):
+        return "F"
+    return str(x)
+
+
 def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
     """Build LaTeX header and column specification from column list.
 
+    Uses COLUMN_NAME_MAP for header display names (not escaped).
+    Column spec uses p{50pt} for Metric column, appropriate types for others.
+
     Args:
-        columns: List of column names.
+        columns: List of CSV column names.
 
     Returns:
         Tuple of (header_string, column_spec_string).
-        Column spec uses p{30pt} for Metric column, appropriate types for others.
     """
     header_parts = []
     colspec_parts = []
 
     for col in columns:
-        # Escape underscores in header
-        header_part = col.replace("_", "\\_")
+        # Use COLUMN_NAME_MAP if available, otherwise escape the column name
+        if col in COLUMN_NAME_MAP:
+            header_part = COLUMN_NAME_MAP[col]  # Already formatted, don't escape
+        else:
+            header_part = col.replace("_", "\\_")
         header_parts.append(header_part)
 
         # Build column spec
         if col == "Metric":
-            colspec_parts.append("p{30pt}")
+            colspec_parts.append("p{50pt}")
         elif col in [
             "Basis",
             "Log",
@@ -121,21 +140,77 @@ def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
     return header, colspec
 
 
+def _sort_dataframe_by_basis(
+    df: pd.DataFrame, order_by_basis: bool = True
+) -> pd.DataFrame:
+    """Sort dataframe by Basis (OC, PC, PD, CT), then metric order, then MEAN rows last.
+
+    When order_by_basis is True, Basis is put first in the sort order.
+    When order_by_basis is False, metric order comes first.
+
+    Args:
+        df: DataFrame to sort.
+        order_by_basis: If True, sort by Basis first. If False, sort by metric order first.
+
+    Returns:
+        Sorted DataFrame.
+    """
+    df = df.copy()
+
+    # Create basis order mapping
+    basis_order_map = {basis: idx for idx, basis in enumerate(BASIS_ORDER)}
+    df["_basis_order"] = df["Basis"].map(
+        lambda x: basis_order_map.get(x, 999)
+    )  # Unknown basis goes to end
+
+    # Create metric order mapping to preserve CSV order
+    unique_metrics = df["Metric"].unique()
+    metric_order = {metric: idx for idx, metric in enumerate(unique_metrics)}
+    df["_metric_order"] = df["Metric"].map(metric_order)
+
+    # Sort key: MEAN rows at end for each group
+    df["_sort_key"] = df["Log"].apply(lambda x: 1 if x == "MEAN" else 0)
+
+    if order_by_basis:
+        # Sort by Basis first, then metric order, then MEAN rows last
+        df = df.sort_values(by=["_basis_order", "_metric_order", "_sort_key", "Log"])
+    else:
+        # Sort by metric order first, then Basis, then MEAN rows last
+        df = df.sort_values(by=["_metric_order", "_basis_order", "_sort_key", "Log"])
+
+    # Drop temporary columns
+    df = df.drop(columns=["_basis_order", "_metric_order", "_sort_key"])
+
+    return df
+
+
 def _create_table_rows(
     df_subset: pd.DataFrame,
     columns: List[str],
     is_means_only: bool = False,
 ) -> List[str]:
-    """Create LaTeX table rows with collapsing Metric/Basis and italicizing MEAN rows."""
+    """Create LaTeX table rows with collapsing Metric/Basis and italicizing MEAN rows.
+
+    Args:
+        df_subset: DataFrame subset to process.
+        columns: List of column names to include.
+        is_means_only: If True, this is a means-only table (no italicization).
+
+    Returns:
+        List of LaTeX row strings.
+    """
     rows = []
     prev_metric = None
     prev_basis = None
 
-    # Identify numeric columns (for formatting)
+    # Identify numeric and boolean columns (for formatting)
     numeric_cols = set()
+    boolean_cols = set()
     for col in df_subset.columns:
         if pd.api.types.is_numeric_dtype(df_subset[col]):
             numeric_cols.add(col)
+        elif pd.api.types.is_bool_dtype(df_subset[col]):
+            boolean_cols.add(col)
 
     for idx, row in df_subset.iterrows():
         metric = row["Metric"]
@@ -145,13 +220,8 @@ def _create_table_rows(
 
         # Determine if we should repeat Metric and Basis
         repeat_metric = (metric == prev_metric) if prev_metric is not None else False
-        # Basis should be shown whenever metric is repeated OR when metric changes
-        # Only collapse basis if both metric AND basis are the same as previous
-        repeat_basis = (
-            ((metric == prev_metric) and (basis == prev_basis))
-            if (prev_metric is not None and prev_basis is not None)
-            else False
-        )
+        # Only collapse basis if it repeats in consecutive rows (same as previous)
+        repeat_basis = (basis == prev_basis) if prev_basis is not None else False
 
         # Build row cells
         cells = []
@@ -169,6 +239,9 @@ def _create_table_rows(
                     cell = ""
                 elif col.endswith("_p") or col == "Z_test_p":
                     cell = _format_pvalue(val)
+                elif col in boolean_cols or col == "Significant_Improvement":
+                    # Format booleans as T/F
+                    cell = _format_boolean(val)
                 elif col in numeric_cols:
                     # Try to format as numeric - handle both numeric and string numeric values
                     try:
@@ -184,7 +257,10 @@ def _create_table_rows(
                 else:
                     # String column - just escape LaTeX
                     cell = str(val)
-                cell = _escape_latex(cell)
+
+                # Escape LaTeX for non-empty cells (unless already formatted via COLUMN_NAME_MAP)
+                if cell != "":
+                    cell = _escape_latex(cell)
 
             # For MEAN rows, italicize each cell individually (only in full tables, not means-only)
             if is_mean and not is_means_only:
@@ -206,45 +282,30 @@ def _create_table_rows(
     return rows
 
 
-def write_latex_master_correlation_table(
-    master_csv_path: str,
-    out_dir: str,
-    scenario_key: str,
-    scenario_title: str,
-) -> None:
-    """Generate full correlation table from master.csv."""
-    df = pd.read_csv(master_csv_path)
+def _create_latex_table(
+    rows: List[str],
+    header: str,
+    colspec: str,
+    caption: str,
+    label: str,
+) -> str:
+    """Create LaTeX table string with standardized formatting.
 
-    # Sort: MEAN rows at end for each (Metric, Basis) group
-    # Preserve original metric order from CSV (don't sort alphabetically)
-    df["_sort_key"] = df["Log"].apply(lambda x: 1 if x == "MEAN" else 0)
-    # Create a metric order mapping to preserve CSV order
-    unique_metrics = df["Metric"].unique()
-    metric_order = {metric: idx for idx, metric in enumerate(unique_metrics)}
-    df["_metric_order"] = df["Metric"].map(metric_order)
-    df = df.sort_values(by=["_metric_order", "Basis", "_sort_key", "Log"])
-    df = df.drop(columns=["_sort_key", "_metric_order"])
+    Args:
+        rows: List of LaTeX row strings.
+        header: LaTeX header string.
+        colspec: LaTeX column specification string.
+        caption: Table caption.
+        label: Table label.
 
-    # Columns: Metric, Basis, Log, Pearson_Rho, Spearman_Rho, Delta_PearsonSpearman, Shape, Preferred_Correlation
-    columns = [
-        "Metric",
-        "Basis",
-        "Log",
-        "Pearson_Rho",
-        "Spearman_Rho",
-        "Delta_PearsonSpearman",
-        "Shape",
-        "Preferred_Correlation",
-    ]
-
-    rows = _create_table_rows(df, columns, is_means_only=False)
-    header, colspec = _build_header_and_colspec(columns)
-
-    latex = f"""\\begin{{table}}[H]
+    Returns:
+        Complete LaTeX table string.
+    """
+    return f"""\\begin{{table}}[H]
 \\centering
 \\tiny
-\\caption{{Correlation table — {_escape_latex(scenario_title)}}}
-\\label{{tab:master_correlation_full_{scenario_key}}}
+\\caption{{{caption}}}
+\\label{{{label}}}
 \\begin{{tabular}}{{{colspec}}}
 \\toprule
 {header}
@@ -255,35 +316,163 @@ def write_latex_master_correlation_table(
 \\end{{table}}
 """
 
+
+def write_full_latex_table(
+    csv_path: str,
+    out_dir: str,
+    scenario_key: str,
+    scenario_title: str,
+    include_columns: List[str],
+    label_extension: str,
+    caption_extension: str,
+    filename: str,
+    order_by_basis: bool = True,
+) -> None:
+    """Generate full LaTeX table from CSV file.
+
+    Args:
+        csv_path: Path to CSV file.
+        out_dir: Directory to save LaTeX file.
+        scenario_key: Key for table label.
+        scenario_title: Title for table caption.
+        include_columns: List of column names to include (whitelist).
+        label_extension: Extension for table label (e.g., "master_correlation_full").
+        caption_extension: Human-readable caption extension (e.g., "Correlation table").
+        filename: Output filename (e.g., "master_correlation_full.tex").
+        order_by_basis: If True, sort by Basis first and put Basis as first column.
+    """
+    df = pd.read_csv(csv_path)
+
+    # Filter to only include specified columns (if they exist)
+    available_columns = [col for col in include_columns if col in df.columns]
+    if not available_columns:
+        raise ValueError(f"No valid columns found in CSV: {include_columns}")
+
+    # When ordering by basis, put Basis first in column order
+    if (
+        order_by_basis
+        and "Basis" in available_columns
+        and "Metric" in available_columns
+    ):
+        # Remove Basis and Metric from their current positions
+        other_cols = [
+            col for col in available_columns if col not in ["Basis", "Metric"]
+        ]
+        # Put Basis first, then Metric, then others
+        available_columns = ["Basis", "Metric"] + other_cols
+
+    # Sort dataframe
+    df = _sort_dataframe_by_basis(df, order_by_basis=order_by_basis)
+
+    # Create table rows
+    rows = _create_table_rows(df, available_columns, is_means_only=False)
+
+    # Build header and column spec
+    header, colspec = _build_header_and_colspec(available_columns)
+
+    # Create caption and label
+    caption = f"{caption_extension} — {_escape_latex(scenario_title)}"
+    label = f"tab:{label_extension}_{scenario_key}"
+
+    # Generate LaTeX
+    latex = _create_latex_table(rows, header, colspec, caption, label)
+
+    # Write to file
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
-    with open(out_path / "master_correlation_full.tex", "w", encoding="utf-8") as f:
+    with open(out_path / filename, "w", encoding="utf-8") as f:
         f.write(latex)
 
 
-def write_latex_master_correlation_means_table(
+def write_means_latex_table(
+    csv_path: str,
+    out_dir: str,
+    scenario_key: str,
+    scenario_title: str,
+    include_columns: List[str],
+    label_extension: str,
+    caption_extension: str,
+    filename: str,
+    order_by_basis: bool = True,
+) -> None:
+    """Generate means-only LaTeX table from CSV file.
+
+    Args:
+        csv_path: Path to CSV file.
+        out_dir: Directory to save LaTeX file.
+        scenario_key: Key for table label.
+        scenario_title: Title for table caption.
+        include_columns: List of column names to include (whitelist).
+        label_extension: Extension for table label (e.g., "master_correlation_means").
+        caption_extension: Human-readable caption extension (e.g., "Correlation means").
+        filename: Output filename (e.g., "master_correlation_means.tex").
+        order_by_basis: If True, sort by Basis first and put Basis as first column.
+    """
+    df = pd.read_csv(csv_path)
+
+    # Filter to MEAN rows only
+    means_df = df[df["Log"] == "MEAN"].copy()
+
+    # Filter to only include specified columns (if they exist)
+    available_columns = [col for col in include_columns if col in means_df.columns]
+    if not available_columns:
+        raise ValueError(f"No valid columns found in CSV: {include_columns}")
+
+    # When ordering by basis, put Basis first in column order
+    if (
+        order_by_basis
+        and "Basis" in available_columns
+        and "Metric" in available_columns
+    ):
+        # Remove Basis and Metric from their current positions
+        other_cols = [
+            col for col in available_columns if col not in ["Basis", "Metric"]
+        ]
+        # Put Basis first, then Metric, then others
+        available_columns = ["Basis", "Metric"] + other_cols
+
+    # Sort dataframe
+    means_df = _sort_dataframe_by_basis(means_df, order_by_basis=order_by_basis)
+
+    # Create table rows
+    rows = _create_table_rows(means_df, available_columns, is_means_only=True)
+
+    # Build header and column spec
+    header, colspec = _build_header_and_colspec(available_columns)
+
+    # Create caption and label
+    caption = f"{caption_extension} — {_escape_latex(scenario_title)}"
+    label = f"tab:{label_extension}_{scenario_key}"
+
+    # Generate LaTeX
+    latex = _create_latex_table(rows, header, colspec, caption, label)
+
+    # Write to file
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    with open(out_path / filename, "w", encoding="utf-8") as f:
+        f.write(latex)
+
+
+# ============================================================================
+# Wrapper functions for common table types
+# ============================================================================
+
+
+def write_master_correlation_table(
     master_csv_path: str,
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
-    hide_columns: List[str] | None = None,
 ) -> None:
-    """Generate means-only correlation table from master.csv.
+    """Generate full master correlation table.
 
     Args:
         master_csv_path: Path to master.csv file.
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
-        hide_columns: List of column names to hide from the table.
     """
-    if hide_columns is None:
-        hide_columns = []
-
-    df = pd.read_csv(master_csv_path)
-    means_df = df[df["Log"] == "MEAN"].copy()
-
-    # Columns: Same as full table (Metric, Basis, Log, Pearson_Rho, Spearman_Rho, Delta_PearsonSpearman, Shape, Preferred_Correlation)
     columns = [
         "Metric",
         "Basis",
@@ -294,220 +483,148 @@ def write_latex_master_correlation_means_table(
         "Shape",
         "Preferred_Correlation",
     ]
-
-    # Filter out hidden columns
-    columns = [col for col in columns if col not in hide_columns]
-
-    rows = _create_table_rows(means_df, columns, is_means_only=True)
-    header, colspec = _build_header_and_colspec(columns)
-
-    latex = f"""\\begin{{table}}[H]
-\\centering
-\\tiny
-\\caption{{Correlation means — {_escape_latex(scenario_title)}}}
-\\label{{tab:master_correlation_means_{scenario_key}}}
-\\begin{{tabular}}{{{colspec}}}
-\\toprule
-{header}
-\\midrule
-{chr(10).join(rows)}
-\\bottomrule
-\\end{{tabular}}
-\\end{{table}}
-"""
-
-    out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    with open(out_path / "master_correlation_means.tex", "w", encoding="utf-8") as f:
-        f.write(latex)
+    write_full_latex_table(
+        csv_path=master_csv_path,
+        out_dir=out_dir,
+        scenario_key=scenario_key,
+        scenario_title=scenario_title,
+        include_columns=columns,
+        label_extension="master_correlation_full",
+        caption_extension="Correlation table",
+        filename="master_correlation_full.tex",
+        order_by_basis=True,
+    )
 
 
-def write_latex_comparison_correlation_table(
-    comparison_csv_path: str,
+def write_master_correlation_means_table(
+    master_csv_path: str,
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
 ) -> None:
-    """Generate full correlation table from metrics_comparison.csv."""
-    df = pd.read_csv(comparison_csv_path)
+    """Generate means-only master correlation table.
 
-    # Sort: MEAN rows at end for each (Metric, Basis) group
-    # Preserve original metric order from CSV (don't sort alphabetically)
-    df["_sort_key"] = df["Log"].apply(lambda x: 1 if x == "MEAN" else 0)
-    # Create a metric order mapping to preserve CSV order
-    unique_metrics = df["Metric"].unique()
-    metric_order = {metric: idx for idx, metric in enumerate(unique_metrics)}
-    df["_metric_order"] = df["Metric"].map(metric_order)
-    df = df.sort_values(by=["_metric_order", "Basis", "_sort_key", "Log"])
-    df = df.drop(columns=["_sort_key", "_metric_order"])
-
-    # Format Significant_Improvement
-    def format_sig_improvement(val: Any, is_mean: bool) -> str:
-        if pd.isna(val) or val == "":
-            return ""
-        if is_mean:
-            try:
-                float_val = float(val)
-                if np.isfinite(float_val):
-                    return f"{float_val * 100:.1f}\\%"
-            except (ValueError, TypeError):
-                pass
-            return ""
-        else:
-            val_str = str(val).upper()
-            if val_str == "TRUE":
-                return "Yes"
-            elif val_str == "FALSE":
-                return "No"
-            return str(val)
-
-    # Columns: Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Abs_Delta_Chosen_Rho, Z_test_p, Significant_Improvement
-    rows = []
-    prev_metric = None
-    prev_basis = None
-
-    for idx, row in df.iterrows():
-        metric = row["Metric"]
-        basis = row["Basis"]
-        log = row["Log"]
-        is_mean = log == "MEAN"
-
-        repeat_metric = (metric == prev_metric) if prev_metric is not None else False
-        # Basis should be shown whenever metric is repeated OR when metric changes
-        # Only collapse basis if both metric AND basis are the same as previous
-        repeat_basis = (
-            ((metric == prev_metric) and (basis == prev_basis))
-            if (prev_metric is not None and prev_basis is not None)
-            else False
-        )
-
-        metric_str = _escape_latex(metric) if not repeat_metric else ""
-        basis_str = _escape_latex(basis) if not repeat_basis else ""
-        log_str = "" if is_mean else _escape_latex(log)
-        shape_before = _escape_latex(
-            str(row.get("Shape_before", "")) if not is_mean else ""
-        )
-        shape_after = _escape_latex(
-            str(row.get("Shape_after", "")) if not is_mean else ""
-        )
-        preferred_correlation_before = _escape_latex(
-            str(row.get("Preferred_Correlation_before", "")) if not is_mean else ""
-        )
-        preferred_correlation_after = _escape_latex(
-            str(row.get("Preferred_Correlation_after", "")) if not is_mean else ""
-        )
-        chosen_correlation = _escape_latex(str(row.get("Chosen_Correlation", "")))
-        chosen_rho_before = _format_num(row.get("Chosen_Rho_before", ""))
-        chosen_rho_after = _format_num(row.get("Chosen_Rho_after", ""))
-        delta_chosen_rho = _format_num(row.get("Abs_Delta_Chosen_Rho", ""))
-        z_test_p = _format_pvalue(row.get("Z_test_p", ""))
-        significant_improvement = format_sig_improvement(
-            row.get("Significant_Improvement", ""), is_mean
-        )
-
-        # Build cells list for MEAN row italicization
-        cells_list = [
-            metric_str,
-            basis_str,
-            log_str,
-            shape_before,
-            shape_after,
-            preferred_correlation_before,
-            preferred_correlation_after,
-            chosen_correlation,
-            chosen_rho_before,
-            chosen_rho_after,
-            delta_chosen_rho,
-            z_test_p,
-            significant_improvement,
-        ]
-
-        # For MEAN rows, italicize each cell individually
-        if is_mean:
-            cells_list = [
-                f"\\textit{{{cell}}}" if cell != "" else "\\textit{}"
-                for cell in cells_list
-            ]
-
-        row_str = " & ".join(cells_list) + " \\\\"
-        rows.append(row_str)
-        prev_metric = metric
-        prev_basis = basis
-
-    # Columns: Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Abs_Delta_Chosen_Rho, Z_test_p, Significant_Improvement
+    Args:
+        master_csv_path: Path to master.csv file.
+        out_dir: Directory to save LaTeX file.
+        scenario_key: Key for table label.
+        scenario_title: Title for table caption.
+    """
     columns = [
         "Metric",
         "Basis",
         "Log",
-        "Shape_before",
-        "Shape_after",
-        "Preferred_Correlation_before",
-        "Preferred_Correlation_after",
-        "Chosen_Correlation",
-        "Chosen_Rho_before",
-        "Chosen_Rho_after",
-        "Abs_Delta_Chosen_Rho",
-        "Z_test_p",
-        "Significant_Improvement",
+        "Pearson_Rho",
+        "Spearman_Rho",
+        "Delta_PearsonSpearman",
+        "Shape",
+        "Preferred_Correlation",
     ]
-    header, colspec = _build_header_and_colspec(columns)
-
-    latex = f"""\\begin{{table}}[H]
-\\centering
-\\tiny
-\\caption{{Comparison correlation table — {_escape_latex(scenario_title)}}}
-\\label{{tab:comparison_correlation_full_{scenario_key}}}
-\\begin{{tabular}}{{{colspec}}}
-\\toprule
-{header}
-\\midrule
-{chr(10).join(rows)}
-\\bottomrule
-\\end{{tabular}}
-\\end{{table}}
-"""
-
-    out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    with open(out_path / "comparison_correlation_full.tex", "w", encoding="utf-8") as f:
-        f.write(latex)
+    # Hide Log, Shape, Preferred_Correlation
+    columns = [
+        col for col in columns if col not in ["Log", "Shape", "Preferred_Correlation"]
+    ]
+    write_means_latex_table(
+        csv_path=master_csv_path,
+        out_dir=out_dir,
+        scenario_key=scenario_key,
+        scenario_title=scenario_title,
+        include_columns=columns,
+        label_extension="master_correlation_means",
+        caption_extension="Correlation means",
+        filename="master_correlation_means.tex",
+        order_by_basis=True,
+    )
 
 
-def write_latex_comparison_correlation_means_table(
+def write_master_ci_plateau_table(
+    master_csv_path: str,
+    out_dir: str,
+    scenario_key: str,
+    scenario_title: str,
+) -> None:
+    """Generate full master CI/Plateau table.
+
+    Args:
+        master_csv_path: Path to master.csv file.
+        out_dir: Directory to save LaTeX file.
+        scenario_key: Key for table label.
+        scenario_title: Title for table caption.
+    """
+    columns = [
+        "Metric",
+        "Basis",
+        "Log",
+        "RelCI_50",
+        "RelCI_250",
+        "RelCI_500",
+        "Plateau_n",
+    ]
+    write_full_latex_table(
+        csv_path=master_csv_path,
+        out_dir=out_dir,
+        scenario_key=scenario_key,
+        scenario_title=scenario_title,
+        include_columns=columns,
+        label_extension="master_ci_plateau",
+        caption_extension="CI/Plateau table",
+        filename="master_ci_plateau.tex",
+        order_by_basis=True,
+    )
+
+
+def write_master_ci_plateau_means_table(
+    master_csv_path: str,
+    out_dir: str,
+    scenario_key: str,
+    scenario_title: str,
+) -> None:
+    """Generate means-only master CI/Plateau table.
+
+    Args:
+        master_csv_path: Path to master.csv file.
+        out_dir: Directory to save LaTeX file.
+        scenario_key: Key for table label.
+        scenario_title: Title for table caption.
+    """
+    columns = [
+        "Metric",
+        "Basis",
+        "Log",
+        "RelCI_50",
+        "RelCI_250",
+        "RelCI_500",
+        "Plateau_n",
+    ]
+    # Hide Log
+    columns = [col for col in columns if col not in ["Log"]]
+    write_means_latex_table(
+        csv_path=master_csv_path,
+        out_dir=out_dir,
+        scenario_key=scenario_key,
+        scenario_title=scenario_title,
+        include_columns=columns,
+        label_extension="master_ci_plateau_means",
+        caption_extension="CI/Plateau means",
+        filename="master_ci_plateau_means.tex",
+        order_by_basis=True,
+    )
+
+
+def write_comparison_correlation_table(
     comparison_csv_path: str,
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
-    hide_columns: List[str] | None = None,
 ) -> None:
-    """Generate means-only correlation table from metrics_comparison.csv.
+    """Generate full comparison correlation table.
 
     Args:
         comparison_csv_path: Path to metrics_comparison.csv file.
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
-        hide_columns: List of column names to hide from the table.
     """
-    if hide_columns is None:
-        hide_columns = []
-
-    df = pd.read_csv(comparison_csv_path)
-    means_df = df[df["Log"] == "MEAN"].copy()
-
-    # Format Significant_Improvement as percentage
-    def format_sig_improvement(val: Any, is_mean: bool = True) -> str:
-        if pd.isna(val) or val == "":
-            return ""
-        try:
-            float_val = float(val)
-            if np.isfinite(float_val):
-                return f"{float_val * 100:.1f}\\%"
-        except (ValueError, TypeError):
-            pass
-        return ""
-
-    # Columns: Same as full table (Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Abs_Delta_Chosen_Rho, Z_test_p, Significant_Improvement)
     columns = [
         "Metric",
         "Basis",
@@ -523,322 +640,90 @@ def write_latex_comparison_correlation_means_table(
         "Z_test_p",
         "Significant_Improvement",
     ]
-
-    # Filter out hidden columns
-    columns = [col for col in columns if col not in hide_columns]
-
-    rows = []
-    prev_metric = None
-    prev_basis = None
-
-    for idx, row in means_df.iterrows():
-        metric = row["Metric"]
-        basis = row["Basis"]
-        log = row["Log"]
-        is_mean = log == "MEAN"
-
-        repeat_metric = (metric == prev_metric) if prev_metric is not None else False
-        # Basis should be shown whenever metric is repeated OR when metric changes
-        # Only collapse basis if both metric AND basis are the same as previous
-        repeat_basis = (
-            ((metric == prev_metric) and (basis == prev_basis))
-            if (prev_metric is not None and prev_basis is not None)
-            else False
-        )
-
-        metric_str = _escape_latex(metric) if not repeat_metric else ""
-        basis_str = _escape_latex(basis) if not repeat_basis else ""
-        log_str = "" if is_mean else _escape_latex(log)
-
-        # Build cells list based on visible columns
-        cells_list = []
-        for col in columns:
-            if col == "Metric":
-                cells_list.append(metric_str)
-            elif col == "Basis":
-                cells_list.append(basis_str)
-            elif col == "Log":
-                cells_list.append(log_str)
-            elif col == "Shape_before":
-                cells_list.append(
-                    _escape_latex(
-                        str(row.get("Shape_before", "")) if not is_mean else ""
-                    )
-                )
-            elif col == "Shape_after":
-                cells_list.append(
-                    _escape_latex(
-                        str(row.get("Shape_after", "")) if not is_mean else ""
-                    )
-                )
-            elif col == "Preferred_Correlation_before":
-                cells_list.append(
-                    _escape_latex(
-                        str(row.get("Preferred_Correlation_before", ""))
-                        if not is_mean
-                        else ""
-                    )
-                )
-            elif col == "Preferred_Correlation_after":
-                cells_list.append(
-                    _escape_latex(
-                        str(row.get("Preferred_Correlation_after", ""))
-                        if not is_mean
-                        else ""
-                    )
-                )
-            elif col == "Chosen_Correlation":
-                cells_list.append(_escape_latex(str(row.get("Chosen_Correlation", ""))))
-            elif col == "Chosen_Rho_before":
-                cells_list.append(_format_num(row.get("Chosen_Rho_before", "")))
-            elif col == "Chosen_Rho_after":
-                cells_list.append(_format_num(row.get("Chosen_Rho_after", "")))
-            elif col == "Abs_Delta_Chosen_Rho":
-                cells_list.append(_format_num(row.get("Abs_Delta_Chosen_Rho", "")))
-            elif col == "Z_test_p":
-                cells_list.append(_format_pvalue(row.get("Z_test_p", "")))
-            elif col == "Significant_Improvement":
-                cells_list.append(
-                    format_sig_improvement(
-                        row.get("Significant_Improvement", ""), is_mean
-                    )
-                )
-            else:
-                cells_list.append("")
-
-        row_str = " & ".join(cells_list) + " \\\\"
-        rows.append(row_str)
-        prev_metric = metric
-        prev_basis = basis
-
-    header, colspec = _build_header_and_colspec(columns)
-
-    latex = f"""\\begin{{table}}[H]
-\\centering
-\\tiny
-\\caption{{Comparison correlation means — {_escape_latex(scenario_title)}}}
-\\label{{tab:comparison_correlation_means_{scenario_key}}}
-\\begin{{tabular}}{{{colspec}}}
-\\toprule
-{header}
-\\midrule
-{chr(10).join(rows)}
-\\bottomrule
-\\end{{tabular}}
-\\end{{table}}
-"""
-
-    out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    with open(
-        out_path / "comparison_correlation_means.tex", "w", encoding="utf-8"
-    ) as f:
-        f.write(latex)
+    write_full_latex_table(
+        csv_path=comparison_csv_path,
+        out_dir=out_dir,
+        scenario_key=scenario_key,
+        scenario_title=scenario_title,
+        include_columns=columns,
+        label_extension="comparison_correlation_full",
+        caption_extension="Comparison correlation table",
+        filename="comparison_correlation_full.tex",
+        order_by_basis=True,
+    )
 
 
-def write_latex_master_ci_plateau_table(
-    master_csv_path: str,
-    out_dir: str,
-    scenario_key: str,
-    scenario_title: str,
-) -> None:
-    """Generate CI/Plateau table from master.csv."""
-    df = pd.read_csv(master_csv_path)
-
-    # Sort: MEAN rows at end for each (Metric, Basis) group
-    # Preserve original metric order from CSV (don't sort alphabetically)
-    df["_sort_key"] = df["Log"].apply(lambda x: 1 if x == "MEAN" else 0)
-    # Create a metric order mapping to preserve CSV order
-    unique_metrics = df["Metric"].unique()
-    metric_order = {metric: idx for idx, metric in enumerate(unique_metrics)}
-    df["_metric_order"] = df["Metric"].map(metric_order)
-    df = df.sort_values(by=["_metric_order", "Basis", "_sort_key", "Log"])
-    df = df.drop(columns=["_sort_key", "_metric_order"])
-
-    # Columns: Metric, Basis, Log, RelCI_50, RelCI_250, RelCI_500, Plateau_n
-    columns = [
-        "Metric",
-        "Basis",
-        "Log",
-        "RelCI_50",
-        "RelCI_250",
-        "RelCI_500",
-        "Plateau_n",
-    ]
-
-    rows = _create_table_rows(df, columns, is_means_only=False)
-    header, colspec = _build_header_and_colspec(columns)
-
-    latex = f"""\\begin{{table}}[H]
-\\centering
-\\tiny
-\\caption{{CI/Plateau table — {_escape_latex(scenario_title)}}}
-\\label{{tab:master_ci_plateau_{scenario_key}}}
-\\begin{{tabular}}{{{colspec}}}
-\\toprule
-{header}
-\\midrule
-{chr(10).join(rows)}
-\\bottomrule
-\\end{{tabular}}
-\\end{{table}}
-"""
-
-    out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    with open(out_path / "master_ci_plateau.tex", "w", encoding="utf-8") as f:
-        f.write(latex)
-
-
-def write_latex_master_ci_plateau_means_table(
-    master_csv_path: str,
-    out_dir: str,
-    scenario_key: str,
-    scenario_title: str,
-    hide_columns: List[str] | None = None,
-) -> None:
-    """Generate means-only CI/Plateau table from master.csv.
-
-    Args:
-        master_csv_path: Path to master.csv file.
-        out_dir: Directory to save LaTeX file.
-        scenario_key: Key for table label.
-        scenario_title: Title for table caption.
-        hide_columns: List of column names to hide from the table.
-    """
-    if hide_columns is None:
-        hide_columns = []
-
-    df = pd.read_csv(master_csv_path)
-    means_df = df[df["Log"] == "MEAN"].copy()
-
-    # Columns: Same as full table (Metric, Basis, Log, RelCI_50, RelCI_250, RelCI_500, Plateau_n)
-    columns = [
-        "Metric",
-        "Basis",
-        "Log",
-        "RelCI_50",
-        "RelCI_250",
-        "RelCI_500",
-        "Plateau_n",
-    ]
-
-    # Filter out hidden columns
-    columns = [col for col in columns if col not in hide_columns]
-
-    rows = _create_table_rows(means_df, columns, is_means_only=True)
-    header, colspec = _build_header_and_colspec(columns)
-
-    latex = f"""\\begin{{table}}[H]
-\\centering
-\\tiny
-\\caption{{CI/Plateau means — {_escape_latex(scenario_title)}}}
-\\label{{tab:master_ci_plateau_means_{scenario_key}}}
-\\begin{{tabular}}{{{colspec}}}
-\\toprule
-{header}
-\\midrule
-{chr(10).join(rows)}
-\\bottomrule
-\\end{{tabular}}
-\\end{{table}}
-"""
-
-    out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    with open(out_path / "master_ci_plateau_means.tex", "w", encoding="utf-8") as f:
-        f.write(latex)
-
-
-def write_latex_comparison_ci_plateau_table(
+def write_comparison_correlation_means_table(
     comparison_csv_path: str,
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
 ) -> None:
-    """Generate CI/Plateau table from metrics_comparison.csv."""
-    df = pd.read_csv(comparison_csv_path)
+    """Generate means-only comparison correlation table.
 
-    # Sort: MEAN rows at end for each (Metric, Basis) group
-    # Preserve original metric order from CSV (don't sort alphabetically)
-    df["_sort_key"] = df["Log"].apply(lambda x: 1 if x == "MEAN" else 0)
-    # Create a metric order mapping to preserve CSV order
-    unique_metrics = df["Metric"].unique()
-    metric_order = {metric: idx for idx, metric in enumerate(unique_metrics)}
-    df["_metric_order"] = df["Metric"].map(metric_order)
-    df = df.sort_values(by=["_metric_order", "Basis", "_sort_key", "Log"])
-    df = df.drop(columns=["_sort_key", "_metric_order"])
-
-    # Columns: Metric, Basis, Log, RelCI_50_before, RelCI_50_after, RelCI_50_delta, RelCI_250_before, RelCI_250_after, RelCI_250_delta, RelCI_500_before, RelCI_500_after, RelCI_500_delta, Plateau_n_before, Plateau_n_after, Plateau_n_delta
-    rows = []
-    prev_metric = None
-    prev_basis = None
-
-    for idx, row in df.iterrows():
-        metric = row["Metric"]
-        basis = row["Basis"]
-        log = row["Log"]
-        is_mean = log == "MEAN"
-
-        repeat_metric = (metric == prev_metric) if prev_metric is not None else False
-        # Basis should be shown whenever metric is repeated OR when metric changes
-        # Only collapse basis if both metric AND basis are the same as previous
-        repeat_basis = (
-            ((metric == prev_metric) and (basis == prev_basis))
-            if (prev_metric is not None and prev_basis is not None)
-            else False
-        )
-
-        metric_str = _escape_latex(metric) if not repeat_metric else ""
-        basis_str = _escape_latex(basis) if not repeat_basis else ""
-        log_str = "" if is_mean else _escape_latex(log)
-
-        # Format CI and Plateau values
-        relci_50_before = _format_num(row.get("RelCI_50_before", ""))
-        relci_50_after = _format_num(row.get("RelCI_50_after", ""))
-        relci_50_delta = _format_num(row.get("RelCI_50_delta", ""))
-        relci_250_before = _format_num(row.get("RelCI_250_before", ""))
-        relci_250_after = _format_num(row.get("RelCI_250_after", ""))
-        relci_250_delta = _format_num(row.get("RelCI_250_delta", ""))
-        relci_500_before = _format_num(row.get("RelCI_500_before", ""))
-        relci_500_after = _format_num(row.get("RelCI_500_after", ""))
-        relci_500_delta = _format_num(row.get("RelCI_500_delta", ""))
-        plateau_n_before = _format_num(row.get("Plateau_n_before", ""))
-        plateau_n_after = _format_num(row.get("Plateau_n_after", ""))
-        plateau_n_delta = _format_num(row.get("Plateau_n_delta", ""))
-
-        # Build cells list for MEAN row italicization
-        cells_list = [
-            metric_str,
-            basis_str,
-            log_str,
-            relci_50_before,
-            relci_50_after,
-            relci_50_delta,
-            relci_250_before,
-            relci_250_after,
-            relci_250_delta,
-            relci_500_before,
-            relci_500_after,
-            relci_500_delta,
-            plateau_n_before,
-            plateau_n_after,
-            plateau_n_delta,
+    Args:
+        comparison_csv_path: Path to metrics_comparison.csv file.
+        out_dir: Directory to save LaTeX file.
+        scenario_key: Key for table label.
+        scenario_title: Title for table caption.
+    """
+    columns = [
+        "Metric",
+        "Basis",
+        "Log",
+        "Shape_before",
+        "Shape_after",
+        "Preferred_Correlation_before",
+        "Preferred_Correlation_after",
+        "Chosen_Correlation",
+        "Chosen_Rho_before",
+        "Chosen_Rho_after",
+        "Abs_Delta_Chosen_Rho",
+        "Z_test_p",
+        "Significant_Improvement",
+    ]
+    # Hide Log, Shape_before, Shape_after, Preferred_Correlation_before,
+    # Preferred_Correlation_after, Chosen_Correlation
+    columns = [
+        col
+        for col in columns
+        if col
+        not in [
+            "Log",
+            "Shape_before",
+            "Shape_after",
+            "Preferred_Correlation_before",
+            "Preferred_Correlation_after",
+            "Chosen_Correlation",
         ]
+    ]
+    write_means_latex_table(
+        csv_path=comparison_csv_path,
+        out_dir=out_dir,
+        scenario_key=scenario_key,
+        scenario_title=scenario_title,
+        include_columns=columns,
+        label_extension="comparison_correlation_means",
+        caption_extension="Comparison correlation means",
+        filename="comparison_correlation_means.tex",
+        order_by_basis=True,
+    )
 
-        # For MEAN rows, italicize each cell individually
-        if is_mean:
-            cells_list = [
-                f"\\textit{{{cell}}}" if cell != "" else "\\textit{}"
-                for cell in cells_list
-            ]
 
-        row_str = " & ".join(cells_list) + " \\\\"
-        rows.append(row_str)
-        prev_metric = metric
-        prev_basis = basis
+def write_comparison_ci_plateau_table(
+    comparison_csv_path: str,
+    out_dir: str,
+    scenario_key: str,
+    scenario_title: str,
+) -> None:
+    """Generate full comparison CI/Plateau table.
 
-    # Columns: Metric, Basis, Log, RelCI_50_before, RelCI_50_after, RelCI_50_delta, RelCI_250_before, RelCI_250_after, RelCI_250_delta, RelCI_500_before, RelCI_500_after, RelCI_500_delta, Plateau_n_before, Plateau_n_after, Plateau_n_delta
+    Args:
+        comparison_csv_path: Path to metrics_comparison.csv file.
+        out_dir: Directory to save LaTeX file.
+        scenario_key: Key for table label.
+        scenario_title: Title for table caption.
+    """
     columns = [
         "Metric",
         "Basis",
@@ -856,52 +741,33 @@ def write_latex_comparison_ci_plateau_table(
         "Plateau_n_after",
         "Plateau_n_delta",
     ]
-    header, colspec = _build_header_and_colspec(columns)
-
-    latex = f"""\\begin{{table}}[H]
-\\centering
-\\tiny
-\\caption{{Comparison CI/Plateau table — {_escape_latex(scenario_title)}}}
-\\label{{tab:comparison_ci_plateau_{scenario_key}}}
-\\begin{{tabular}}{{{colspec}}}
-\\toprule
-{header}
-\\midrule
-{chr(10).join(rows)}
-\\bottomrule
-\\end{{tabular}}
-\\end{{table}}
-"""
-
-    out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    with open(out_path / "comparison_ci_plateau.tex", "w", encoding="utf-8") as f:
-        f.write(latex)
+    write_full_latex_table(
+        csv_path=comparison_csv_path,
+        out_dir=out_dir,
+        scenario_key=scenario_key,
+        scenario_title=scenario_title,
+        include_columns=columns,
+        label_extension="comparison_ci_plateau",
+        caption_extension="Comparison CI/Plateau table",
+        filename="comparison_ci_plateau.tex",
+        order_by_basis=True,
+    )
 
 
-def write_latex_comparison_ci_plateau_means_table(
+def write_comparison_ci_plateau_means_table(
     comparison_csv_path: str,
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
-    hide_columns: List[str] | None = None,
 ) -> None:
-    """Generate means-only CI/Plateau table from metrics_comparison.csv.
+    """Generate means-only comparison CI/Plateau table.
 
     Args:
         comparison_csv_path: Path to metrics_comparison.csv file.
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
-        hide_columns: List of column names to hide from the table.
     """
-    if hide_columns is None:
-        hide_columns = []
-
-    df = pd.read_csv(comparison_csv_path)
-    means_df = df[df["Log"] == "MEAN"].copy()
-
-    # Columns: Same as full table (Metric, Basis, Log, RelCI_50_before, RelCI_50_after, RelCI_50_delta, RelCI_250_before, RelCI_250_after, RelCI_250_delta, RelCI_500_before, RelCI_500_after, RelCI_500_delta, Plateau_n_before, Plateau_n_after, Plateau_n_delta)
     columns = [
         "Metric",
         "Basis",
@@ -919,32 +785,102 @@ def write_latex_comparison_ci_plateau_means_table(
         "Plateau_n_after",
         "Plateau_n_delta",
     ]
+    # Hide Log
+    columns = [col for col in columns if col not in ["Log"]]
+    write_means_latex_table(
+        csv_path=comparison_csv_path,
+        out_dir=out_dir,
+        scenario_key=scenario_key,
+        scenario_title=scenario_title,
+        include_columns=columns,
+        label_extension="comparison_ci_plateau_means",
+        caption_extension="Comparison CI/Plateau means",
+        filename="comparison_ci_plateau_means.tex",
+        order_by_basis=True,
+    )
 
-    # Filter out hidden columns
-    columns = [col for col in columns if col not in hide_columns]
 
-    rows = _create_table_rows(means_df, columns, is_means_only=True)
-    header, colspec = _build_header_and_colspec(columns)
+def write_summarized_master_table(
+    master_csv_path: str,
+    out_dir: str,
+    scenario_key: str,
+    scenario_title: str,
+) -> None:
+    """Generate full summarized master table.
 
-    latex = f"""\\begin{{table}}[H]
-\\centering
-\\tiny
-\\caption{{Comparison CI/Plateau means — {_escape_latex(scenario_title)}}}
-\\label{{tab:comparison_ci_plateau_means_{scenario_key}}}
-\\begin{{tabular}}{{{colspec}}}
-\\toprule
-{header}
-\\midrule
-{chr(10).join(rows)}
-\\bottomrule
-\\end{{tabular}}
-\\end{{table}}
-"""
+    Args:
+        master_csv_path: Path to master.csv file.
+        out_dir: Directory to save LaTeX file.
+        scenario_key: Key for table label.
+        scenario_title: Title for table caption.
+    """
+    columns = [
+        "Basis",
+        "Metric",
+        "Log",
+        "Pearson_Rho",
+        "Pearson_P",
+        "RelCI_50",
+        "RelCI_250",
+        "RelCI_500",
+        "Plateau_n",
+    ]
+    write_full_latex_table(
+        csv_path=master_csv_path,
+        out_dir=out_dir,
+        scenario_key=scenario_key,
+        scenario_title=scenario_title,
+        include_columns=columns,
+        label_extension="summarized_master_full",
+        caption_extension="Summarized master table",
+        filename="summarized_master_full.tex",
+        order_by_basis=True,
+    )
 
-    out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    with open(out_path / "comparison_ci_plateau_means.tex", "w", encoding="utf-8") as f:
-        f.write(latex)
+
+def write_summarized_means_table(
+    master_csv_path: str,
+    out_dir: str,
+    scenario_key: str,
+    scenario_title: str,
+) -> None:
+    """Generate means-only summarized master table.
+
+    Args:
+        master_csv_path: Path to master.csv file.
+        out_dir: Directory to save LaTeX file.
+        scenario_key: Key for table label.
+        scenario_title: Title for table caption.
+    """
+    columns = [
+        "Basis",
+        "Metric",
+        "Log",
+        "Pearson_Rho",
+        "Pearson_P",
+        "RelCI_50",
+        "RelCI_250",
+        "RelCI_500",
+        "Plateau_n",
+    ]
+    # Hide Log column
+    columns = [col for col in columns if col not in ["Log"]]
+    write_means_latex_table(
+        csv_path=master_csv_path,
+        out_dir=out_dir,
+        scenario_key=scenario_key,
+        scenario_title=scenario_title,
+        include_columns=columns,
+        label_extension="summarized_master_means",
+        caption_extension="Summarized master means",
+        filename="summarized_master_means.tex",
+        order_by_basis=True,
+    )
+
+
+# ============================================================================
+# Entry point functions
+# ============================================================================
 
 
 def write_master_latex_tables(
@@ -958,6 +894,7 @@ def write_master_latex_tables(
     This generates:
     - Correlation tables (full + means)
     - CI/Plateau tables (full + means)
+    - Summarized master tables (full + means)
 
     Args:
         master_csv_path: Path to master.csv file.
@@ -965,22 +902,22 @@ def write_master_latex_tables(
         scenario_key: Key for table labels (e.g., "test").
         scenario_title: Title for table captions (e.g., "Test Scenario").
     """
-    write_latex_master_correlation_table(
+    write_master_correlation_table(
         master_csv_path, out_dir, scenario_key, scenario_title
     )
-    write_latex_master_correlation_means_table(
-        master_csv_path,
-        out_dir,
-        scenario_key,
-        scenario_title,
-        hide_columns=["Log", "Shape", "Preferred_Correlation"],
-    )
-    write_latex_master_ci_plateau_table(
+    write_master_correlation_means_table(
         master_csv_path, out_dir, scenario_key, scenario_title
     )
-    write_latex_master_ci_plateau_means_table(
-        master_csv_path, out_dir, scenario_key, scenario_title, hide_columns=["Log"]
+    write_master_ci_plateau_table(
+        master_csv_path, out_dir, scenario_key, scenario_title
     )
+    write_master_ci_plateau_means_table(
+        master_csv_path, out_dir, scenario_key, scenario_title
+    )
+    write_summarized_master_table(
+        master_csv_path, out_dir, scenario_key, scenario_title
+    )
+    write_summarized_means_table(master_csv_path, out_dir, scenario_key, scenario_title)
 
 
 def write_comparison_latex_tables(
@@ -1001,37 +938,15 @@ def write_comparison_latex_tables(
         scenario_key: Key for table labels (e.g., "test").
         scenario_title: Title for table captions (e.g., "Test Scenario").
     """
-    write_latex_comparison_correlation_table(
+    write_comparison_correlation_table(
         comparison_csv_path, out_dir, scenario_key, scenario_title
     )
-    write_latex_comparison_correlation_means_table(
-        comparison_csv_path,
-        out_dir,
-        scenario_key,
-        scenario_title,
-        hide_columns=[
-            "Log",
-            "Shape_before",
-            "Shape_after",
-            "Preferred_Correlation_before",
-            "Preferred_Correlation_after",
-            "Chosen_Correlation",
-        ],
-    )
-    write_latex_comparison_ci_plateau_table(
+    write_comparison_correlation_means_table(
         comparison_csv_path, out_dir, scenario_key, scenario_title
     )
-    write_latex_comparison_ci_plateau_means_table(
-        comparison_csv_path,
-        out_dir,
-        scenario_key,
-        scenario_title,
-        hide_columns=[
-            "Log",
-            "Shape_before",
-            "Shape_after",
-            "Preferred_Correlation_before",
-            "Preferred_Correlation_after",
-            "Chosen_Correlation",
-        ],
+    write_comparison_ci_plateau_table(
+        comparison_csv_path, out_dir, scenario_key, scenario_title
+    )
+    write_comparison_ci_plateau_means_table(
+        comparison_csv_path, out_dir, scenario_key, scenario_title
     )

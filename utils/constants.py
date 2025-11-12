@@ -99,7 +99,89 @@ METRIC_BASIS_MAP = {
     "Normalized Variant Entropy": "CT",
 }
 
+METRIC_DIMENSION_MAP = {
+    "Number of Events": "Size",
+    "Number of Distinct Activities": "Size",
+    "Number of Traces": "Size",
+    "Number of Distinct Traces": "Size",
+    "Number of Distinct Activity Transitions": "Size",
+    "Min. Trace Length": "Size",
+    "Avg. Trace Length": "Size",
+    "Max. Trace Length": "Size",
+    "Percentage of Distinct Traces": "Variation",
+    "Average Distinct Activities per Trace": "Variation",
+    "Structure": "Variation",
+    "Estimated Number of Acyclic Paths": "Variation",
+    "Number of Ties in Paths to Goal": "Variation",
+    "Lempel-Ziv Complexity": "Variation",
+    "Average Affinity": "Distance",
+    "Deviation from Random": "Distance",
+    "Average Edit Distance": "Distance",
+    "Sequence Entropy": "Graph Entropy",
+    "Normalized Sequence Entropy": "Graph Entropy",
+    "Variant Entropy": "Graph Entropy",
+    "Normalized Variant Entropy": "Graph Entropy",
+}
+
 PC_METRICS = [metric for metric, basis in METRIC_BASIS_MAP.items() if basis == "PC"]
+
+# Basis ordering for LaTeX tables
+BASIS_ORDER = ["OC", "PC", "PD", "CT"]
+
+# Column name mapping for LaTeX display (CSV column name -> LaTeX display name)
+# When using this map, column names are NOT escaped (they're already formatted)
+COLUMN_NAME_MAP = {
+    # Basic identifiers
+    "Metric": "Metric",
+    "Basis": "Basis",
+    "Log": "Log",
+    # Correlation columns
+    "Pearson_Rho": "Pearson $\\rho$",
+    "Spearman_Rho": "Spearman $\\rho$",
+    "Delta_PearsonSpearman": "$\\Delta$ Pearson-Spearman",
+    "Chosen_Rho_before": "Chosen $\\rho$ (before)",
+    "Chosen_Rho_after": "Chosen $\\rho$ (after)",
+    "Abs_Delta_Chosen_Rho": "$|\\Delta|$ Chosen $\\rho$",
+    "Delta_Pearson": "$\\Delta$ Pearson",
+    "Delta_Spearman": "$\\Delta$ Spearman",
+    # Shape and correlation type
+    "Shape": "Shape",
+    "Shape_before": "Shape (before)",
+    "Shape_after": "Shape (after)",
+    "Preferred_Correlation": "Preferred Correlation",
+    "Preferred_Correlation_before": "Preferred Correlation (before)",
+    "Preferred_Correlation_after": "Preferred Correlation (after)",
+    "Chosen_Correlation": "Chosen Correlation",
+    # Statistical tests
+    "Z_test_stat": "$Z$ statistic",
+    "Z_test_p": "$Z$ test $p$-value",
+    "z_type": "$z$ type",
+    "Significant_Improvement": "Significant Improvement",
+    # P-values
+    "Pearson_P": "Pearson $p$",
+    "Spearman_P": "Spearman $p$",
+    # CI and Plateau
+    "RelCI_50": "RelCI (50)",
+    "RelCI_250": "RelCI (250)",
+    "RelCI_500": "RelCI (500)",
+    "Plateau_n": "Plateau $n$",
+    "RelCI_50_before": "RelCI (50, before)",
+    "RelCI_50_after": "RelCI (50, after)",
+    "RelCI_50_delta": "$\\Delta$ RelCI (50)",
+    "RelCI_250_before": "RelCI (250, before)",
+    "RelCI_250_after": "RelCI (250, after)",
+    "RelCI_250_delta": "$\\Delta$ RelCI (250)",
+    "RelCI_500_before": "RelCI (500, before)",
+    "RelCI_500_after": "RelCI (500, after)",
+    "RelCI_500_delta": "$\\Delta$ RelCI (500)",
+    "Plateau_n_before": "Plateau $n$ (before)",
+    "Plateau_n_after": "Plateau $n$ (after)",
+    "Plateau_n_delta": "$\\Delta$ Plateau $n$",
+    # Other
+    "FPC_used": "FPC Used",
+    "Row_Status": "Row Status",
+    "ts": "Timestamp",
+}
 
 
 # Metrics that are trace-based only

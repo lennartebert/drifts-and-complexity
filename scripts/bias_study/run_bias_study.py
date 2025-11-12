@@ -45,7 +45,7 @@ from utils.population.extractors.naive_population_extractor import (
 from utils.SampleConfidenceIntervalExtractor import SampleConfidenceIntervalExtractor
 
 # --- defaults (same as before) ---
-SORTED_METRICS = constants.PC_METRICS  # constants.ALL_METRIC_NAMES
+SORTED_METRICS = constants.ALL_METRIC_NAMES  # constants.PC_METRICS
 
 SAMPLES_PER_SIZE = 200
 RANDOM_STATE = 123
@@ -53,6 +53,8 @@ BOOTSTRAP_SIZE = 200
 SIZES = range(50, 501, 50)
 
 REF_SIZES = [50, 250, 500]
+
+BREAKDOWN_OF_PLOTS = "basis"  # None=No breakdown
 
 default_population_extractor = NaivePopulationExtractor()
 default_metric_adapters = [LocalMetricsAdapter(), VidgofMetricsAdapter()]
@@ -153,8 +155,9 @@ def compute_results(
                 bootstrap_ci_low_df,
                 bootstrap_ci_high_df,
                 out_path=str(out_dir / "measures_bootstrap_cis_mean.png"),
+                plot_breakdown=BREAKDOWN_OF_PLOTS,
                 agg="mean",
-                title=f"{clear_name} - {log_name} - Aggregated measures with bootstrap CIs (mean)",
+                # title=f"{clear_name} - {log_name} - Aggregated measures with bootstrap CIs (mean)",
                 ncols=3,
             )
 
@@ -165,7 +168,8 @@ def compute_results(
                 sample_ci_high_df,
                 out_path=str(out_dir / "measures_sample_cis_mean.png"),
                 agg="mean",
-                title=f"{clear_name} - {log_name} - Aggregated measures with sample CIs (mean)",
+                plot_breakdown=BREAKDOWN_OF_PLOTS,
+                # title=f"{clear_name} - {log_name} - Aggregated measures with sample CIs (mean)",
                 ncols=3,
             )
 
