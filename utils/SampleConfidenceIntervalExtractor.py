@@ -42,70 +42,59 @@ class SampleConfidenceIntervalExtractor:
         q_high = 1.0 - alpha / 2.0
         return q_low, q_high
 
-    @staticmethod
-    def _metric_columns(df: pd.DataFrame) -> List[str]:
-        """Infer metric columns: numeric columns minus known id columns."""
-        id_cols = {"sample_size", "sample_id"}
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        return [c for c in numeric_cols if c not in id_cols]
-
-    def compute_sample_ci(
-        self, measures_df: pd.DataFrame
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def compute_sample_ci_long(self, long_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Compute across-sample CI low/high and relative CI width per window size.
+        Compute across-sample CI low/high and relative CI width per window size from long format.
 
         Parameters
         ----------
-        measures_df : pd.DataFrame
-            Columns:
-              - 'sample_size' (int)
-              - 'sample_id'   (int)
-              - metric columns (float/int), e.g., 'Variant Entropy', ...
+        long_df : pd.DataFrame
+            Long format DataFrame with columns:
+              - 'Sample_Size' (int)
+              - 'Sample_ID'   (int)
+              - 'Metric'      (str)
+              - 'Value'       (float/int)
+            May have an index (will be reset if present).
 
         Returns
         -------
-        sample_ci_low_df : pd.DataFrame
-            One row per sample_size; columns: ['sample_size', <metric cols...>]
-            holding the lower CI bound per metric.
-
-        sample_ci_high_df : pd.DataFrame
-            Same, for upper CI bound.
-
-        sample_ci_rel_width_df : pd.DataFrame
-            Same, for relative CI width: (high - low) / mean_at_size.
+        sample_ci_df : pd.DataFrame
+            Long format DataFrame with columns:
+              - 'Sample_Size' (int)
+              - 'Metric'      (str)
+              - 'Sample_CI_Low' (float)
+              - 'Sample_CI_High' (float)
+              - 'Sample_CI_Rel_Width' (float)
         """
-        required = {"sample_size", "sample_id"}
-        missing = required - set(measures_df.columns)
+        # Reset index if it's a MultiIndex or has named levels to ensure columns are accessible
+        if isinstance(long_df.index, pd.MultiIndex) or any(
+            name is not None for name in long_df.index.names
+        ):
+            long_df = long_df.reset_index(drop=True)
+
+        required = {"Sample_Size", "Sample_ID", "Metric", "Value"}
+        missing = required - set(long_df.columns)
         if missing:
-            raise ValueError(f"measures_df is missing required columns: {missing}")
-
-        metric_cols = self._metric_columns(measures_df)
-        if not metric_cols:
-            raise ValueError("No numeric metric columns found besides id columns.")
-
-        # Ensure deterministic order
-        metric_cols = list(metric_cols)
+            raise ValueError(f"long_df is missing required columns: {missing}")
 
         q_low, q_high = self._bounds()
 
-        # Group by window size
-        g = measures_df.groupby("sample_size", sort=True, as_index=True)
+        # Group by Sample_Size and Metric, then compute quantiles across samples
+        g = long_df.groupby(["Sample_Size", "Metric"], sort=True, as_index=True)
 
-        # Aggregations across samples (one row per sample_size)
-        # Quantiles across samples at each size
-        ci_low = g[metric_cols].quantile(q_low)
-        ci_high = g[metric_cols].quantile(q_high)
+        # Compute quantiles and means
+        ci_low = g["Value"].quantile(q_low).reset_index(name="Sample_CI_Low")
+        ci_high = g["Value"].quantile(q_high).reset_index(name="Sample_CI_High")
+        means = g["Value"].mean().reset_index(name="mean")
 
-        # Mean across samples at each size (for relative width denominator)
-        means = g[metric_cols].mean()
+        # Merge and compute relative width
+        sample_ci_df = ci_low.merge(ci_high, on=["Sample_Size", "Metric"])
+        sample_ci_df = sample_ci_df.merge(means, on=["Sample_Size", "Metric"])
 
         # Relative width; guard against division by zero
-        rel_width = (ci_high - ci_low) / means.replace(0.0, np.nan)
+        sample_ci_df["Sample_CI_Rel_Width"] = (
+            sample_ci_df["Sample_CI_High"] - sample_ci_df["Sample_CI_Low"]
+        ) / sample_ci_df["mean"].replace(0.0, np.nan)
+        sample_ci_df = sample_ci_df.drop(columns=["mean"])
 
-        # Reformat to have 'sample_size' as a column
-        sample_ci_low_df = ci_low.reset_index()[["sample_size"] + metric_cols]
-        sample_ci_high_df = ci_high.reset_index()[["sample_size"] + metric_cols]
-        sample_ci_rel_width_df = rel_width.reset_index()[["sample_size"] + metric_cols]
-
-        return sample_ci_low_df, sample_ci_high_df, sample_ci_rel_width_df
+        return sample_ci_df

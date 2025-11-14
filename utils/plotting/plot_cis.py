@@ -80,9 +80,7 @@ def _prepare_breakdown_path_and_title(
 
 
 def plot_aggregated_measures_bootstrap_cis(
-    measures_df: pd.DataFrame,
-    bootstrap_ci_low_df: pd.DataFrame,
-    bootstrap_ci_high_df: pd.DataFrame,
+    long_df: pd.DataFrame,
     out_path: str,
     agg: str = "mean",
     title: str | None = None,
@@ -98,9 +96,9 @@ def plot_aggregated_measures_bootstrap_cis(
 
     Parameters
     ----------
-    measures_df : DataFrame with columns ['sample_size', 'sample_id', <measure columns...>]
-    ci_low_df   : DataFrame with same shape/columns as measures_df for CI lows
-    ci_high_df  : DataFrame with same shape/columns as measures_df for CI highs
+    long_df : DataFrame in long format with columns:
+              ['Sample_Size', 'Sample_ID', 'Metric', 'Value', 'Bootstrap_CI_Low', 'Bootstrap_CI_High']
+              May have a MultiIndex (will be reset if present).
     out_path    : File path to save the figure (PNG, PDF, etc.). Parent dir will be created.
     agg         : 'mean' or 'median' — which center to plot
     title       : Optional figure title
@@ -121,14 +119,27 @@ def plot_aggregated_measures_bootstrap_cis(
     if plot_breakdown not in (None, "basis", "dimension"):
         raise ValueError("plot_breakdown must be None, 'basis', or 'dimension'.")
 
-    # Ensure columns align and pick measure columns
-    measure_cols = _get_measure_columns(measures_df)
-    # guard: intersect with CI frames in case of drift
-    measure_cols = [
-        c
-        for c in measure_cols
-        if c in bootstrap_ci_low_df.columns and c in bootstrap_ci_high_df.columns
-    ]
+    # Reset index if present
+    if isinstance(long_df.index, pd.MultiIndex) or any(
+        name is not None for name in long_df.index.names
+    ):
+        long_df = long_df.reset_index()
+
+    # Check required columns
+    required = {
+        "Sample_Size",
+        "Sample_ID",
+        "Metric",
+        "Value",
+        "Bootstrap_CI_Low",
+        "Bootstrap_CI_High",
+    }
+    missing = required - set(long_df.columns)
+    if missing:
+        raise ValueError(f"long_df is missing required columns: {missing}")
+
+    # Get unique metrics
+    measure_cols = sorted(long_df["Metric"].unique().tolist())
 
     # Group measures by breakdown type if specified
     measure_groups = _group_measures_by_breakdown(measure_cols, plot_breakdown)
@@ -144,11 +155,12 @@ def plot_aggregated_measures_bootstrap_cis(
             out_path, title, group_key
         )
 
+        # Filter to this group's metrics
+        group_long_df = long_df[long_df["Metric"].isin(group_measures)]
+
         # Create plot for this group
-        saved_path = _create_bootstrap_ci_plot(
-            measures_df,
-            bootstrap_ci_low_df,
-            bootstrap_ci_high_df,
+        saved_path = _create_bootstrap_ci_plot_long(
+            group_long_df,
             group_measures,
             group_out_path,
             agg,
@@ -162,10 +174,8 @@ def plot_aggregated_measures_bootstrap_cis(
     return saved_paths[-1] if saved_paths else out_path
 
 
-def _create_bootstrap_ci_plot(
-    measures_df: pd.DataFrame,
-    bootstrap_ci_low_df: pd.DataFrame,
-    bootstrap_ci_high_df: pd.DataFrame,
+def _create_bootstrap_ci_plot_long(
+    long_df: pd.DataFrame,
     measure_cols: List[str],
     out_path: str,
     agg: str,
@@ -173,21 +183,49 @@ def _create_bootstrap_ci_plot(
     ncols: int,
     figsize_per_panel: Tuple[float, float],
 ) -> str:
-    """Helper function to create a single bootstrap CI plot for a set of measures."""
+    """Helper function to create a single bootstrap CI plot for a set of measures from long format."""
 
-    # Group by sample_size and aggregate
-    group = measures_df.groupby("sample_size", as_index=True)
-    group_low = bootstrap_ci_low_df.groupby("sample_size", as_index=True)
-    group_high = bootstrap_ci_high_df.groupby("sample_size", as_index=True)
-
+    # Group by Sample_Size and Metric, then aggregate across Sample_ID
     if agg == "mean":
-        center = group[measure_cols].mean()
-        low = group_low[measure_cols].mean()
-        high = group_high[measure_cols].mean()
+        center = (
+            long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Value"]
+            .mean()
+            .unstack("Metric")
+        )
+        low = (
+            long_df.groupby(["Sample_Size", "Metric"], as_index=True)[
+                "Bootstrap_CI_Low"
+            ]
+            .mean()
+            .unstack("Metric")
+        )
+        high = (
+            long_df.groupby(["Sample_Size", "Metric"], as_index=True)[
+                "Bootstrap_CI_High"
+            ]
+            .mean()
+            .unstack("Metric")
+        )
     else:  # median
-        center = group[measure_cols].median()
-        low = group_low[measure_cols].median()
-        high = group_high[measure_cols].median()
+        center = (
+            long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Value"]
+            .median()
+            .unstack("Metric")
+        )
+        low = (
+            long_df.groupby(["Sample_Size", "Metric"], as_index=True)[
+                "Bootstrap_CI_Low"
+            ]
+            .median()
+            .unstack("Metric")
+        )
+        high = (
+            long_df.groupby(["Sample_Size", "Metric"], as_index=True)[
+                "Bootstrap_CI_High"
+            ]
+            .median()
+            .unstack("Metric")
+        )
 
     # Sort by sample_size to ensure monotone x
     center = center.sort_index()
@@ -272,17 +310,8 @@ def _create_bootstrap_ci_plot(
     return out_path
 
 
-def _get_measure_columns_sample(df: pd.DataFrame) -> List[str]:
-    """Numeric metric columns excluding identifier fields."""
-    id_cols = {"sample_size", "sample_id"}
-    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    return [c for c in num_cols if c not in id_cols]
-
-
 def plot_aggregated_measures_sample_cis(
-    measures_df: pd.DataFrame,
-    sample_ci_low_df: pd.DataFrame,
-    sample_ci_high_df: pd.DataFrame,
+    long_df: pd.DataFrame,
     out_path: str,
     agg: str = "mean",
     title: str | None = None,
@@ -298,14 +327,10 @@ def plot_aggregated_measures_sample_cis(
 
     Parameters
     ----------
-    measures_df : pd.DataFrame
-        Columns: ['sample_size', 'sample_id', <metric columns...>]
-        Contains raw per-sample metric values.
-    sample_ci_low_df : pd.DataFrame
-        CI-lower per sample_size for each metric (e.g., produced by your extractor).
-        Must contain 'sample_size' and the same metric columns.
-    sample_ci_high_df : pd.DataFrame
-        CI-upper per sample_size for each metric (e.g., produced by your extractor).
+    long_df : pd.DataFrame
+        Long format DataFrame with columns:
+        ['Sample_Size', 'Sample_ID', 'Metric', 'Value', 'Sample_CI_Low', 'Sample_CI_High']
+        May have a MultiIndex (will be reset if present).
     out_path : str
         File path to save the figure (PNG, PDF, etc.). Parent directories are created.
     agg : {"mean","median"}, default "mean"
@@ -332,15 +357,27 @@ def plot_aggregated_measures_sample_cis(
     if plot_breakdown not in (None, "basis", "dimension"):
         raise ValueError("plot_breakdown must be None, 'basis', or 'dimension'.")
 
-    # Determine measure columns and ensure they exist in all inputs
-    measure_cols = _get_measure_columns_sample(measures_df)
-    measure_cols = [
-        c
-        for c in measure_cols
-        if c in sample_ci_low_df.columns and c in sample_ci_high_df.columns
-    ]
-    if not measure_cols:
-        raise ValueError("No overlapping metric columns found in the three DataFrames.")
+    # Reset index if present
+    if isinstance(long_df.index, pd.MultiIndex) or any(
+        name is not None for name in long_df.index.names
+    ):
+        long_df = long_df.reset_index()
+
+    # Check required columns
+    required = {
+        "Sample_Size",
+        "Sample_ID",
+        "Metric",
+        "Value",
+        "Sample_CI_Low",
+        "Sample_CI_High",
+    }
+    missing = required - set(long_df.columns)
+    if missing:
+        raise ValueError(f"long_df is missing required columns: {missing}")
+
+    # Get unique metrics
+    measure_cols = sorted(long_df["Metric"].unique().tolist())
 
     # Group measures by breakdown type if specified
     measure_groups = _group_measures_by_breakdown(measure_cols, plot_breakdown)
@@ -356,11 +393,12 @@ def plot_aggregated_measures_sample_cis(
             out_path, title, group_key
         )
 
+        # Filter to this group's metrics
+        group_long_df = long_df[long_df["Metric"].isin(group_measures)]
+
         # Create plot for this group
-        saved_path = _create_sample_ci_plot(
-            measures_df,
-            sample_ci_low_df,
-            sample_ci_high_df,
+        saved_path = _create_sample_ci_plot_long(
+            group_long_df,
             group_measures,
             group_out_path,
             agg,
@@ -374,10 +412,8 @@ def plot_aggregated_measures_sample_cis(
     return saved_paths[-1] if saved_paths else out_path
 
 
-def _create_sample_ci_plot(
-    measures_df: pd.DataFrame,
-    sample_ci_low_df: pd.DataFrame,
-    sample_ci_high_df: pd.DataFrame,
+def _create_sample_ci_plot_long(
+    long_df: pd.DataFrame,
     measure_cols: List[str],
     out_path: str,
     agg: str,
@@ -385,24 +421,34 @@ def _create_sample_ci_plot(
     ncols: int,
     figsize_per_panel: Tuple[float, float],
 ) -> str:
-    """Helper function to create a single sample CI plot for a set of measures."""
+    """Helper function to create a single sample CI plot for a set of measures from long format."""
 
-    # ---- Aggregate center (mean/median) across samples for each size ----
-    g = measures_df.groupby("sample_size", as_index=True, sort=True)
+    # Aggregate center (mean/median) across samples for each size and metric
     if agg == "mean":
-        center = g[measure_cols].mean()
+        center = (
+            long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Value"]
+            .mean()
+            .unstack("Metric")
+        )
     else:
-        center = g[measure_cols].median()
+        center = (
+            long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Value"]
+            .median()
+            .unstack("Metric")
+        )
 
-    # Align CI frames to the same index (sample_size) and metrics
-    # If the CI frames already have one row per sample_size, this is a no-op;
-    # if they contain duplicate rows per size, we aggregate again for safety.
-    low = sample_ci_low_df.groupby("sample_size", as_index=True, sort=True)[
-        measure_cols
-    ].mean()
-    high = sample_ci_high_df.groupby("sample_size", as_index=True, sort=True)[
-        measure_cols
-    ].mean()
+    # Sample CIs are already aggregated per Sample_Size (no Sample_ID), so just take first value
+    # and unstack to wide format
+    low = (
+        long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Sample_CI_Low"]
+        .first()
+        .unstack("Metric")
+    )
+    high = (
+        long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Sample_CI_High"]
+        .first()
+        .unstack("Metric")
+    )
 
     # Reindex low/high to center's index to keep the same x-grid
     low = low.reindex(center.index)

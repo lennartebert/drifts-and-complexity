@@ -226,7 +226,7 @@ def get_correlations_for_dictionary(
             spearman_p_list.append(spearman_p)
 
         # Aggregate across logs (mean, ignoring NaN)
-        def nanmean(lst):
+        def nanmean(lst: List[float]) -> float:
             arr = np.array(lst, dtype=float)
             return float(np.nanmean(arr)) if len(arr) > 0 else float("nan")
 
@@ -241,6 +241,82 @@ def get_correlations_for_dictionary(
         )
     df = pd.DataFrame(results)
     return df
+
+
+def compute_correlations_from_long_format(
+    long_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Calculate both Pearson and Spearman correlations between sample size and metrics from long format.
+
+    Args:
+        long_df: DataFrame in long format with columns:
+                 ['Sample_Size', 'Sample_ID', 'Metric', 'Value']
+                 May have a MultiIndex (will be reset if present).
+
+    Returns:
+        DataFrame with columns: Metric, Pearson_Rho, Pearson_P, Spearman_Rho, Spearman_P
+    """
+    from scipy import stats
+
+    # Reset index if present to access columns
+    if isinstance(long_df.index, pd.MultiIndex) or any(
+        name is not None for name in long_df.index.names
+    ):
+        long_df = long_df.reset_index()
+
+    # Check required columns
+    required = {"Sample_Size", "Sample_ID", "Metric", "Value"}
+    missing = required - set(long_df.columns)
+    if missing:
+        raise ValueError(f"long_df is missing required columns: {missing}")
+
+    correlation_results = []
+    for metric in long_df["Metric"].unique():
+        # Get data for this metric from long format
+        metric_data = long_df[long_df["Metric"] == metric][
+            ["Sample_Size", "Value"]
+        ].copy()
+        metric_data = metric_data.replace([np.inf, -np.inf], np.nan)
+        metric_data["Sample_Size"] = pd.to_numeric(
+            metric_data["Sample_Size"], errors="coerce"
+        )
+        metric_data["Value"] = pd.to_numeric(metric_data["Value"], errors="coerce")
+        metric_data = metric_data.dropna()
+
+        if len(metric_data) < 2:
+            pearson_r, pearson_p = float("nan"), float("nan")
+            spearman_r, spearman_p = float("nan"), float("nan")
+        else:
+            x = metric_data["Sample_Size"].to_numpy(dtype=float)
+            y = metric_data["Value"].to_numpy(dtype=float)
+            if not (np.isfinite(x).all() and np.isfinite(y).all()):
+                pearson_r, pearson_p = float("nan"), float("nan")
+                spearman_r, spearman_p = float("nan"), float("nan")
+            elif np.nanstd(x) == 0 or np.nanstd(y) == 0:
+                pearson_r, pearson_p = float("nan"), float("nan")
+                spearman_r, spearman_p = float("nan"), float("nan")
+            else:
+                try:
+                    pearson_r, pearson_p = stats.pearsonr(x, y)
+                except Exception:
+                    pearson_r, pearson_p = float("nan"), float("nan")
+                try:
+                    spearman_r, spearman_p = stats.spearmanr(x, y)
+                except Exception:
+                    spearman_r, spearman_p = float("nan"), float("nan")
+
+        correlation_results.append(
+            {
+                "Metric": metric,
+                "Pearson_Rho": pearson_r,
+                "Pearson_P": pearson_p,
+                "Spearman_Rho": spearman_r,
+                "Spearman_P": spearman_p,
+            }
+        )
+
+    correlations_df = pd.DataFrame(correlation_results)
+    return correlations_df
 
 
 import math
@@ -492,7 +568,29 @@ def _detect_plateau_1d(
 ) -> float:
     """
     Return the window size where plateau is reached, or np.nan if not found.
-    Plateau when |Δ|/prev < rel_threshold for 'min_runs' consecutive steps.
+
+    New logic: A plateau is recorded if after one mean measure value, no future
+    mean measure value (at larger window sizes) exceeds rel_threshold% of the
+    mean measure value.
+
+    Parameters
+    ----------
+    sample_sizes : np.ndarray
+        Array of sample sizes (window sizes).
+    centers : np.ndarray
+        Array of mean measure values corresponding to each sample size.
+    rel_threshold : float
+        Relative threshold (e.g., 0.025 for 2.5%). A future value exceeds the
+        threshold if abs(future_value - current_value) / abs(current_value) > rel_threshold.
+    min_runs : int
+        Not used in new logic, kept for compatibility.
+    report : str
+        Not used in new logic, kept for compatibility.
+
+    Returns
+    -------
+    float
+        The window size where plateau is reached, or np.nan if not found.
     """
     ss = np.asarray(sample_sizes, dtype=float)
     vals = np.asarray(centers, dtype=float)
@@ -500,21 +598,35 @@ def _detect_plateau_1d(
     if len(ss) < 2 or len(ss) != len(vals):
         return np.nan
 
-    consec = 0
-    for i in range(len(ss) - 1):
-        denom = vals[i]
-        if not np.isfinite(denom) or denom == 0.0:
-            consec = 0
+    # For each position i, check if all future values stay within threshold
+    for i in range(len(ss)):
+        current_val = vals[i]
+
+        # Skip if current value is not finite or zero
+        if not np.isfinite(current_val) or current_val == 0.0:
             continue
-        rel_change = abs(vals[i + 1] - vals[i]) / abs(denom)
-        if np.isfinite(rel_change) and rel_change < rel_threshold:
-            consec += 1
-            if consec >= min_runs:
-                n_report = ss[i] if report == "current" else ss[i + 1]
-                # prefer int-looking numbers as int
-                return int(n_report) if float(int(n_report)) == n_report else n_report
-        else:
-            consec = 0
+
+        # Check all future values
+        future_vals = vals[i + 1 :]
+        if len(future_vals) == 0:
+            # This is the last value, consider it a plateau
+            return int(ss[i]) if float(int(ss[i])) == ss[i] else ss[i]
+
+        # Check if any future value exceeds the threshold (in either direction)
+        # A future value exceeds if it's more than rel_threshold% higher OR lower than current value
+        exceeds_threshold = False
+        for future_val in future_vals:
+            if not np.isfinite(future_val):
+                continue
+            # Calculate absolute relative difference to catch both increases and decreases
+            rel_change = abs(future_val - current_val) / abs(current_val)
+            if rel_change > rel_threshold:
+                exceeds_threshold = True
+                break
+
+        # If no future value exceeds threshold, we found a plateau
+        if not exceeds_threshold:
+            return int(ss[i]) if float(int(ss[i])) == ss[i] else ss[i]
 
     return np.nan
 
@@ -522,7 +634,7 @@ def _detect_plateau_1d(
 def detect_plateau_df(
     measures_per_log: Dict[str, pd.DataFrame],
     metric_columns: Optional[List[str]] = None,
-    rel_threshold: float = 0.05,
+    rel_threshold: float = 0.025,
     agg: str = "mean",
     min_runs: int = 1,
     report: str = "current",

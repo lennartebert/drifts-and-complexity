@@ -71,8 +71,7 @@ def _escape_latex(text: Any) -> str:
 
 
 def build_and_save_master_csv(
-    measures_per_log: Dict[str, pd.DataFrame],
-    sample_ci_rel_width_per_log: Dict[str, pd.DataFrame],
+    analysis_per_log: Dict[str, pd.DataFrame],
     correlations_df: pd.DataFrame,  # columns: Metric, Pearson_Rho, Pearson_P, Spearman_Rho, Spearman_P
     plateau_df: pd.DataFrame,  # rows=metrics, cols=logs -> plateau n (or NaN)
     out_csv_path: str,
@@ -85,8 +84,7 @@ def build_and_save_master_csv(
     """Build a master table CSV with all metrics, logs, and shape diagnostics.
 
     Args:
-        measures_per_log: Dict mapping log names to DataFrames with measures.
-        sample_ci_rel_width_per_log: Dict mapping log names to DataFrames with RelCI values.
+        analysis_per_log: Dict mapping log names to analysis DataFrames with index (Metric, Sample_Size).
         correlations_df: DataFrame with columns: Metric, Pearson_Rho, Pearson_P, Spearman_Rho, Spearman_P.
         plateau_df: DataFrame with metrics as rows, logs as columns, values are plateau n (or NaN).
         out_csv_path: Path to save the CSV file.
@@ -109,8 +107,8 @@ def build_and_save_master_csv(
     if metric_columns is not None:
         all_metrics = [m for m in all_metrics if m in metric_columns]
 
-    # Get all unique logs from measures_per_log
-    all_logs = list(measures_per_log.keys())
+    # Get all unique logs from analysis_per_log
+    all_logs = list(analysis_per_log.keys())
 
     # Process each metric-log combination
     for m in all_metrics:
@@ -146,26 +144,21 @@ def build_and_save_master_csv(
                 else None
             )
 
-            # Get RelCI values for this log
-            # sample_ci_rel_width_df has: columns=['sample_size', ...metric_names...]
-            # We need to find the row where sample_size == ref_size, then get the metric column value
+            # Get RelCI values for this log from analysis_per_log
             relci = {}
-            if log in sample_ci_rel_width_per_log:
-                relci_df = sample_ci_rel_width_per_log[log]
-                if (
-                    relci_df is not None
-                    and not relci_df.empty
-                    and "sample_size" in relci_df.columns
-                ):
+            if log in analysis_per_log:
+                analysis_df = analysis_per_log[log]
+                analysis_reset = analysis_df.reset_index()
+                if "Sample_CI_Rel_Width" in analysis_reset.columns:
                     for ref_size in ref_sizes:
                         col_name = f"RelCI_{ref_size}"
-                        # Find row where sample_size matches ref_size
-                        size_rows = relci_df[relci_df["sample_size"] == ref_size]
-                        if len(size_rows) > 0 and m in relci_df.columns:
-                            # Get the metric value for this sample_size
-                            relci[col_name] = (
-                                size_rows[m].iloc[0] if len(size_rows) > 0 else np.nan
-                            )
+                        # Find row where Sample_Size matches ref_size and Metric matches m
+                        size_rows = analysis_reset[
+                            (analysis_reset["Sample_Size"] == ref_size)
+                            & (analysis_reset["Metric"] == m)
+                        ]
+                        if len(size_rows) > 0:
+                            relci[col_name] = size_rows["Sample_CI_Rel_Width"].iloc[0]
                         else:
                             relci[col_name] = np.nan
                 else:

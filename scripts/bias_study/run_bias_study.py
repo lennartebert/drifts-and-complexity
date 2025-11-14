@@ -28,7 +28,10 @@ from utils.latex_table_generation import (
 )
 from utils.master_table import build_and_save_master_csv
 from utils.normalization.orchestrator import DEFAULT_NORMALIZERS
-from utils.pipeline.compute import run_metrics_over_samples
+from utils.pipeline.compute import (
+    compute_analysis_for_metrics,
+    compute_metrics_for_samples,
+)
 from utils.plotting.plot_cis import (
     plot_aggregated_measures_bootstrap_cis,
     plot_aggregated_measures_sample_cis,
@@ -89,16 +92,11 @@ def compute_results(
         log: info for log, info in data_dictionary.items() if log in list_of_logs
     }
 
-    (
-        measures_per_log,
-        bootstrap_ci_low_per_log,
-        bootstrap_ci_high_per_log,
-        sample_ci_low_per_log,
-        sample_ci_high_per_log,
-        sample_ci_rel_width_per_log,
-    ) = ({}, {}, {}, {}, {}, {})
     # Store population sizes (number of traces) for FPC
     log_population_sizes: Dict[str, int] = {}
+    # Store analysis results per log
+    analysis_per_log: Dict[str, pd.DataFrame] = {}
+
     for log_name, dataset_info in data_dictionary.items():
         print(f"Computing for {log_name}")
         log_path = Path(dataset_info["path"])
@@ -112,136 +110,160 @@ def compute_results(
             )
         )
 
-        (
-            measures_df,
-            bootstrap_ci_low_df,
-            bootstrap_ci_high_df,
-            sample_ci_low_df,
-            sample_ci_high_df,
-            sample_ci_rel_width_df,
-        ) = run_metrics_over_samples(
+        out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name / log_name
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Compute raw metrics
+        metrics_df = compute_metrics_for_samples(
             window_samples,
             population_extractor=population_extractor,
             metric_adapters=metric_adapters,
             bootstrap_sampler=bootstrap_sampler,
             normalizers=normalizers,
             include_metrics=include_metrics,
-            sample_confidence_interval_extractor=sample_confidence_interval_extractor,
         )
 
-        out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name / log_name
-        out_dir.mkdir(parents=True, exist_ok=True)
-        measures_df.to_csv(out_dir / "measures.csv")
+        # Save raw metrics
+        metrics_df.to_csv(out_dir / "raw_metrics.csv")
 
-        if bootstrap_ci_low_df is not None:
-            bootstrap_ci_low_df.to_csv(out_dir / "bootstrap_ci_low.csv")
+        # Compute analysis (mean values, CIs, correlations, plateau)
+        analysis_df = compute_analysis_for_metrics(
+            metrics_df,
+            sample_confidence_interval_extractor=sample_confidence_interval_extractor,
+            include_metrics=include_metrics,
+        )
 
-        if bootstrap_ci_high_df is not None:
-            bootstrap_ci_high_df.to_csv(out_dir / "bootstrap_ci_high.csv")
+        # Save analysis results to CSV
+        analysis_df.to_csv(out_dir / "analysis.csv")
 
-        if sample_ci_low_df is not None:
-            sample_ci_low_df.to_csv(out_dir / "sample_ci_low.csv")
+        # Merge sample CIs back into metrics_df for plotting
+        metrics_df_reset = metrics_df.reset_index()
+        analysis_reset = analysis_df.reset_index()
+        if (
+            "Sample_CI_Low" in analysis_reset.columns
+            and "Sample_CI_High" in analysis_reset.columns
+        ):
+            metrics_df_for_plotting = metrics_df_reset.merge(
+                analysis_reset[
+                    ["Sample_Size", "Metric", "Sample_CI_Low", "Sample_CI_High"]
+                ],
+                on=["Sample_Size", "Metric"],
+                how="left",
+            )
+        else:
+            metrics_df_for_plotting = metrics_df_reset.copy()
+            metrics_df_for_plotting["Sample_CI_Low"] = None
+            metrics_df_for_plotting["Sample_CI_High"] = None
 
-        if sample_ci_high_df is not None:
-            sample_ci_high_df.to_csv(out_dir / "sample_ci_high.csv")
-
-        if sample_ci_rel_width_df is not None:
-            sample_ci_rel_width_df.to_csv(out_dir / "sample_ci_rel_width.csv")
-
-        # create plots
-        if bootstrap_ci_low_df is not None and bootstrap_ci_high_df is not None:
+        # Create plots
+        if (
+            "Bootstrap_CI_Low" in metrics_df_for_plotting.columns
+            and "Bootstrap_CI_High" in metrics_df_for_plotting.columns
+        ):
             plot_aggregated_measures_bootstrap_cis(
-                measures_df,
-                bootstrap_ci_low_df,
-                bootstrap_ci_high_df,
+                metrics_df_for_plotting,
                 out_path=str(out_dir / "measures_bootstrap_cis_mean.png"),
                 plot_breakdown=BREAKDOWN_OF_PLOTS,
                 agg="mean",
-                # title=f"{clear_name} - {log_name} - Aggregated measures with bootstrap CIs (mean)",
                 ncols=3,
             )
 
-        if sample_ci_low_df is not None and sample_ci_high_df is not None:
+        if (
+            "Sample_CI_Low" in metrics_df_for_plotting.columns
+            and "Sample_CI_High" in metrics_df_for_plotting.columns
+        ):
             plot_aggregated_measures_sample_cis(
-                measures_df,
-                sample_ci_low_df,
-                sample_ci_high_df,
+                metrics_df_for_plotting,
                 out_path=str(out_dir / "measures_sample_cis_mean.png"),
                 agg="mean",
                 plot_breakdown=BREAKDOWN_OF_PLOTS,
-                # title=f"{clear_name} - {log_name} - Aggregated measures with sample CIs (mean)",
                 ncols=3,
             )
 
-        measures_per_log[log_name] = measures_df
-        bootstrap_ci_low_per_log[log_name] = bootstrap_ci_low_df
-        bootstrap_ci_high_per_log[log_name] = bootstrap_ci_high_df
-        sample_ci_low_per_log[log_name] = sample_ci_low_df
-        sample_ci_high_per_log[log_name] = sample_ci_high_df
-        sample_ci_rel_width_per_log[log_name] = sample_ci_rel_width_df
+        # Store for downstream processing
+        analysis_per_log[log_name] = analysis_df
 
     out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name
     out_dir.mkdir(parents=True, exist_ok=True)
-    correlations_df = helpers.get_correlations_for_dictionary(
-        sample_metrics_per_log=measures_per_log,
-        rename_dictionary_map=None,
-        metric_columns=include_metrics,
-        base_column="sample_size",
-    )
-    correlations_df.to_csv(out_dir / "correlations.csv", index=False)
 
-    # Create plots for both
+    # Combine all analysis data into a single DataFrame
+    all_analysis = []
+    for log_name, analysis_df in analysis_per_log.items():
+        analysis_reset = analysis_df.reset_index()
+        analysis_reset["Log"] = log_name
+        all_analysis.append(analysis_reset)
+    combined_analysis_df = (
+        pd.concat(all_analysis, ignore_index=True) if all_analysis else pd.DataFrame()
+    )
+
+    # Extract mean correlations across logs
+    mean_correlations_df = (
+        combined_analysis_df.groupby("Metric")
+        .agg(
+            {
+                "Pearson_Rho": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
+                "Pearson_P": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
+                "Spearman_Rho": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
+                "Spearman_P": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
+            }
+        )
+        .reset_index()
+        if not combined_analysis_df.empty
+        else pd.DataFrame(
+            columns=["Metric", "Pearson_Rho", "Pearson_P", "Spearman_Rho", "Spearman_P"]
+        )
+    )
+
+    mean_correlations_df.to_csv(out_dir / "correlations.csv", index=False)
+
+    # Create plots
     plot_correlation_results(
-        correlations_df,
+        mean_correlations_df,
         out_path=out_dir / "correlations_pearson_box_plot.png",
         correlation_type="Pearson",
         plot_type="box",
     )
     plot_correlation_results(
-        correlations_df,
+        mean_correlations_df,
         out_path=out_dir / "correlations_pearson_dot_plot.png",
         correlation_type="Pearson",
         plot_type="dot",
     )
     plot_correlation_results(
-        correlations_df,
+        mean_correlations_df,
         out_path=out_dir / "correlations_spearman_box_plot.png",
         correlation_type="Spearman",
         plot_type="box",
     )
     plot_correlation_results(
-        correlations_df,
+        mean_correlations_df,
         out_path=out_dir / "correlations_spearman_dot_plot.png",
         correlation_type="Spearman",
         plot_type="dot",
     )
 
-    # 1) Compute plateau_df once (same matrix shape as corr_df/pval_df)
-    plateau_df = helpers.detect_plateau_df(
-        measures_per_log=measures_per_log,
-        metric_columns=include_metrics,
-        rel_threshold=0.05,  # your plateau threshold
-        agg="mean",
-        min_runs=1,  # or 2 if you want consecutive confirmations
-        report="current",  # or "next"
+    # Extract plateau DataFrame
+    plateau_df = (
+        combined_analysis_df.pivot_table(
+            index="Metric", columns="Log", values="Plateau_n", aggfunc="first"
+        )
+        if not combined_analysis_df.empty
+        else pd.DataFrame()
     )
 
     # Compute sample size for FPC
     n_samples = len(SIZES) * SAMPLES_PER_SIZE
-
-    # 2) Build the master table (CSV-first, scenario-agnostic)
-    # Compute average population size for FPC
     avg_population_size = (
         int(np.mean(list(log_population_sizes.values())))
         if log_population_sizes
         else None
     )
 
+    # Build the master table (CSV-first, scenario-agnostic)
     master_csv_path = str(out_dir / "master.csv")
     csv_path = build_and_save_master_csv(
-        measures_per_log=measures_per_log,
-        sample_ci_rel_width_per_log=sample_ci_rel_width_per_log,
-        correlations_df=correlations_df,
+        analysis_per_log=analysis_per_log,
+        correlations_df=mean_correlations_df,
         plateau_df=plateau_df,
         out_csv_path=master_csv_path,
         metric_columns=include_metrics,
