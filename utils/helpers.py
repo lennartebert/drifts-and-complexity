@@ -250,11 +250,11 @@ def compute_correlations_from_long_format(
 
     Args:
         long_df: DataFrame in long format with columns:
-                 ['Sample_Size', 'Sample_ID', 'Metric', 'Value']
+                 ['Sample Size', 'Sample ID', 'Metric', 'Value']
                  May have a MultiIndex (will be reset if present).
 
     Returns:
-        DataFrame with columns: Metric, Pearson_Rho, Pearson_P, Spearman_Rho, Spearman_P
+        DataFrame with columns: Metric, Pearson Rho, Pearson P, Spearman Rho, Spearman P
     """
     from scipy import stats
 
@@ -265,7 +265,7 @@ def compute_correlations_from_long_format(
         long_df = long_df.reset_index()
 
     # Check required columns
-    required = {"Sample_Size", "Sample_ID", "Metric", "Value"}
+    required = {"Sample Size", "Sample ID", "Metric", "Value"}
     missing = required - set(long_df.columns)
     if missing:
         raise ValueError(f"long_df is missing required columns: {missing}")
@@ -274,11 +274,11 @@ def compute_correlations_from_long_format(
     for metric in long_df["Metric"].unique():
         # Get data for this metric from long format
         metric_data = long_df[long_df["Metric"] == metric][
-            ["Sample_Size", "Value"]
+            ["Sample Size", "Value"]
         ].copy()
         metric_data = metric_data.replace([np.inf, -np.inf], np.nan)
-        metric_data["Sample_Size"] = pd.to_numeric(
-            metric_data["Sample_Size"], errors="coerce"
+        metric_data["Sample Size"] = pd.to_numeric(
+            metric_data["Sample Size"], errors="coerce"
         )
         metric_data["Value"] = pd.to_numeric(metric_data["Value"], errors="coerce")
         metric_data = metric_data.dropna()
@@ -287,7 +287,7 @@ def compute_correlations_from_long_format(
             pearson_r, pearson_p = float("nan"), float("nan")
             spearman_r, spearman_p = float("nan"), float("nan")
         else:
-            x = metric_data["Sample_Size"].to_numpy(dtype=float)
+            x = metric_data["Sample Size"].to_numpy(dtype=float)
             y = metric_data["Value"].to_numpy(dtype=float)
             if not (np.isfinite(x).all() and np.isfinite(y).all()):
                 pearson_r, pearson_p = float("nan"), float("nan")
@@ -308,10 +308,10 @@ def compute_correlations_from_long_format(
         correlation_results.append(
             {
                 "Metric": metric,
-                "Pearson_Rho": pearson_r,
-                "Pearson_P": pearson_p,
-                "Spearman_Rho": spearman_r,
-                "Spearman_P": spearman_p,
+                "Pearson Rho": pearson_r,
+                "Pearson P": pearson_p,
+                "Spearman Rho": spearman_r,
+                "Spearman P": spearman_p,
             }
         )
 
@@ -565,9 +565,9 @@ def _detect_plateau_1d(
     rel_threshold: float,
     min_runs: int = 1,
     report: str = "current",  # or "next"
-) -> float:
+) -> tuple[float, bool]:
     """
-    Return the window size where plateau is reached, or np.nan if not found.
+    Return the window size where plateau is reached and whether a plateau was found.
 
     New logic: A plateau is recorded if after one mean measure value, no future
     mean measure value (at larger window sizes) exceeds rel_threshold% of the
@@ -589,14 +589,16 @@ def _detect_plateau_1d(
 
     Returns
     -------
-    float
-        The window size where plateau is reached, or np.nan if not found.
+    tuple[float, bool]
+        Tuple of (plateau_window_size, plateau_found).
+        plateau_window_size: The window size where plateau is reached, or np.nan if not found.
+        plateau_found: True if a plateau was found, False otherwise.
     """
     ss = np.asarray(sample_sizes, dtype=float)
     vals = np.asarray(centers, dtype=float)
 
     if len(ss) < 2 or len(ss) != len(vals):
-        return np.nan
+        return (np.nan, False)
 
     # For each position i, check if all future values stay within threshold
     for i in range(len(ss)):
@@ -608,9 +610,9 @@ def _detect_plateau_1d(
 
         # Check all future values
         future_vals = vals[i + 1 :]
+        # Skip the last value - it cannot be verified as a plateau since there are no future values
         if len(future_vals) == 0:
-            # This is the last value, consider it a plateau
-            return int(ss[i]) if float(int(ss[i])) == ss[i] else ss[i]
+            continue
 
         # Check if any future value exceeds the threshold (in either direction)
         # A future value exceeds if it's more than rel_threshold% higher OR lower than current value
@@ -626,9 +628,10 @@ def _detect_plateau_1d(
 
         # If no future value exceeds threshold, we found a plateau
         if not exceeds_threshold:
-            return int(ss[i]) if float(int(ss[i])) == ss[i] else ss[i]
+            plateau_size = int(ss[i]) if float(int(ss[i])) == ss[i] else ss[i]
+            return (plateau_size, True)
 
-    return np.nan
+    return (np.nan, False)
 
 
 def detect_plateau_df(
@@ -640,8 +643,10 @@ def detect_plateau_df(
     report: str = "current",
 ) -> pd.DataFrame:
     """
-    Compute plateau window size per (metric, log). Returns a matrix-like DataFrame:
-    rows = metrics, columns = logs, values = plateau window size (float/int) or NaN.
+    Compute plateau window size per (metric, log). Returns a DataFrame with MultiIndex columns:
+    rows = metrics, columns = (log_name, 'Plateau n') and (log_name, 'Plateau Found').
+    - 'Plateau n' contains the window size where plateau was found (float/int or NaN)
+    - 'Plateau Found' contains boolean indicating if a plateau was found (True/False)
 
     Parameters
     ----------
@@ -655,9 +660,15 @@ def detect_plateau_df(
     agg : {'mean','median'}
         Aggregation across samples at each window size.
     min_runs : int
-        Require this many consecutive steps below threshold to accept plateau.
+        Not used in new logic, kept for compatibility.
     report : {'current','next'}
-        Report the current or next window size as the plateau location.
+        Not used in new logic, kept for compatibility.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with metrics as index and MultiIndex columns (log_name, 'Plateau n')
+        and (log_name, 'Plateau Found').
     """
     agg = agg.lower()
     if agg not in {"mean", "median"}:
@@ -684,28 +695,52 @@ def detect_plateau_df(
         centers = g[metric_cols].mean() if agg == "mean" else g[metric_cols].median()
         centers = centers.sort_index()
 
-        values = {}
+        plateau_n_values = {}
+        plateau_found_values = {}
         x = centers.index.values
         for m in metric_cols:
             # Skip if metric was dropped during aggregation (e.g., all NaN values)
             if m not in centers.columns:
                 continue
             y = centers[m].values
-            plateau_n = _detect_plateau_1d(
+            plateau_n, plateau_found = _detect_plateau_1d(
                 sample_sizes=x,
                 centers=y,
                 rel_threshold=rel_threshold,
                 min_runs=min_runs,
                 report=report,
             )
-            values[m] = plateau_n
-        # Fill missing metrics as NaN for consistent shape
-        plateau_by_log[log] = pd.Series(values, index=metrics_sorted, dtype="float64")
+            plateau_n_values[m] = plateau_n
+            plateau_found_values[m] = plateau_found
+        # Fill missing metrics as NaN/False for consistent shape
+        plateau_n_series = pd.Series(
+            plateau_n_values, index=metrics_sorted, dtype="float64"
+        )
+        plateau_found_series = pd.Series(
+            plateau_found_values, index=metrics_sorted, dtype="bool"
+        )
+        plateau_by_log[log] = (plateau_n_series, plateau_found_series)
 
-    # Build matrix DataFrame: rows metrics, columns logs
-    plateau_df = pd.DataFrame(plateau_by_log, index=metrics_sorted)
-    plateau_df.index.name = None  # keep similar to your corr_df look
-    return plateau_df
+    # Build DataFrames with MultiIndex columns: (log_name, 'Plateau n') and (log_name, 'Plateau Found')
+    plateau_n_dict = {}
+    plateau_found_dict = {}
+    for log, (plateau_n_series, plateau_found_series) in plateau_by_log.items():
+        plateau_n_dict[log] = plateau_n_series
+        plateau_found_dict[log] = plateau_found_series
+
+    # Create DataFrames
+    plateau_n_df = pd.DataFrame(plateau_n_dict, index=metrics_sorted)
+    plateau_found_df = pd.DataFrame(plateau_found_dict, index=metrics_sorted)
+
+    # Combine into a single DataFrame with MultiIndex columns
+    combined_dict = {}
+    for log in plateau_n_df.columns:
+        combined_dict[(log, "Plateau n")] = plateau_n_df[log]
+        combined_dict[(log, "Plateau Found")] = plateau_found_df[log]
+
+    result_df = pd.DataFrame(combined_dict, index=metrics_sorted)
+    result_df.index.name = None  # keep similar to your corr_df look
+    return result_df
 
 
 # LATEX helpers

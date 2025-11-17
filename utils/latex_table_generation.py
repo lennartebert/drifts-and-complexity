@@ -8,7 +8,7 @@ from typing import Any, List, Optional
 import numpy as np
 import pandas as pd
 
-from .constants import BASIS_ORDER, COLUMN_NAME_MAP, METRIC_BASIS_MAP
+from .constants import BASIS_ORDER, COLUMN_NAMES_TO_LATEX_MAP, METRIC_BASIS_MAP
 
 
 def _escape_latex(text: Any) -> str:
@@ -64,7 +64,7 @@ def _format_boolean(x: Any) -> str:
 def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
     """Build LaTeX header and column specification from column list.
 
-    Uses COLUMN_NAME_MAP for header display names (not escaped).
+    Uses COLUMN_NAMES_TO_LATEX_MAP for header display names (not escaped).
     Column spec uses p{50pt} for Metric column, appropriate types for others.
 
     Args:
@@ -77,11 +77,13 @@ def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
     colspec_parts = []
 
     for col in columns:
-        # Use COLUMN_NAME_MAP if available, otherwise escape the column name
-        if col in COLUMN_NAME_MAP:
-            header_part = COLUMN_NAME_MAP[col]  # Already formatted, don't escape
+        # Use COLUMN_NAMES_TO_LATEX_MAP if available, otherwise escape the column name
+        if col in COLUMN_NAMES_TO_LATEX_MAP:
+            header_part = COLUMN_NAMES_TO_LATEX_MAP[
+                col
+            ]  # Already formatted, don't escape
         else:
-            header_part = col.replace("_", "\\_")
+            header_part = col.replace(" ", "\\ ").replace("_", "\\_")
         header_parts.append(header_part)
 
         # Build column spec
@@ -91,43 +93,44 @@ def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
             "Basis",
             "Log",
             "Shape",
-            "Preferred_Correlation",
-            "Shape_before",
-            "Shape_after",
-            "Preferred_Correlation_before",
-            "Preferred_Correlation_after",
-            "Chosen_Correlation",
+            "Preferred Correlation",
+            "Shape Before",
+            "Shape After",
+            "Preferred Correlation Before",
+            "Preferred Correlation After",
+            "Chosen Correlation",
         ]:
             colspec_parts.append("l")
-        elif col.endswith("_p") or col == "Z_test_p":
+        elif col.endswith(" P") or col == "Z Test P":
             colspec_parts.append("c")
         elif col in [
-            "Pearson_Rho",
-            "Spearman_Rho",
-            "Delta_PearsonSpearman",
-            "Chosen_Rho_before",
-            "Chosen_Rho_after",
-            "Abs_Delta_Chosen_Rho",
-            "Delta_Pearson",
-            "Delta_Spearman",
-            "Z_test_stat",
-            "RelCI_50",
-            "RelCI_250",
-            "RelCI_500",
-            "Plateau_n",
-            "RelCI_50_before",
-            "RelCI_50_after",
-            "RelCI_50_delta",
-            "RelCI_250_before",
-            "RelCI_250_after",
-            "RelCI_250_delta",
-            "RelCI_500_before",
-            "RelCI_500_after",
-            "RelCI_500_delta",
-            "Plateau_n_before",
-            "Plateau_n_after",
-            "Plateau_n_delta",
-            "Significant_Improvement",
+            "Pearson Rho",
+            "Spearman Rho",
+            "Delta Pearson Spearman",
+            "Chosen Rho Before",
+            "Chosen Rho After",
+            "Abs Delta Chosen Rho",
+            "Delta Pearson",
+            "Delta Spearman",
+            "Z Test Stat",
+            "RelCI 50",
+            "RelCI 250",
+            "RelCI 500",
+            "Plateau n",
+            "Plateau Reached",
+            "RelCI 50 Before",
+            "RelCI 50 After",
+            "RelCI 50 Delta",
+            "RelCI 250 Before",
+            "RelCI 250 After",
+            "RelCI 250 Delta",
+            "RelCI 500 Before",
+            "RelCI 500 After",
+            "RelCI 500 Delta",
+            "Plateau n Before",
+            "Plateau n After",
+            "Plateau n Delta",
+            "Significant Improvement",
         ]:
             colspec_parts.append("c")
         else:
@@ -226,20 +229,74 @@ def _create_table_rows(
         # Build row cells
         cells = []
         for col in columns:
+            skip_escape = False  # Reset for each column
             if col == "Metric":
                 cell = _escape_latex(metric) if not repeat_metric else ""
             elif col == "Basis":
                 cell = _escape_latex(basis) if not repeat_basis else ""
             elif col == "Log":
                 cell = "" if is_mean else _escape_latex(log)
+            elif col == "Plateau Reached":
+                # Special formatting for Plateau Reached column
+                # Use the value directly from CSV (already formatted correctly)
+                plateau_reached_val = row.get("Plateau Reached", "")
+                if plateau_reached_val:
+                    cell = str(plateau_reached_val)
+                elif is_mean:
+                    # Fallback for mean rows: use Plateau Found value if Plateau Reached is missing
+                    plateau_found_val = row.get("Plateau Found", "")
+                    cell = str(plateau_found_val) if plateau_found_val else ""
+                else:
+                    # Fallback for non-mean rows: compute from Plateau Found and Plateau n
+                    plateau_found = row.get("Plateau Found", False)
+                    plateau_n = row.get("Plateau n", np.nan)
+
+                    # Convert plateau_found to boolean if needed
+                    if isinstance(plateau_found, str):
+                        plateau_found = plateau_found.upper().strip() in (
+                            "TRUE",
+                            "T",
+                            "1",
+                            "YES",
+                            "Y",
+                        )
+
+                    if plateau_found:
+                        # Format plateau_n if available
+                        if pd.notna(plateau_n) and plateau_n != "":
+                            try:
+                                # Try to format as integer if it's a whole number
+                                plateau_n_float = float(plateau_n)
+                                if plateau_n_float == int(plateau_n_float):
+                                    plateau_n_str = str(int(plateau_n_float))
+                                else:
+                                    plateau_n_str = f"{plateau_n_float:.0f}"
+                                cell = f"Y ({plateau_n_str})"
+                            except (ValueError, TypeError):
+                                cell = "Y"
+                        else:
+                            cell = "Y"
+                    else:
+                        cell = "N"
+                # Don't escape LaTeX for this formatted string
+                skip_escape = True
             else:
                 # Get value from row
                 val = row.get(col, "")
                 if pd.isna(val) or val == "":
                     cell = ""
-                elif col.endswith("_p") or col == "Z_test_p":
+                elif (
+                    col.endswith("_p")
+                    or col == "Z_test_p"
+                    or col.endswith(" P")
+                    or col == "Z Test P"
+                ):
                     cell = _format_pvalue(val)
-                elif col in boolean_cols or col == "Significant_Improvement":
+                elif (
+                    col in boolean_cols
+                    or col == "Significant_Improvement"
+                    or col == "Significant Improvement"
+                ):
                     # Format booleans as T/F
                     cell = _format_boolean(val)
                 elif col in numeric_cols:
@@ -258,8 +315,8 @@ def _create_table_rows(
                     # String column - just escape LaTeX
                     cell = str(val)
 
-                # Escape LaTeX for non-empty cells (unless already formatted via COLUMN_NAME_MAP)
-                if cell != "":
+                # Escape LaTeX for non-empty cells (unless already formatted or special column)
+                if cell != "" and not skip_escape:
                     cell = _escape_latex(cell)
 
             # For MEAN rows, italicize each cell individually (only in full tables, not means-only)
@@ -459,84 +516,6 @@ def write_means_latex_table(
 # ============================================================================
 
 
-def write_master_correlation_table(
-    master_csv_path: str,
-    out_dir: str,
-    scenario_key: str,
-    scenario_title: str,
-) -> None:
-    """Generate full master correlation table.
-
-    Args:
-        master_csv_path: Path to master.csv file.
-        out_dir: Directory to save LaTeX file.
-        scenario_key: Key for table label.
-        scenario_title: Title for table caption.
-    """
-    columns = [
-        "Metric",
-        "Basis",
-        "Log",
-        "Pearson_Rho",
-        "Spearman_Rho",
-        "Delta_PearsonSpearman",
-        "Shape",
-        "Preferred_Correlation",
-    ]
-    write_full_latex_table(
-        csv_path=master_csv_path,
-        out_dir=out_dir,
-        scenario_key=scenario_key,
-        scenario_title=scenario_title,
-        include_columns=columns,
-        label_extension="master_correlation_full",
-        caption_extension="Correlation table",
-        filename="master_correlation_full.tex",
-        order_by_basis=True,
-    )
-
-
-def write_master_correlation_means_table(
-    master_csv_path: str,
-    out_dir: str,
-    scenario_key: str,
-    scenario_title: str,
-) -> None:
-    """Generate means-only master correlation table.
-
-    Args:
-        master_csv_path: Path to master.csv file.
-        out_dir: Directory to save LaTeX file.
-        scenario_key: Key for table label.
-        scenario_title: Title for table caption.
-    """
-    columns = [
-        "Metric",
-        "Basis",
-        "Log",
-        "Pearson_Rho",
-        "Spearman_Rho",
-        "Delta_PearsonSpearman",
-        "Shape",
-        "Preferred_Correlation",
-    ]
-    # Hide Log, Shape, Preferred_Correlation
-    columns = [
-        col for col in columns if col not in ["Log", "Shape", "Preferred_Correlation"]
-    ]
-    write_means_latex_table(
-        csv_path=master_csv_path,
-        out_dir=out_dir,
-        scenario_key=scenario_key,
-        scenario_title=scenario_title,
-        include_columns=columns,
-        label_extension="master_correlation_means",
-        caption_extension="Correlation means",
-        filename="master_correlation_means.tex",
-        order_by_basis=True,
-    )
-
-
 def write_master_ci_plateau_table(
     master_csv_path: str,
     out_dir: str,
@@ -555,10 +534,10 @@ def write_master_ci_plateau_table(
         "Metric",
         "Basis",
         "Log",
-        "RelCI_50",
-        "RelCI_250",
-        "RelCI_500",
-        "Plateau_n",
+        "RelCI 50",
+        "RelCI 250",
+        "RelCI 500",
+        "Plateau n",
     ]
     write_full_latex_table(
         csv_path=master_csv_path,
@@ -591,10 +570,10 @@ def write_master_ci_plateau_means_table(
         "Metric",
         "Basis",
         "Log",
-        "RelCI_50",
-        "RelCI_250",
-        "RelCI_500",
-        "Plateau_n",
+        "RelCI 50",
+        "RelCI 250",
+        "RelCI 500",
+        "Plateau n",
     ]
     # Hide Log
     columns = [col for col in columns if col not in ["Log"]]
@@ -728,18 +707,18 @@ def write_comparison_ci_plateau_table(
         "Metric",
         "Basis",
         "Log",
-        "RelCI_50_before",
-        "RelCI_50_after",
-        "RelCI_50_delta",
-        "RelCI_250_before",
-        "RelCI_250_after",
-        "RelCI_250_delta",
-        "RelCI_500_before",
-        "RelCI_500_after",
-        "RelCI_500_delta",
-        "Plateau_n_before",
-        "Plateau_n_after",
-        "Plateau_n_delta",
+        "RelCI 50 Before",
+        "RelCI 50 After",
+        "RelCI 50 Delta",
+        "RelCI 250 Before",
+        "RelCI 250 After",
+        "RelCI 250 Delta",
+        "RelCI 500 Before",
+        "RelCI 500 After",
+        "RelCI 500 Delta",
+        "Plateau n Before",
+        "Plateau n After",
+        "Plateau n Delta",
     ]
     write_full_latex_table(
         csv_path=comparison_csv_path,
@@ -772,18 +751,18 @@ def write_comparison_ci_plateau_means_table(
         "Metric",
         "Basis",
         "Log",
-        "RelCI_50_before",
-        "RelCI_50_after",
-        "RelCI_50_delta",
-        "RelCI_250_before",
-        "RelCI_250_after",
-        "RelCI_250_delta",
-        "RelCI_500_before",
-        "RelCI_500_after",
-        "RelCI_500_delta",
-        "Plateau_n_before",
-        "Plateau_n_after",
-        "Plateau_n_delta",
+        "RelCI 50 Before",
+        "RelCI 50 After",
+        "RelCI 50 Delta",
+        "RelCI 250 Before",
+        "RelCI 250 After",
+        "RelCI 250 Delta",
+        "RelCI 500 Before",
+        "RelCI 500 After",
+        "RelCI 500 Delta",
+        "Plateau n Before",
+        "Plateau n After",
+        "Plateau n Delta",
     ]
     # Hide Log
     columns = [col for col in columns if col not in ["Log"]]
@@ -805,6 +784,7 @@ def write_summarized_master_table(
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
+    correlation: str = "Spearman",
 ) -> None:
     """Generate full summarized master table.
 
@@ -813,17 +793,26 @@ def write_summarized_master_table(
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
+        correlation: Correlation type to display ("Pearson" or "Spearman"). Default is "Spearman".
     """
+    if correlation not in ["Pearson", "Spearman"]:
+        raise ValueError(
+            f"correlation must be 'Pearson' or 'Spearman', got '{correlation}'"
+        )
+
+    rho_col = f"{correlation} Rho"
+    p_col = f"{correlation} P"
+
     columns = [
         "Basis",
         "Metric",
         "Log",
-        "Pearson_Rho",
-        "Pearson_P",
-        "RelCI_50",
-        "RelCI_250",
-        "RelCI_500",
-        "Plateau_n",
+        rho_col,
+        p_col,
+        "RelCI 50",
+        "RelCI 250",
+        "RelCI 500",
+        "Plateau Reached",
     ]
     write_full_latex_table(
         csv_path=master_csv_path,
@@ -843,6 +832,7 @@ def write_summarized_means_table(
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
+    correlation: str = "Spearman",
 ) -> None:
     """Generate means-only summarized master table.
 
@@ -851,17 +841,26 @@ def write_summarized_means_table(
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
+        correlation: Correlation type to display ("Pearson" or "Spearman"). Default is "Spearman".
     """
+    if correlation not in ["Pearson", "Spearman"]:
+        raise ValueError(
+            f"correlation must be 'Pearson' or 'Spearman', got '{correlation}'"
+        )
+
+    rho_col = f"{correlation} Rho"
+    p_col = f"{correlation} P"
+
     columns = [
         "Basis",
         "Metric",
         "Log",
-        "Pearson_Rho",
-        "Pearson_P",
-        "RelCI_50",
-        "RelCI_250",
-        "RelCI_500",
-        "Plateau_n",
+        rho_col,
+        p_col,
+        "RelCI 50",
+        "RelCI 250",
+        "RelCI 500",
+        "Plateau Reached",
     ]
     # Hide Log column
     columns = [col for col in columns if col not in ["Log"]]
@@ -888,6 +887,7 @@ def write_master_latex_tables(
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
+    correlation: str = "Spearman",
 ) -> None:
     """Entry point: Generate all master LaTeX tables from master.csv.
 
@@ -901,13 +901,8 @@ def write_master_latex_tables(
         out_dir: Directory to save LaTeX files.
         scenario_key: Key for table labels (e.g., "test").
         scenario_title: Title for table captions (e.g., "Test Scenario").
+        correlation: Correlation type to display ("Pearson" or "Spearman"). Default is "Spearman".
     """
-    write_master_correlation_table(
-        master_csv_path, out_dir, scenario_key, scenario_title
-    )
-    write_master_correlation_means_table(
-        master_csv_path, out_dir, scenario_key, scenario_title
-    )
     write_master_ci_plateau_table(
         master_csv_path, out_dir, scenario_key, scenario_title
     )
@@ -915,9 +910,11 @@ def write_master_latex_tables(
         master_csv_path, out_dir, scenario_key, scenario_title
     )
     write_summarized_master_table(
-        master_csv_path, out_dir, scenario_key, scenario_title
+        master_csv_path, out_dir, scenario_key, scenario_title, correlation=correlation
     )
-    write_summarized_means_table(master_csv_path, out_dir, scenario_key, scenario_title)
+    write_summarized_means_table(
+        master_csv_path, out_dir, scenario_key, scenario_title, correlation=correlation
+    )
 
 
 def write_comparison_latex_tables(

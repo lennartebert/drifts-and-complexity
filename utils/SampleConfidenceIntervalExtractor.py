@@ -50,8 +50,8 @@ class SampleConfidenceIntervalExtractor:
         ----------
         long_df : pd.DataFrame
             Long format DataFrame with columns:
-              - 'Sample_Size' (int)
-              - 'Sample_ID'   (int)
+              - 'Sample Size' (int)
+              - 'Sample ID'   (int)
               - 'Metric'      (str)
               - 'Value'       (float/int)
             May have an index (will be reset if present).
@@ -60,11 +60,11 @@ class SampleConfidenceIntervalExtractor:
         -------
         sample_ci_df : pd.DataFrame
             Long format DataFrame with columns:
-              - 'Sample_Size' (int)
+              - 'Sample Size' (int)
               - 'Metric'      (str)
-              - 'Sample_CI_Low' (float)
-              - 'Sample_CI_High' (float)
-              - 'Sample_CI_Rel_Width' (float)
+              - 'Sample CI Low' (float)
+              - 'Sample CI High' (float)
+              - 'Sample CI Rel Width' (float)
         """
         # Reset index if it's a MultiIndex or has named levels to ensure columns are accessible
         if isinstance(long_df.index, pd.MultiIndex) or any(
@@ -72,28 +72,28 @@ class SampleConfidenceIntervalExtractor:
         ):
             long_df = long_df.reset_index(drop=True)
 
-        required = {"Sample_Size", "Sample_ID", "Metric", "Value"}
+        required = {"Sample Size", "Sample ID", "Metric", "Value"}
         missing = required - set(long_df.columns)
         if missing:
             raise ValueError(f"long_df is missing required columns: {missing}")
 
         q_low, q_high = self._bounds()
 
-        # Group by Sample_Size and Metric, then compute quantiles across samples
-        g = long_df.groupby(["Sample_Size", "Metric"], sort=True, as_index=True)
+        # Group by Sample Size and Metric, then compute quantiles across samples
+        g = long_df.groupby(["Sample Size", "Metric"], sort=True, as_index=True)
 
         # Compute quantiles and means
-        ci_low = g["Value"].quantile(q_low).reset_index(name="Sample_CI_Low")
-        ci_high = g["Value"].quantile(q_high).reset_index(name="Sample_CI_High")
+        ci_low = g["Value"].quantile(q_low).reset_index(name="Sample CI Low")
+        ci_high = g["Value"].quantile(q_high).reset_index(name="Sample CI High")
         means = g["Value"].mean().reset_index(name="mean")
 
         # Merge and compute relative width
-        sample_ci_df = ci_low.merge(ci_high, on=["Sample_Size", "Metric"])
-        sample_ci_df = sample_ci_df.merge(means, on=["Sample_Size", "Metric"])
+        sample_ci_df = ci_low.merge(ci_high, on=["Sample Size", "Metric"])
+        sample_ci_df = sample_ci_df.merge(means, on=["Sample Size", "Metric"])
 
         # Relative width; guard against division by zero
-        sample_ci_df["Sample_CI_Rel_Width"] = (
-            sample_ci_df["Sample_CI_High"] - sample_ci_df["Sample_CI_Low"]
+        sample_ci_df["Sample CI Rel Width"] = (
+            sample_ci_df["Sample CI High"] - sample_ci_df["Sample CI Low"]
         ) / sample_ci_df["mean"].replace(0.0, np.nan)
         sample_ci_df = sample_ci_df.drop(columns=["mean"])
 

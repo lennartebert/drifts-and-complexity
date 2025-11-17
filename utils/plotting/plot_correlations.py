@@ -32,11 +32,11 @@ def plot_correlation_results(
     """
     # Choose the correct column
     if correlation_type == "Pearson":
-        col = "Pearson_Rho"
+        col = "Pearson Rho"
         ylabel = "Pearson r"
         title = "Distribution of Pearson r Across Datasets by Measure"
     elif correlation_type == "Spearman":
-        col = "Spearman_Rho"
+        col = "Spearman Rho"
         ylabel = "Spearman r"
         title = "Distribution of Spearman r Across Datasets by Measure"
     else:

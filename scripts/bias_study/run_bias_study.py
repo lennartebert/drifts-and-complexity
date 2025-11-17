@@ -59,6 +59,10 @@ REF_SIZES = [50, 250, 500]
 
 BREAKDOWN_OF_PLOTS = "basis"  # None=No breakdown
 
+CORRELATION_TYPE = (
+    "Spearman"  # Correlation type to use in LaTeX tables ("Pearson" or "Spearman")
+)
+
 default_population_extractor = NaivePopulationExtractor()
 default_metric_adapters = [LocalMetricsAdapter(), VidgofMetricsAdapter()]
 default_bootstrap_sampler = BootstrapSampler(B=BOOTSTRAP_SIZE)
@@ -140,25 +144,25 @@ def compute_results(
         metrics_df_reset = metrics_df.reset_index()
         analysis_reset = analysis_df.reset_index()
         if (
-            "Sample_CI_Low" in analysis_reset.columns
-            and "Sample_CI_High" in analysis_reset.columns
+            "Sample CI Low" in analysis_reset.columns
+            and "Sample CI High" in analysis_reset.columns
         ):
             metrics_df_for_plotting = metrics_df_reset.merge(
                 analysis_reset[
-                    ["Sample_Size", "Metric", "Sample_CI_Low", "Sample_CI_High"]
+                    ["Sample Size", "Metric", "Sample CI Low", "Sample CI High"]
                 ],
-                on=["Sample_Size", "Metric"],
+                on=["Sample Size", "Metric"],
                 how="left",
             )
         else:
             metrics_df_for_plotting = metrics_df_reset.copy()
-            metrics_df_for_plotting["Sample_CI_Low"] = None
-            metrics_df_for_plotting["Sample_CI_High"] = None
+            metrics_df_for_plotting["Sample CI Low"] = None
+            metrics_df_for_plotting["Sample CI High"] = None
 
         # Create plots
         if (
-            "Bootstrap_CI_Low" in metrics_df_for_plotting.columns
-            and "Bootstrap_CI_High" in metrics_df_for_plotting.columns
+            "Bootstrap CI Low" in metrics_df_for_plotting.columns
+            and "Bootstrap CI High" in metrics_df_for_plotting.columns
         ):
             plot_aggregated_measures_bootstrap_cis(
                 metrics_df_for_plotting,
@@ -169,8 +173,8 @@ def compute_results(
             )
 
         if (
-            "Sample_CI_Low" in metrics_df_for_plotting.columns
-            and "Sample_CI_High" in metrics_df_for_plotting.columns
+            "Sample CI Low" in metrics_df_for_plotting.columns
+            and "Sample CI High" in metrics_df_for_plotting.columns
         ):
             plot_aggregated_measures_sample_cis(
                 metrics_df_for_plotting,
@@ -201,16 +205,16 @@ def compute_results(
         combined_analysis_df.groupby("Metric")
         .agg(
             {
-                "Pearson_Rho": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
-                "Pearson_P": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
-                "Spearman_Rho": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
-                "Spearman_P": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
+                "Pearson Rho": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
+                "Pearson P": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
+                "Spearman Rho": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
+                "Spearman P": lambda x: np.nanmean(x) if len(x) > 0 else np.nan,
             }
         )
         .reset_index()
         if not combined_analysis_df.empty
         else pd.DataFrame(
-            columns=["Metric", "Pearson_Rho", "Pearson_P", "Spearman_Rho", "Spearman_P"]
+            columns=["Metric", "Pearson Rho", "Pearson P", "Spearman Rho", "Spearman P"]
         )
     )
 
@@ -245,9 +249,20 @@ def compute_results(
     # Extract plateau DataFrame
     plateau_df = (
         combined_analysis_df.pivot_table(
-            index="Metric", columns="Log", values="Plateau_n", aggfunc="first"
+            index="Metric", columns="Log", values="Plateau n", aggfunc="first"
         )
         if not combined_analysis_df.empty
+        and "Plateau n" in combined_analysis_df.columns
+        else pd.DataFrame()
+    )
+
+    # Extract plateau_found DataFrame
+    plateau_found_df = (
+        combined_analysis_df.pivot_table(
+            index="Metric", columns="Log", values="Plateau Found", aggfunc="first"
+        )
+        if not combined_analysis_df.empty
+        and "Plateau Found" in combined_analysis_df.columns
         else pd.DataFrame()
     )
 
@@ -265,6 +280,7 @@ def compute_results(
         analysis_per_log=analysis_per_log,
         correlations_df=mean_correlations_df,
         plateau_df=plateau_df,
+        plateau_found_df=plateau_found_df,
         out_csv_path=master_csv_path,
         metric_columns=include_metrics,
         ref_sizes=REF_SIZES,
@@ -309,6 +325,7 @@ def compute_results(
             out_dir=str(latex_out_dir),
             scenario_key=scenario_name,
             scenario_title=clear_name,
+            correlation=CORRELATION_TYPE,
         )
         print(f"Master LaTeX tables saved to: {latex_out_dir}")
     except Exception as e:

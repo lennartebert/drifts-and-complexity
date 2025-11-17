@@ -10,37 +10,15 @@ import pandas as pd
 
 from .helpers import TAU
 
-# Centralized header mapping for all outputs
-HEADER_MAP = {
-    "metric": "Metric",
-    "basis": "Basis",
-    "log": "Log",
-    "Pearson_rho": "Pearson_Rho",
-    "Pearson_p": "Pearson_P",
-    "Spearman_rho": "Spearman_Rho",
-    "Spearman_p": "Spearman_P",
-    "delta_rho": "Delta_Rho",
-    "RelCI_50": "RelCI_50",
-    "RelCI_250": "RelCI_250",
-    "RelCI_500": "RelCI_500",
-    "plateau_n": "Plateau_n",
-    "Pearson_improvement": "Pearson_Improvement",
-    "Spearman_improvement": "Spearman_Improvement",
-    # Add more if needed
-}
-
 
 def read_master_csv(path: Union[str, Path]) -> Optional[pd.DataFrame]:
-    """Read a master_table CSV and normalize headers to canonical column names.
-
-    This maps friendly output headers (from HEADER_MAP) back to the canonical
-    internal column names used throughout the code (e.g., 'Metric' -> 'metric').
+    """Read a master_table CSV file.
 
     Args:
         path: Path to the CSV file (can be str or Path object).
 
     Returns:
-        DataFrame with normalized column names, or None if file not found.
+        DataFrame with column names as stored in CSV, or None if file not found.
     """
     # Convert Path to string if needed
     path_str = str(path) if isinstance(path, Path) else path
@@ -50,12 +28,7 @@ def read_master_csv(path: Union[str, Path]) -> Optional[pd.DataFrame]:
         return None
 
     try:
-        df = pd.read_csv(path_str)
-        inv_header_map = {v: k for k, v in HEADER_MAP.items()}
-        try:
-            return df.rename(columns=inv_header_map)
-        except Exception:
-            return df
+        return pd.read_csv(path_str)
     except FileNotFoundError:
         return None
 
@@ -72,8 +45,9 @@ def _escape_latex(text: Any) -> str:
 
 def build_and_save_master_csv(
     analysis_per_log: Dict[str, pd.DataFrame],
-    correlations_df: pd.DataFrame,  # columns: Metric, Pearson_Rho, Pearson_P, Spearman_Rho, Spearman_P
+    correlations_df: pd.DataFrame,  # columns: Metric, Pearson Rho, Pearson P, Spearman Rho, Spearman P
     plateau_df: pd.DataFrame,  # rows=metrics, cols=logs -> plateau n (or NaN)
+    plateau_found_df: pd.DataFrame,  # rows=metrics, cols=logs -> plateau found (bool)
     out_csv_path: str,
     metric_columns: Optional[List[str]] = None,
     ref_sizes: List[int] = [50, 250, 500],
@@ -84,9 +58,10 @@ def build_and_save_master_csv(
     """Build a master table CSV with all metrics, logs, and shape diagnostics.
 
     Args:
-        analysis_per_log: Dict mapping log names to analysis DataFrames with index (Metric, Sample_Size).
-        correlations_df: DataFrame with columns: Metric, Pearson_Rho, Pearson_P, Spearman_Rho, Spearman_P.
+        analysis_per_log: Dict mapping log names to analysis DataFrames with index (Metric, Sample Size).
+        correlations_df: DataFrame with columns: Metric, Pearson Rho, Pearson P, Spearman Rho, Spearman P.
         plateau_df: DataFrame with metrics as rows, logs as columns, values are plateau n (or NaN).
+        plateau_found_df: DataFrame with metrics as rows, logs as columns, values are plateau found (bool).
         out_csv_path: Path to save the CSV file.
         metric_columns: Optional list of metric names to include.
         ref_sizes: List of reference sizes for RelCI columns.
@@ -124,23 +99,23 @@ def build_and_save_master_csv(
 
             # Get correlation values (should be same for all logs for a given metric)
             pearson_rho = (
-                metric_corr["Pearson_Rho"].iloc[0]
-                if "Pearson_Rho" in metric_corr.columns
+                metric_corr["Pearson Rho"].iloc[0]
+                if "Pearson Rho" in metric_corr.columns
                 else None
             )
             spearman_rho = (
-                metric_corr["Spearman_Rho"].iloc[0]
-                if "Spearman_Rho" in metric_corr.columns
+                metric_corr["Spearman Rho"].iloc[0]
+                if "Spearman Rho" in metric_corr.columns
                 else None
             )
             pearson_p = (
-                metric_corr["Pearson_P"].iloc[0]
-                if "Pearson_P" in metric_corr.columns
+                metric_corr["Pearson P"].iloc[0]
+                if "Pearson P" in metric_corr.columns
                 else None
             )
             spearman_p = (
-                metric_corr["Spearman_P"].iloc[0]
-                if "Spearman_P" in metric_corr.columns
+                metric_corr["Spearman P"].iloc[0]
+                if "Spearman P" in metric_corr.columns
                 else None
             )
 
@@ -149,24 +124,24 @@ def build_and_save_master_csv(
             if log in analysis_per_log:
                 analysis_df = analysis_per_log[log]
                 analysis_reset = analysis_df.reset_index()
-                if "Sample_CI_Rel_Width" in analysis_reset.columns:
+                if "Sample CI Rel Width" in analysis_reset.columns:
                     for ref_size in ref_sizes:
-                        col_name = f"RelCI_{ref_size}"
-                        # Find row where Sample_Size matches ref_size and Metric matches m
+                        col_name = f"RelCI {ref_size}"
+                        # Find row where Sample Size matches ref_size and Metric matches m
                         size_rows = analysis_reset[
-                            (analysis_reset["Sample_Size"] == ref_size)
+                            (analysis_reset["Sample Size"] == ref_size)
                             & (analysis_reset["Metric"] == m)
                         ]
                         if len(size_rows) > 0:
-                            relci[col_name] = size_rows["Sample_CI_Rel_Width"].iloc[0]
+                            relci[col_name] = size_rows["Sample CI Rel Width"].iloc[0]
                         else:
                             relci[col_name] = np.nan
                 else:
                     for ref_size in ref_sizes:
-                        relci[f"RelCI_{ref_size}"] = np.nan
+                        relci[f"RelCI {ref_size}"] = np.nan
             else:
                 for ref_size in ref_sizes:
-                    relci[f"RelCI_{ref_size}"] = np.nan
+                    relci[f"RelCI {ref_size}"] = np.nan
 
             # Get plateau n for this metric-log combination
             if m in plateau_df.index and log in plateau_df.columns:
@@ -174,34 +149,59 @@ def build_and_save_master_csv(
             else:
                 plateau = np.nan
 
-            # Compute Delta_PearsonSpearman
+            # Get plateau found for this metric-log combination
+            if (
+                not plateau_found_df.empty
+                and m in plateau_found_df.index
+                and log in plateau_found_df.columns
+            ):
+                plateau_found = plateau_found_df.loc[m, log]
+            else:
+                plateau_found = False
+
+            # Compute Delta Pearson Spearman
             delta_pearson_spearman = (
                 abs(pearson_rho - spearman_rho)
                 if (pearson_rho is not None and spearman_rho is not None)
                 else np.nan
             )
 
-            # Compute Shape and Preferred_Correlation
+            # Compute Shape and Preferred Correlation
             shape = "Linear" if delta_pearson_spearman <= TAU else "Asymptotic"
             preferred_correlation = "Pearson" if shape == "Linear" else "Spearman"
+
+            # Format Plateau Reached column
+            if plateau_found:
+                if pd.notna(plateau) and np.isfinite(plateau):
+                    # Format as integer if it's a whole number
+                    plateau_int = (
+                        int(plateau) if float(int(plateau)) == plateau else plateau
+                    )
+                    plateau_reached = f"Y ({plateau_int})"
+                else:
+                    plateau_reached = "Y"
+            else:
+                plateau_reached = "N"
 
             # Build row
             row = {
                 "Metric": m,
                 "Basis": basis,
                 "Log": str(log),
-                "Pearson_Rho": pearson_rho,
-                "Spearman_Rho": spearman_rho,
-                "Pearson_P": pearson_p,
-                "Spearman_P": spearman_p,
+                "Pearson Rho": pearson_rho,
+                "Spearman Rho": spearman_rho,
+                "Pearson P": pearson_p,
+                "Spearman P": spearman_p,
                 "n": int(n) if n is not None and pd.notna(n) else None,
-                "N_pop": int(N_pop) if N_pop is not None and pd.notna(N_pop) else None,
-                "Delta_PearsonSpearman": delta_pearson_spearman,
+                "N Pop": int(N_pop) if N_pop is not None and pd.notna(N_pop) else None,
+                "Delta Pearson Spearman": delta_pearson_spearman,
                 "Shape": shape,
-                "Preferred_Correlation": preferred_correlation,
+                "Preferred Correlation": preferred_correlation,
                 **relci,
-                "Plateau_n": plateau if np.isfinite(plateau) else np.nan,
-                "ts": datetime.now().isoformat(),
+                "Plateau n": plateau if np.isfinite(plateau) else np.nan,
+                "Plateau Found": plateau_found,
+                "Plateau Reached": plateau_reached,
+                "Timestamp": datetime.now().isoformat(),
             }
             rows.append(row)
 
@@ -209,26 +209,28 @@ def build_and_save_master_csv(
         raise ValueError("No rows produced; check inputs and metric names.")
 
     # Build DataFrame with exact column order
-    ref_cols = [f"RelCI_{n}" for n in ref_sizes]
+    ref_cols = [f"RelCI {n}" for n in ref_sizes]
     cols_order = (
         [
             "Metric",
             "Basis",
             "Log",
-            "Pearson_Rho",
-            "Spearman_Rho",
-            "Pearson_P",
-            "Spearman_P",
+            "Pearson Rho",
+            "Spearman Rho",
+            "Pearson P",
+            "Spearman P",
             "n",
-            "N_pop",
-            "Delta_PearsonSpearman",
+            "N Pop",
+            "Delta Pearson Spearman",
             "Shape",
-            "Preferred_Correlation",
+            "Preferred Correlation",
         ]
         + ref_cols
         + [
-            "Plateau_n",
-            "ts",
+            "Plateau n",
+            "Plateau Found",
+            "Plateau Reached",
+            "Timestamp",
         ]
     )
 
@@ -237,15 +239,15 @@ def build_and_save_master_csv(
 
     # Round float columns to 10 decimal places in DataFrame to avoid precision issues
     float_cols = [
-        "Pearson_Rho",
-        "Spearman_Rho",
-        "Pearson_P",
-        "Spearman_P",
-        "Delta_PearsonSpearman",
-        "RelCI_50",
-        "RelCI_250",
-        "RelCI_500",
-        "Plateau_n",
+        "Pearson Rho",
+        "Spearman Rho",
+        "Pearson P",
+        "Spearman P",
+        "Delta Pearson Spearman",
+        "RelCI 50",
+        "RelCI 250",
+        "RelCI 500",
+        "Plateau n",
     ]
     for col in float_cols:
         if col in table_df.columns:
@@ -267,7 +269,47 @@ def build_and_save_master_csv(
         for _, row in means.iterrows():
             mean_row = row.to_dict()
             mean_row["Log"] = "MEAN"
-            mean_row["ts"] = datetime.now().isoformat()
+            mean_row["Timestamp"] = datetime.now().isoformat()
+
+            # Special handling for Plateau Found and Plateau n
+            metric = mean_row["Metric"]
+            basis = mean_row["Basis"]
+            metric_basis_rows = table_df[
+                (table_df["Metric"] == metric)
+                & (table_df["Basis"] == basis)
+                & (table_df["Log"] != "MEAN")
+            ]
+
+            # Special handling for Plateau Found: calculate share as "X / TOTAL"
+            if (
+                "Plateau Found" in metric_basis_rows.columns
+                and len(metric_basis_rows) > 0
+            ):
+                # Count True values and total non-null values
+                plateau_found_values = metric_basis_rows["Plateau Found"]
+                # Filter out NaN values and count True values
+                valid_values = plateau_found_values[plateau_found_values.notna()]
+                total_count = len(valid_values)
+                # Sum boolean values (True=1, False=0)
+                found_count = int(valid_values.sum()) if total_count > 0 else 0
+                mean_row["Plateau Found"] = (
+                    f"{found_count} / {total_count}" if total_count > 0 else ""
+                )
+            else:
+                mean_row["Plateau Found"] = ""
+
+            # Special handling for Plateau Reached: for mean rows, use value from Plateau Found
+            if "Plateau Found" in mean_row:
+                mean_row["Plateau Reached"] = mean_row["Plateau Found"]
+            else:
+                mean_row["Plateau Reached"] = ""
+
+            # Special handling for Plateau n: set to NaN if any value in the group is NaN
+            if "Plateau n" in metric_basis_rows.columns and len(metric_basis_rows) > 0:
+                plateau_n_values = metric_basis_rows["Plateau n"]
+                # If any value is NaN, set mean to NaN
+                if plateau_n_values.isna().any():
+                    mean_row["Plateau n"] = np.nan
 
             # Set non-numeric columns appropriately
             for col in table_df.columns:
@@ -339,8 +381,8 @@ def build_and_save_master_csv(
         if col in csv_df.columns:
             csv_df[col] = csv_df[col].apply(format_float)
 
-    # Format n and N_pop as integers (or empty string if NaN)
-    for col in ["n", "N_pop"]:
+    # Format n and N Pop as integers (or empty string if NaN)
+    for col in ["n", "N Pop"]:
         if col in csv_df.columns:
             csv_df[col] = csv_df[col].apply(
                 lambda x: str(int(float(x))) if pd.notna(x) and str(x) != "" else ""
@@ -384,20 +426,16 @@ def write_means_only_table_from_master_csv(
             "Master CSV is missing '_is_mean'. Please generate with the full function first."
         )
 
-    # Map capitalized headers back to canonical names for processing
-    inv_header_map = {v: k for k, v in HEADER_MAP.items()}
-    df = df.rename(columns=inv_header_map)
-
     # Filter to mean rows only
     m = df[df["_is_mean"] == True].copy()
 
-    # Keep columns: metric, basis, (drop log), then the numeric/result columns in original order
+    # Keep columns: Metric, Basis, (drop Log), then the numeric/result columns in original order
     # Identify likely result columns
     result_cols = [
-        c for c in m.columns if c not in {"metric", "basis", "log", "_is_mean"}
+        c for c in m.columns if c not in {"Metric", "Basis", "Log", "_is_mean"}
     ]
     # Rebuild ordered columns
-    cols = ["metric", "basis"] + result_cols
+    cols = ["Metric", "Basis"] + result_cols
     m = m[cols]
 
     # ---- Format values: always 4 decimals for numeric, no exponent ----
@@ -415,7 +453,7 @@ def write_means_only_table_from_master_csv(
 
     # ---- Bold rho and p in means LaTeX if p < 0.05 for both Pearson and Spearman ----
     for corr_type in ["Pearson", "Spearman"]:
-        p_col = f"{corr_type}_p"
+        p_col = f"{corr_type} P"
         if p_col in m.columns:
             # use numeric p values before formatting where possible
             p_numeric = pd.to_numeric(
@@ -427,7 +465,7 @@ def write_means_only_table_from_master_csv(
             for idx, is_sig in sig_mask.items():
                 if not is_sig:
                     continue
-                for col in (f"{corr_type}_rho", p_col):
+                for col in (f"{corr_type} Rho", p_col):
                     if col in m.columns:
                         val = m.at[idx, col]
                         if val not in (None, "", np.nan):
@@ -438,7 +476,7 @@ def write_means_only_table_from_master_csv(
     # Note: share_improved columns are not in CSV, but improvement column contains
     # the formatted share value (4 decimals) for mean rows
     for corr_type in ["Pearson", "Spearman"]:
-        improvement_col = f"{corr_type}_improvement"
+        improvement_col = f"{corr_type} Improvement"
         if improvement_col not in m.columns:
             continue
         # For mean rows, improvement column contains formatted share value (e.g., "0.1234")
@@ -461,25 +499,23 @@ def write_means_only_table_from_master_csv(
         if c not in numeric_cols:
             m[c] = m[c].map(_escape_latex)
 
-    # Apply central header mapping and escape for LaTeX
-    m.columns = [_escape_latex(HEADER_MAP.get(c, c)) for c in m.columns]
+    # Apply LaTeX column name mapping
+    from .constants import COLUMN_NAMES_TO_LATEX_MAP
+
+    m.columns = [COLUMN_NAMES_TO_LATEX_MAP.get(c, _escape_latex(c)) for c in m.columns]
 
     # ---- Save CSV (plain, un-italicized, same column order) ----
-    # Read the master CSV (headers are likely mapped to HEADER_MAP); map back
-    # to canonical names for processing, then re-apply HEADER_MAP for output.
     csv_plain = read_master_csv(master_csv_path)
     if csv_plain is None:
         raise ValueError(
             f"Master CSV not found at {master_csv_path}. Please generate with the full function first."
         )
     csv_means = csv_plain[csv_plain["_is_mean"] == True].copy()
-    csv_means = csv_means.drop(columns=["log", "_is_mean"], errors="ignore")
-    csv_cols = ["metric", "basis"] + [
-        c for c in csv_means.columns if c not in {"metric", "basis"}
+    csv_means = csv_means.drop(columns=["Log", "_is_mean"], errors="ignore")
+    csv_cols = ["Metric", "Basis"] + [
+        c for c in csv_means.columns if c not in {"Metric", "Basis"}
     ]
     csv_means = csv_means[csv_cols]
-    # Re-apply header mapping so the output CSV has the friendly headers
-    csv_means.columns = [HEADER_MAP.get(c, c) for c in csv_means.columns]
     csv_means.to_csv(means_csv_path, index=False)
 
     # ---- Build LaTeX table ----
@@ -559,12 +595,12 @@ def write_latex_master_tables(
             repeat_basis = (basis == prev_basis) if prev_basis is not None else False
 
             # Format values
-            pearson_rho = format_num(row.get("Pearson_Rho", ""))
-            spearman_rho = format_num(row.get("Spearman_Rho", ""))
-            delta_pearson_spearman = format_num(row.get("Delta_PearsonSpearman", ""))
+            pearson_rho = format_num(row.get("Pearson Rho", ""))
+            spearman_rho = format_num(row.get("Spearman Rho", ""))
+            delta_pearson_spearman = format_num(row.get("Delta Pearson Spearman", ""))
             shape = str(row.get("Shape", "")) if not is_mean else ""
             preferred_correlation = (
-                str(row.get("Preferred_Correlation", "")) if not is_mean else ""
+                str(row.get("Preferred Correlation", "")) if not is_mean else ""
             )
 
             # Escape LaTeX special characters
@@ -576,10 +612,10 @@ def write_latex_master_tables(
 
             # Build row
             if is_means_only:
-                # Means only table: Metric, Basis, Pearson_Rho, Spearman_Rho, Delta_PearsonSpearman
+                # Means only table: Metric, Basis, Pearson Rho, Spearman Rho, Delta Pearson Spearman
                 row_str = f"{metric_str} & {basis_str} & {pearson_rho} & {spearman_rho} & {delta_pearson_spearman} \\\\"
             else:
-                # Full table: Metric, Basis, Log, Pearson_Rho, Spearman_Rho, Delta_PearsonSpearman, Shape, Preferred_Correlation
+                # Full table: Metric, Basis, Log, Pearson Rho, Spearman Rho, Delta Pearson Spearman, Shape, Preferred Correlation
                 row_str = f"{metric_str} & {basis_str} & {log_str} & {pearson_rho} & {spearman_rho} & {delta_pearson_spearman} & {shape_str} & {preferred_correlation_str} \\\\"
 
             # Italicize MEAN rows
@@ -729,21 +765,21 @@ def write_latex_comparison_tables(
             repeat_basis = (basis == prev_basis) if prev_basis is not None else False
 
             # Format values
-            shape_before = str(row.get("Shape_before", "")) if not is_mean else ""
-            shape_after = str(row.get("Shape_after", "")) if not is_mean else ""
+            shape_before = str(row.get("Shape Before", "")) if not is_mean else ""
+            shape_after = str(row.get("Shape After", "")) if not is_mean else ""
             preferred_correlation_before = (
-                str(row.get("Preferred_Correlation_before", "")) if not is_mean else ""
+                str(row.get("Preferred Correlation Before", "")) if not is_mean else ""
             )
             preferred_correlation_after = (
-                str(row.get("Preferred_Correlation_after", "")) if not is_mean else ""
+                str(row.get("Preferred Correlation After", "")) if not is_mean else ""
             )
-            chosen_correlation = str(row.get("Chosen_Correlation", ""))
-            chosen_rho_before = format_num(row.get("Chosen_Rho_before", ""))
-            chosen_rho_after = format_num(row.get("Chosen_Rho_after", ""))
-            delta_chosen_rho = format_num(row.get("Abs_Delta_Chosen_Rho", ""))
-            z_test_p = format_num(row.get("Z_test_p", ""))
+            chosen_correlation = str(row.get("Chosen Correlation", ""))
+            chosen_rho_before = format_num(row.get("Chosen Rho Before", ""))
+            chosen_rho_after = format_num(row.get("Chosen Rho After", ""))
+            delta_chosen_rho = format_num(row.get("Abs Delta Chosen Rho", ""))
+            z_test_p = format_num(row.get("Z Test P", ""))
             significant_improvement = format_sig_improvement(
-                row.get("Significant_Improvement", ""), is_mean
+                row.get("Significant Improvement", ""), is_mean
             )
 
             # Escape LaTeX special characters
@@ -760,10 +796,10 @@ def write_latex_comparison_tables(
 
             # Build row
             if is_means_only:
-                # Means only table: Metric, Basis, Chosen_Rho_before, Chosen_Rho_after, Abs_Delta_Chosen_Rho, Significant_Improvement
+                # Means only table: Metric, Basis, Chosen Rho Before, Chosen Rho After, Abs Delta Chosen Rho, Significant Improvement
                 row_str = f"{metric_str} & {basis_str} & {chosen_rho_before} & {chosen_rho_after} & {delta_chosen_rho} & {significant_improvement} \\\\"
             else:
-                # Full table: Metric, Basis, Log, Shape_before, Shape_after, Preferred_Correlation_before, Preferred_Correlation_after, Chosen_Correlation, Chosen_Rho_before, Chosen_Rho_after, Abs_Delta_Chosen_Rho, Z_test_p, Significant_Improvement
+                # Full table: Metric, Basis, Log, Shape Before, Shape After, Preferred Correlation Before, Preferred Correlation After, Chosen Correlation, Chosen Rho Before, Chosen Rho After, Abs Delta Chosen Rho, Z Test P, Significant Improvement
                 row_str = f"{metric_str} & {basis_str} & {log_str} & {shape_before_str} & {shape_after_str} & {preferred_correlation_before_str} & {preferred_correlation_after_str} & {chosen_correlation_str} & {chosen_rho_before} & {chosen_rho_after} & {delta_chosen_rho} & {z_test_p} & {significant_improvement} \\\\"
 
             # Italicize MEAN rows

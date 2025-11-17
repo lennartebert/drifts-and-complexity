@@ -284,7 +284,7 @@ def _compute_one_window_task(
     """
     One task = compute metrics + CIs for a single (window_size, sample_id, window).
     Returns long format rows: one row per metric with columns:
-      - Sample_Size, Sample_ID, Metric, Value, Bootstrap_CI_Low, Bootstrap_CI_High
+      - Sample Size, Sample ID, Metric, Value, Bootstrap CI Low, Bootstrap CI High
     """
     (
         window_size,
@@ -313,18 +313,18 @@ def _compute_one_window_task(
     rows = []
     for metric, value in measures.items():
         row: Dict[str, Any] = {
-            "Sample_Size": window_size,
-            "Sample_ID": sample_id,
+            "Sample Size": window_size,
+            "Sample ID": sample_id,
             "Metric": metric,
             "Value": value,
         }
         # Add bootstrap CIs if available
         if metric in cis and cis[metric] is not None:
-            row["Bootstrap_CI_Low"] = cis[metric].get("low")
-            row["Bootstrap_CI_High"] = cis[metric].get("high")
+            row["Bootstrap CI Low"] = cis[metric].get("low")
+            row["Bootstrap CI High"] = cis[metric].get("high")
         else:
-            row["Bootstrap_CI_Low"] = None
-            row["Bootstrap_CI_High"] = None
+            row["Bootstrap CI Low"] = None
+            row["Bootstrap CI High"] = None
         rows.append(row)
 
     return rows
@@ -349,11 +349,11 @@ def compute_metrics_for_samples(
 
     The returned DataFrame has columns:
       - Metric: metric name
-      - Sample_Size: window size
-      - Sample_ID: sample/replicate identifier
+      - Sample Size: window size
+      - Sample ID: sample/replicate identifier
       - Value: the metric value
-      - Bootstrap_CI_Low: lower bootstrap CI bound (if bootstrap_sampler provided)
-      - Bootstrap_CI_High: upper bootstrap CI bound (if bootstrap_sampler provided)
+      - Bootstrap CI Low: lower bootstrap CI bound (if bootstrap_sampler provided)
+      - Bootstrap CI High: upper bootstrap CI bound (if bootstrap_sampler provided)
 
     Note: Bootstrap CIs are included as they are computed during window processing.
     Other analysis (sample CIs, correlations, plateau detection) should be done
@@ -370,7 +370,7 @@ def compute_metrics_for_samples(
     in alphabetical order.
 
     Returns:
-        Single DataFrame in long format with Metric and Sample_Size as index columns.
+        Single DataFrame in long format with Metric and Sample Size as index columns.
     """
     # Materialize the sample iterable (sampling returns a finite set)
     items = list(window_samples)
@@ -419,14 +419,14 @@ def compute_metrics_for_samples(
         metric_order = {m: i for i, m in enumerate(include_list)}
         long_df["_metric_order"] = long_df["Metric"].map(metric_order)
         long_df = long_df.sort_values(
-            by=["_metric_order", "Sample_Size", "Sample_ID"]
+            by=["_metric_order", "Sample Size", "Sample ID"]
         ).drop(columns=["_metric_order"])
     else:
         # Sort by metric name, then sample size, then sample ID
-        long_df = long_df.sort_values(by=["Metric", "Sample_Size", "Sample_ID"])
+        long_df = long_df.sort_values(by=["Metric", "Sample Size", "Sample ID"])
 
-    # Set index to Metric and Sample_Size
-    long_df = long_df.set_index(["Metric", "Sample_Size"]).sort_index()
+    # Set index to Metric and Sample Size
+    long_df = long_df.set_index(["Metric", "Sample Size"]).sort_index()
 
     return long_df
 
@@ -445,8 +445,8 @@ def compute_analysis_for_metrics(
     Parameters
     ----------
     metrics_df : pd.DataFrame
-        Long format DataFrame with columns: Sample_Size, Sample_ID, Metric, Value
-        (and optionally Bootstrap_CI_Low, Bootstrap_CI_High).
+        Long format DataFrame with columns: Sample Size, Sample ID, Metric, Value
+        (and optionally Bootstrap CI Low, Bootstrap CI High).
         May have a MultiIndex (will be reset if present).
     sample_confidence_interval_extractor : Optional[SampleConfidenceIntervalExtractor]
         If provided, computes sample confidence intervals across samples.
@@ -455,16 +455,17 @@ def compute_analysis_for_metrics(
 
     Returns
     -------
-    pd.DataFrame with index (Metric, Sample_Size) and columns:
-        - Mean_Value: mean metric value per (Metric, Sample_Size)
-        - Sample_CI_Low: lower sample CI bound (if extractor provided)
-        - Sample_CI_High: upper sample CI bound (if extractor provided)
-        - Sample_CI_Rel_Width: relative CI width (if extractor provided)
-        - Pearson_Rho: Pearson correlation coefficient (constant per Metric)
-        - Pearson_P: Pearson p-value (constant per Metric)
-        - Spearman_Rho: Spearman correlation coefficient (constant per Metric)
-        - Spearman_P: Spearman p-value (constant per Metric)
-        - Plateau_n: sample size where plateau is reached (constant per Metric)
+    pd.DataFrame with index (Metric, Sample Size) and columns:
+        - Mean Value: mean metric value per (Metric, Sample Size)
+        - Sample CI Low: lower sample CI bound (if extractor provided)
+        - Sample CI High: upper sample CI bound (if extractor provided)
+        - Sample CI Rel Width: relative CI width (if extractor provided)
+        - Pearson Rho: Pearson correlation coefficient (constant per Metric)
+        - Pearson P: Pearson p-value (constant per Metric)
+        - Spearman Rho: Spearman correlation coefficient (constant per Metric)
+        - Spearman P: Spearman p-value (constant per Metric)
+        - Plateau n: sample size where plateau is reached (constant per Metric)
+        - Plateau Found: boolean indicating if plateau was found (constant per Metric)
     """
     from utils import helpers
 
@@ -484,10 +485,10 @@ def compute_analysis_for_metrics(
 
     # 1. Compute mean values per metric and sample size (base structure)
     analysis_df = (
-        metrics_df.groupby(["Sample_Size", "Metric"], as_index=True)["Value"]
+        metrics_df.groupby(["Sample Size", "Metric"], as_index=True)["Value"]
         .mean()
         .reset_index()
-        .rename(columns={"Value": "Mean_Value"})
+        .rename(columns={"Value": "Mean Value"})
     )
 
     # 2. Compute sample confidence intervals if extractor provided
@@ -498,30 +499,30 @@ def compute_analysis_for_metrics(
         analysis_df = analysis_df.merge(
             sample_ci_df[
                 [
-                    "Sample_Size",
+                    "Sample Size",
                     "Metric",
-                    "Sample_CI_Low",
-                    "Sample_CI_High",
-                    "Sample_CI_Rel_Width",
+                    "Sample CI Low",
+                    "Sample CI High",
+                    "Sample CI Rel Width",
                 ]
             ],
-            on=["Sample_Size", "Metric"],
+            on=["Sample Size", "Metric"],
             how="left",
         )
     else:
-        analysis_df["Sample_CI_Low"] = None
-        analysis_df["Sample_CI_High"] = None
-        analysis_df["Sample_CI_Rel_Width"] = None
+        analysis_df["Sample CI Low"] = None
+        analysis_df["Sample CI High"] = None
+        analysis_df["Sample CI Rel Width"] = None
 
     # 3. Compute correlations (per metric, not per sample size)
     correlations_df = helpers.compute_correlations_from_long_format(metrics_df)
     if include_metrics is not None:
         correlations_df = correlations_df[correlations_df["Metric"].isin(metric_list)]
 
-    # Merge correlations - they're constant per metric, so broadcast across all Sample_Size values
+    # Merge correlations - they're constant per metric, so broadcast across all Sample Size values
     analysis_df = analysis_df.merge(
         correlations_df[
-            ["Metric", "Pearson_Rho", "Pearson_P", "Spearman_Rho", "Spearman_P"]
+            ["Metric", "Pearson Rho", "Pearson P", "Spearman Rho", "Spearman P"]
         ],
         on="Metric",
         how="left",
@@ -530,11 +531,11 @@ def compute_analysis_for_metrics(
     # 4. Compute plateau detection (based on mean values, per metric)
     # Convert to wide format for plateau detection
     mean_values_wide = analysis_df.pivot_table(
-        index="Sample_Size",
+        index="Sample Size",
         columns="Metric",
-        values="Mean_Value",
+        values="Mean Value",
     ).reset_index()
-    mean_values_wide = mean_values_wide.rename(columns={"Sample_Size": "sample_size"})
+    mean_values_wide = mean_values_wide.rename(columns={"Sample Size": "sample_size"})
     mean_values_wide["sample_id"] = 0
 
     plateau_df = helpers.detect_plateau_df(
@@ -547,24 +548,45 @@ def compute_analysis_for_metrics(
     )
 
     # Extract plateau values and merge (constant per metric)
-    if "log" in plateau_df.columns:
-        # plateau_df has metrics as index (unnamed), "log" as column
-        # Convert to DataFrame with Metric column
-        plateau_series = plateau_df["log"].reset_index()
-        # The first column is the index (metrics), rename it to "Metric"
-        first_col = plateau_series.columns[0]
-        plateau_series = plateau_series.rename(
-            columns={first_col: "Metric", "log": "Plateau_n"}
-        )
-        analysis_df = analysis_df.merge(
-            plateau_series[["Metric", "Plateau_n"]],
-            on="Metric",
-            how="left",
-        )
-    else:
-        analysis_df["Plateau_n"] = None
+    # plateau_df now has MultiIndex columns: (log_name, 'Plateau n') and (log_name, 'Plateau Found')
+    if isinstance(plateau_df.columns, pd.MultiIndex):
+        # Extract Plateau n and Plateau Found columns for the "log" log name
+        if ("log", "Plateau n") in plateau_df.columns:
+            # Extract the Series and create a clean DataFrame
+            plateau_n_series = plateau_df[("log", "Plateau n")]
+            plateau_n_df = pd.DataFrame(
+                {"Metric": plateau_n_series.index, "Plateau n": plateau_n_series.values}
+            )
+            analysis_df = analysis_df.merge(
+                plateau_n_df,
+                on="Metric",
+                how="left",
+            )
+        else:
+            analysis_df["Plateau n"] = None
 
-    # Set index to Metric and Sample_Size
-    analysis_df = analysis_df.set_index(["Metric", "Sample_Size"]).sort_index()
+        if ("log", "Plateau Found") in plateau_df.columns:
+            # Extract the Series and create a clean DataFrame
+            plateau_found_series = plateau_df[("log", "Plateau Found")]
+            plateau_found_df = pd.DataFrame(
+                {
+                    "Metric": plateau_found_series.index,
+                    "Plateau Found": plateau_found_series.values,
+                }
+            )
+            analysis_df = analysis_df.merge(
+                plateau_found_df,
+                on="Metric",
+                how="left",
+            )
+        else:
+            analysis_df["Plateau Found"] = False
+    else:
+        # Fallback for old format (shouldn't happen with new code)
+        analysis_df["Plateau n"] = None
+        analysis_df["Plateau Found"] = False
+
+    # Set index to Metric and Sample Size
+    analysis_df = analysis_df.set_index(["Metric", "Sample Size"]).sort_index()
 
     return analysis_df

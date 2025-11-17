@@ -97,7 +97,7 @@ def plot_aggregated_measures_bootstrap_cis(
     Parameters
     ----------
     long_df : DataFrame in long format with columns:
-              ['Sample_Size', 'Sample_ID', 'Metric', 'Value', 'Bootstrap_CI_Low', 'Bootstrap_CI_High']
+              ['Sample Size', 'Sample ID', 'Metric', 'Value', 'Bootstrap CI Low', 'Bootstrap CI High']
               May have a MultiIndex (will be reset if present).
     out_path    : File path to save the figure (PNG, PDF, etc.). Parent dir will be created.
     agg         : 'mean' or 'median' — which center to plot
@@ -127,12 +127,12 @@ def plot_aggregated_measures_bootstrap_cis(
 
     # Check required columns
     required = {
-        "Sample_Size",
-        "Sample_ID",
+        "Sample Size",
+        "Sample ID",
         "Metric",
         "Value",
-        "Bootstrap_CI_Low",
-        "Bootstrap_CI_High",
+        "Bootstrap CI Low",
+        "Bootstrap CI High",
     }
     missing = required - set(long_df.columns)
     if missing:
@@ -185,43 +185,43 @@ def _create_bootstrap_ci_plot_long(
 ) -> str:
     """Helper function to create a single bootstrap CI plot for a set of measures from long format."""
 
-    # Group by Sample_Size and Metric, then aggregate across Sample_ID
+    # Group by Sample Size and Metric, then aggregate across Sample ID
     if agg == "mean":
         center = (
-            long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Value"]
+            long_df.groupby(["Sample Size", "Metric"], as_index=True)["Value"]
             .mean()
             .unstack("Metric")
         )
         low = (
-            long_df.groupby(["Sample_Size", "Metric"], as_index=True)[
-                "Bootstrap_CI_Low"
+            long_df.groupby(["Sample Size", "Metric"], as_index=True)[
+                "Bootstrap CI Low"
             ]
             .mean()
             .unstack("Metric")
         )
         high = (
-            long_df.groupby(["Sample_Size", "Metric"], as_index=True)[
-                "Bootstrap_CI_High"
+            long_df.groupby(["Sample Size", "Metric"], as_index=True)[
+                "Bootstrap CI High"
             ]
             .mean()
             .unstack("Metric")
         )
     else:  # median
         center = (
-            long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Value"]
+            long_df.groupby(["Sample Size", "Metric"], as_index=True)["Value"]
             .median()
             .unstack("Metric")
         )
         low = (
-            long_df.groupby(["Sample_Size", "Metric"], as_index=True)[
-                "Bootstrap_CI_Low"
+            long_df.groupby(["Sample Size", "Metric"], as_index=True)[
+                "Bootstrap CI Low"
             ]
             .median()
             .unstack("Metric")
         )
         high = (
-            long_df.groupby(["Sample_Size", "Metric"], as_index=True)[
-                "Bootstrap_CI_High"
+            long_df.groupby(["Sample Size", "Metric"], as_index=True)[
+                "Bootstrap CI High"
             ]
             .median()
             .unstack("Metric")
@@ -329,7 +329,7 @@ def plot_aggregated_measures_sample_cis(
     ----------
     long_df : pd.DataFrame
         Long format DataFrame with columns:
-        ['Sample_Size', 'Sample_ID', 'Metric', 'Value', 'Sample_CI_Low', 'Sample_CI_High']
+        ['Sample Size', 'Sample ID', 'Metric', 'Value', 'Sample CI Low', 'Sample CI High']
         May have a MultiIndex (will be reset if present).
     out_path : str
         File path to save the figure (PNG, PDF, etc.). Parent directories are created.
@@ -365,12 +365,12 @@ def plot_aggregated_measures_sample_cis(
 
     # Check required columns
     required = {
-        "Sample_Size",
-        "Sample_ID",
+        "Sample Size",
+        "Sample ID",
         "Metric",
         "Value",
-        "Sample_CI_Low",
-        "Sample_CI_High",
+        "Sample CI Low",
+        "Sample CI High",
     }
     missing = required - set(long_df.columns)
     if missing:
@@ -426,26 +426,26 @@ def _create_sample_ci_plot_long(
     # Aggregate center (mean/median) across samples for each size and metric
     if agg == "mean":
         center = (
-            long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Value"]
+            long_df.groupby(["Sample Size", "Metric"], as_index=True)["Value"]
             .mean()
             .unstack("Metric")
         )
     else:
         center = (
-            long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Value"]
+            long_df.groupby(["Sample Size", "Metric"], as_index=True)["Value"]
             .median()
             .unstack("Metric")
         )
 
-    # Sample CIs are already aggregated per Sample_Size (no Sample_ID), so just take first value
+    # Sample CIs are already aggregated per Sample Size (no Sample ID), so just take first value
     # and unstack to wide format
     low = (
-        long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Sample_CI_Low"]
+        long_df.groupby(["Sample Size", "Metric"], as_index=True)["Sample CI Low"]
         .first()
         .unstack("Metric")
     )
     high = (
-        long_df.groupby(["Sample_Size", "Metric"], as_index=True)["Sample_CI_High"]
+        long_df.groupby(["Sample Size", "Metric"], as_index=True)["Sample CI High"]
         .first()
         .unstack("Metric")
     )
