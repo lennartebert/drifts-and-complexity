@@ -267,6 +267,11 @@ def combine_analysis_with_means(
             ]
 
             # Special handling for Plateau Found: calculate share as "X / TOTAL"
+            # Initialize variables for use in Plateau Reached calculation
+            found_count = 0
+            total_count = 0
+            plateau_found_values = None
+
             if (
                 "Plateau Found" in metric_basis_rows.columns
                 and len(metric_basis_rows) > 0
@@ -285,8 +290,39 @@ def combine_analysis_with_means(
                 mean_row["Plateau Found"] = ""
 
             # Special handling for Plateau Reached: for mean rows, use value from Plateau Found
-            if "Plateau Found" in mean_row:
-                mean_row["Plateau Reached"] = mean_row["Plateau Found"]
+            # If all logs reached a plateau, also add the mean plateau n value
+            if "Plateau Found" in mean_row and mean_row["Plateau Found"]:
+                plateau_reached_str = mean_row["Plateau Found"]
+                # Check if all logs reached a plateau (found_count == total_count)
+                if (
+                    found_count == total_count
+                    and total_count > 0
+                    and plateau_found_values is not None
+                ):
+                    # Calculate mean of Plateau n values for logs that reached a plateau
+                    if "Plateau n" in metric_basis_rows.columns:
+                        # Filter to only logs that reached a plateau (same logic as found_count calculation)
+                        # Get the indices of rows where Plateau Found is True
+                        plateau_found_mask = plateau_found_values == True
+                        # Get corresponding Plateau n values
+                        plateau_n_values = metric_basis_rows["Plateau n"]
+                        plateau_n_for_found = plateau_n_values[plateau_found_mask]
+                        # Calculate mean, filtering out NaN values
+                        valid_plateau_n = plateau_n_for_found[
+                            plateau_n_for_found.notna()
+                        ]
+                        if len(valid_plateau_n) > 0:
+                            mean_plateau_n = valid_plateau_n.mean()
+                            # Format as integer if it's a whole number, otherwise as float
+                            if pd.notna(mean_plateau_n) and np.isfinite(mean_plateau_n):
+                                if float(mean_plateau_n) == int(mean_plateau_n):
+                                    mean_plateau_n_str = str(int(mean_plateau_n))
+                                else:
+                                    mean_plateau_n_str = f"{mean_plateau_n:.1f}"
+                                plateau_reached_str = (
+                                    f"{plateau_reached_str} (avg. {mean_plateau_n_str})"
+                                )
+                mean_row["Plateau Reached"] = plateau_reached_str
             else:
                 mean_row["Plateau Reached"] = ""
 

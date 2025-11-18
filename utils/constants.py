@@ -265,7 +265,7 @@ METRIC_NAMES_TO_LATEX_MAP = {
     "Min. Trace Length": "Min. Trace Length",
     "Avg. Trace Length": "Avg. Trace Length",
     "Max. Trace Length": "Max. Trace Length",
-    "Percentage of Distinct Traces": "% Distinct Traces",
+    "Percentage of Distinct Traces": "\\% Distinct Traces",
     "Average Distinct Activities per Trace": "Avg. Distinct Activities per Trace",
     "Structure": "Structure",
     "Estimated Number of Acyclic Paths": "Estimated \\# Acyclic Paths",

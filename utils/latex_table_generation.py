@@ -17,13 +17,30 @@ from .constants import (
 
 
 def _escape_latex(text: Any) -> str:
-    """Escape underscores in text, preserving \textit{...} wrappers."""
+    """Escape special LaTeX characters in text, preserving \textit{...} wrappers.
+
+    Escapes:
+    - Underscores: _ → \_
+    - Hash signs: # → \# (but not if already escaped as \#)
+    - Percent signs: % → \% (but not if already escaped as \%)
+    """
     if text is None or (isinstance(text, float) and pd.isna(text)):
         return ""
     s = str(text)
     if s.startswith("\\textit{") and s.endswith("}"):
         return s
-    return s.replace("_", "\\_")
+    # Escape special LaTeX characters, but avoid double-escaping
+    # Replace in reverse order to avoid interfering with already-escaped sequences
+    s = s.replace("_", "\\_")
+    # Escape # and % only if not already escaped
+    # Use a temporary marker to avoid double-escaping
+    s = s.replace("\\#", "__TEMP_HASH__")
+    s = s.replace("\\%", "__TEMP_PERCENT__")
+    s = s.replace("#", "\\#")
+    s = s.replace("%", "\\%")
+    s = s.replace("__TEMP_HASH__", "\\#")
+    s = s.replace("__TEMP_PERCENT__", "\\%")
+    return s
 
 
 def _format_num(x: Any, decimals: int = 4) -> str:
