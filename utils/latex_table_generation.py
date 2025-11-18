@@ -8,7 +8,12 @@ from typing import Any, List, Optional
 import numpy as np
 import pandas as pd
 
-from .constants import BASIS_ORDER, COLUMN_NAMES_TO_LATEX_MAP, METRIC_BASIS_MAP
+from .constants import (
+    BASIS_ORDER,
+    COLUMN_NAMES_TO_LATEX_MAP,
+    METRIC_BASIS_MAP,
+    METRIC_NAMES_TO_LATEX_MAP,
+)
 
 
 def _escape_latex(text: Any) -> str:
@@ -61,14 +66,17 @@ def _format_boolean(x: Any) -> str:
     return str(x)
 
 
-def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
+def _build_header_and_colspec(
+    columns: List[str], metric_column_width: str = "100pt"
+) -> tuple[str, str]:
     """Build LaTeX header and column specification from column list.
 
     Uses COLUMN_NAMES_TO_LATEX_MAP for header display names (not escaped).
-    Column spec uses p{100pt} for Metric column, appropriate types for others.
+    Column spec uses p{metric_column_width} for Metric column, appropriate types for others.
 
     Args:
         columns: List of CSV column names.
+        metric_column_width: Width for the Metric column (e.g., "100pt").
 
     Returns:
         Tuple of (header_string, column_spec_string).
@@ -88,7 +96,7 @@ def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
 
         # Build column spec
         if col == "Metric":
-            colspec_parts.append("p{100pt}")
+            colspec_parts.append(f"p{{{metric_column_width}}}")
         elif col in [
             "Basis",
             "Log",
@@ -187,17 +195,46 @@ def _sort_dataframe_by_basis(
     return df
 
 
+def _break_measure_name_for_makecell(measure_name: str) -> str:
+    """Break measure name into multiple lines for \makecell.
+
+    Splits on spaces to create a reasonable line break. Uses \\\\ for line breaks in \makecell.
+
+    Args:
+        measure_name: The measure name to break (already LaTeX-escaped).
+
+    Returns:
+        Measure name with \\\\ line breaks for \makecell (will render as \\ in LaTeX).
+    """
+    # Split on spaces and join with \\\\ for \makecell line breaks
+    # Try to break at natural points (after 2-3 words)
+    words = measure_name.split()
+    if len(words) <= 3:
+        # Short names don't need breaking
+        return measure_name
+    # Break after first 2-3 words
+    mid_point = min(3, len(words) // 2 + 1)
+    first_line = " ".join(words[:mid_point])
+    second_line = " ".join(words[mid_point:])
+    # Use \\\\ to produce \\ in LaTeX output (line break in \makecell)
+    return f"{first_line}\\\\{second_line}"
+
+
 def _create_table_rows(
     df_subset: pd.DataFrame,
     columns: List[str],
     is_means_only: bool = False,
+    metric_column_width: str = "100pt",
 ) -> List[str]:
     """Create LaTeX table rows with collapsing Metric/Basis and italicizing MEAN rows.
+
+    Uses \multirow and \makecell for measures that span multiple rows.
 
     Args:
         df_subset: DataFrame subset to process.
         columns: List of column names to include.
         is_means_only: If True, this is a means-only table (no italicization).
+        metric_column_width: Width for the Metric column (e.g., "100pt").
 
     Returns:
         List of LaTeX row strings.
@@ -205,6 +242,11 @@ def _create_table_rows(
     rows = []
     prev_metric = None
     prev_basis = None
+
+    # Count rows per metric (for \multirow)
+    metric_row_counts = {}
+    if "Metric" in df_subset.columns:
+        metric_row_counts = df_subset["Metric"].value_counts().to_dict()
 
     # Identify numeric and boolean columns (for formatting)
     numeric_cols = set()
@@ -231,7 +273,25 @@ def _create_table_rows(
         for col in columns:
             skip_escape = False  # Reset for each column
             if col == "Metric":
-                cell = _escape_latex(metric) if not repeat_metric else ""
+                # Use METRIC_NAMES_TO_LATEX_MAP if available, otherwise use original metric name
+                metric_display = METRIC_NAMES_TO_LATEX_MAP.get(metric, metric)
+                metric_display_escaped = _escape_latex(metric_display)
+
+                if repeat_metric:
+                    cell = ""
+                else:
+                    # Check if this measure spans multiple rows
+                    num_rows = metric_row_counts.get(metric, 1)
+                    if num_rows > 1:
+                        # Use \multirow and \makecell
+                        measure_broken = _break_measure_name_for_makecell(
+                            metric_display_escaped
+                        )
+                        cell = f"\\multirow[t]{{{num_rows}}}{{{metric_column_width}}}{{\\makecell[l]{{{measure_broken}}}}}"
+                        skip_escape = True  # Don't escape LaTeX commands
+                    else:
+                        # Single row, no need for \multirow
+                        cell = metric_display_escaped
             elif col == "Basis":
                 cell = _escape_latex(basis) if not repeat_basis else ""
             elif col == "Log":
@@ -422,10 +482,14 @@ def write_full_latex_table(
     df = _sort_dataframe_by_basis(df, order_by_basis=order_by_basis)
 
     # Create table rows
-    rows = _create_table_rows(df, available_columns, is_means_only=False)
+    rows = _create_table_rows(
+        df, available_columns, is_means_only=False, metric_column_width="100pt"
+    )
 
     # Build header and column spec
-    header, colspec = _build_header_and_colspec(available_columns)
+    header, colspec = _build_header_and_colspec(
+        available_columns, metric_column_width="100pt"
+    )
 
     # Create caption and label
     caption = f"{caption_extension} — {_escape_latex(scenario_title)}"
@@ -492,10 +556,14 @@ def write_means_latex_table(
     means_df = _sort_dataframe_by_basis(means_df, order_by_basis=order_by_basis)
 
     # Create table rows
-    rows = _create_table_rows(means_df, available_columns, is_means_only=True)
+    rows = _create_table_rows(
+        means_df, available_columns, is_means_only=True, metric_column_width="100pt"
+    )
 
     # Build header and column spec
-    header, colspec = _build_header_and_colspec(available_columns)
+    header, colspec = _build_header_and_colspec(
+        available_columns, metric_column_width="100pt"
+    )
 
     # Create caption and label
     caption = f"{caption_extension} — {_escape_latex(scenario_title)}"

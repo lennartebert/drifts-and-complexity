@@ -253,3 +253,29 @@ METRIC_SHORTHAND = {
     "var_entropy": "Variant Entropy",
     "norm_var_entropy": "Normalized Variant Entropy",
 }
+
+# Mapping from metric names to LaTeX display names
+# Applies abbreviations: "Average" → "Avg.", "Number of" → "\#", "Percentage of" → "%"
+METRIC_NAMES_TO_LATEX_MAP = {
+    "Number of Events": "\\# Events",
+    "Number of Distinct Activities": "\\# Distinct Activities",
+    "Number of Traces": "\\# Traces",
+    "Number of Distinct Traces": "\\# Distinct Traces",
+    "Number of Distinct Activity Transitions": "\\# Distinct Activity Transitions",
+    "Min. Trace Length": "Min. Trace Length",
+    "Avg. Trace Length": "Avg. Trace Length",
+    "Max. Trace Length": "Max. Trace Length",
+    "Percentage of Distinct Traces": "% Distinct Traces",
+    "Average Distinct Activities per Trace": "Avg. Distinct Activities per Trace",
+    "Structure": "Structure",
+    "Estimated Number of Acyclic Paths": "Estimated \\# Acyclic Paths",
+    "Number of Ties in Paths to Goal": "\\# Ties in Paths to Goal",
+    "Lempel-Ziv Complexity": "Lempel-Ziv Complexity",
+    "Average Affinity": "Avg. Affinity",
+    "Deviation from Random": "Deviation from Random",
+    "Average Edit Distance": "Avg. Edit Distance",
+    "Sequence Entropy": "Sequence Entropy",
+    "Normalized Sequence Entropy": "Normalized Sequence Entropy",
+    "Variant Entropy": "Variant Entropy",
+    "Normalized Variant Entropy": "Normalized Variant Entropy",
+}
