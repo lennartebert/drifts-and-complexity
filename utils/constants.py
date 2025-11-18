@@ -206,6 +206,19 @@ COLUMN_NAMES_TO_LATEX_MAP = {
     "Delta Rho": "Delta Rho",
 }
 
+# Float columns that need special formatting in CSV/DataFrame operations
+FLOAT_COLUMNS = [
+    "Pearson Rho",
+    "Spearman Rho",
+    "Pearson P",
+    "Spearman P",
+    "Delta Pearson Spearman",
+    "RelCI 50",
+    "RelCI 250",
+    "RelCI 500",
+    "Plateau n",
+]
+
 
 # Metrics that are trace-based only
 TRACE_ONLY_METRIC_NAMES = [

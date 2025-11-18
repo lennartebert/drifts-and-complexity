@@ -97,18 +97,9 @@ def build_and_save_comparison_csv(
             return None
         df = pd.read_csv(path)
         # Convert float columns from strings back to floats
-        float_cols = [
-            "Pearson Rho",
-            "Spearman Rho",
-            "Pearson P",
-            "Spearman P",
-            "Delta Pearson Spearman",
-            "RelCI 50",
-            "RelCI 250",
-            "RelCI 500",
-            "Plateau n",
-        ]
-        for col in float_cols:
+        from .constants import FLOAT_COLUMNS
+
+        for col in FLOAT_COLUMNS:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
         # Convert n and N Pop to nullable int
@@ -821,3 +812,36 @@ def _reorder_comparison_columns(df: pd.DataFrame) -> pd.DataFrame:
     cols_order = cols_order + remaining_cols
 
     return df[cols_order]
+
+
+def build_comparison_table_if_exists(
+    before_csv_path: str,
+    after_csv_path: str,
+    out_csv_path: str,
+) -> None:
+    """Build comparison table if before CSV exists, otherwise print warning and skip.
+
+    This is a wrapper around build_and_save_comparison_csv that handles the case
+    where the before CSV doesn't exist, printing a warning instead of raising an error.
+
+    Args:
+        before_csv_path: Path to before scenario master table CSV.
+        after_csv_path: Path to after scenario master table CSV.
+        out_csv_path: Path to save the comparison CSV.
+    """
+    # Check that before master CSV exists, otherwise print a warning and skip
+    if not Path(before_csv_path).exists():
+        print(
+            f"[WARNING] Before master CSV not found at {before_csv_path}. "
+            f"Skipping comparison table creation."
+        )
+    else:
+        try:
+            build_and_save_comparison_csv(
+                before_csv_path=before_csv_path,
+                after_csv_path=after_csv_path,
+                out_csv_path=out_csv_path,
+            )
+            print(f"Comparison table saved to: {out_csv_path}")
+        except Exception as e:
+            print(f"[WARNING] Could not build comparison table: {e}")

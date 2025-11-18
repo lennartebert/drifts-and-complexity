@@ -501,3 +501,69 @@ def _create_sample_ci_plot_long(
     fig.savefig(out_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
     return out_path
+
+
+def plot_ci_results(
+    metrics_df: pd.DataFrame,
+    analysis_df: pd.DataFrame,
+    out_dir: Path,
+    plot_breakdown: str | None = None,
+    ncols: int = 3,
+) -> None:
+    """Wrapper function that prepares data and triggers CI plotting.
+
+    This function merges sample CIs from analysis_df into metrics_df for plotting,
+    then creates both bootstrap CI and sample CI plots if the required columns are present.
+
+    Args:
+        metrics_df: DataFrame with raw metrics in long format (index: Metric, Sample Size).
+        analysis_df: DataFrame with analysis results including Sample CI columns.
+        out_dir: Directory where plots will be saved.
+        plot_breakdown: Optional breakdown type ("basis" or "dimension") for grouping plots.
+        ncols: Number of columns in the plot grid.
+    """
+    # Merge sample CIs back into metrics_df for plotting
+    metrics_df_reset = metrics_df.reset_index()
+    analysis_reset = analysis_df.reset_index()
+
+    if (
+        "Sample CI Low" in analysis_reset.columns
+        and "Sample CI High" in analysis_reset.columns
+    ):
+        metrics_df_for_plotting = metrics_df_reset.merge(
+            analysis_reset[
+                ["Sample Size", "Metric", "Sample CI Low", "Sample CI High"]
+            ],
+            on=["Sample Size", "Metric"],
+            how="left",
+        )
+    else:
+        metrics_df_for_plotting = metrics_df_reset.copy()
+        metrics_df_for_plotting["Sample CI Low"] = None
+        metrics_df_for_plotting["Sample CI High"] = None
+
+    # Create bootstrap CI plots if columns are present
+    if (
+        "Bootstrap CI Low" in metrics_df_for_plotting.columns
+        and "Bootstrap CI High" in metrics_df_for_plotting.columns
+    ):
+        plot_aggregated_measures_bootstrap_cis(
+            metrics_df_for_plotting,
+            out_path=str(out_dir / "measures_bootstrap_cis_mean.png"),
+            plot_breakdown=plot_breakdown,
+            agg="mean",
+            ncols=ncols,
+        )
+
+    # Create sample CI plots if columns are present
+    if (
+        "Sample CI Low" in metrics_df_for_plotting.columns
+        and "Sample CI High" in metrics_df_for_plotting.columns
+    ):
+        plot_aggregated_measures_sample_cis(
+            metrics_df_for_plotting,
+            out_path=str(out_dir / "measures_sample_cis_mean.png"),
+            agg="mean",
+            plot_breakdown=plot_breakdown,
+            ncols=ncols,
+        )

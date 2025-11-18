@@ -68,3 +68,55 @@ def plot_correlation_results(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=600)
     plt.close()
+
+
+def plot_all_correlation_results(
+    combined_analysis_df: pd.DataFrame,
+    out_dir: Path,
+) -> None:
+    """Wrapper function that extracts mean correlations and triggers all correlation plotting.
+
+    This function filters the combined_analysis_df to get mean correlations (Log == "MEAN"),
+    then creates all four correlation plots (Pearson/Spearman × box/dot).
+
+    Args:
+        combined_analysis_df: DataFrame with combined analysis results including Log column.
+        out_dir: Directory where plots will be saved.
+    """
+    # Extract mean correlations for plotting (filter MEAN rows)
+    mean_correlations_df = (
+        combined_analysis_df[combined_analysis_df["Log"] == "MEAN"][
+            ["Metric", "Pearson Rho", "Pearson P", "Spearman Rho", "Spearman P"]
+        ].copy()
+        if not combined_analysis_df.empty and "Log" in combined_analysis_df.columns
+        else pd.DataFrame(
+            columns=["Metric", "Pearson Rho", "Pearson P", "Spearman Rho", "Spearman P"]
+        )
+    )
+
+    # Create all correlation plots if data is available
+    if not mean_correlations_df.empty:
+        plot_correlation_results(
+            mean_correlations_df,
+            out_path=out_dir / "correlations_pearson_box_plot.png",
+            correlation_type="Pearson",
+            plot_type="box",
+        )
+        plot_correlation_results(
+            mean_correlations_df,
+            out_path=out_dir / "correlations_spearman_box_plot.png",
+            correlation_type="Spearman",
+            plot_type="box",
+        )
+        plot_correlation_results(
+            mean_correlations_df,
+            out_path=out_dir / "correlations_pearson_dot_plot.png",
+            correlation_type="Pearson",
+            plot_type="dot",
+        )
+        plot_correlation_results(
+            mean_correlations_df,
+            out_path=out_dir / "correlations_spearman_dot_plot.png",
+            correlation_type="Spearman",
+            plot_type="dot",
+        )

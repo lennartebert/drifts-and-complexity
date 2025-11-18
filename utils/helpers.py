@@ -11,7 +11,52 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from .constants import COMPLEXITY_RESULTS_DIR
+from .constants import (
+    ALL_METRIC_NAMES,
+    COMPLEXITY_RESULTS_DIR,
+    METRIC_SHORTHAND,
+)
+
+
+def resolve_metric_names(metric_inputs: List[str] | None) -> List[str]:
+    """Resolve metric shorthand names to full names.
+
+    Takes a list of metric names (which may include shorthand names) and resolves
+    them to full metric names. Removes duplicates while preserving order.
+
+    Args:
+        metric_inputs: List of metric names (shorthand or full), or None to return all metrics.
+
+    Returns:
+        List of resolved full metric names, with duplicates removed.
+
+    Raises:
+        ValueError: If any metric name is invalid (not in shorthand or full names).
+    """
+    if metric_inputs is None:
+        return list(ALL_METRIC_NAMES)
+
+    resolved_metrics = []
+    for metric_input in metric_inputs:
+        if metric_input in METRIC_SHORTHAND:
+            # It's a shorthand, resolve to full name
+            full_name = METRIC_SHORTHAND[metric_input]
+            resolved_metrics.append(full_name)
+        elif metric_input in ALL_METRIC_NAMES:
+            # It's already a full name
+            resolved_metrics.append(metric_input)
+        else:
+            # Invalid metric name
+            available_shorthand = list(METRIC_SHORTHAND.keys())
+            available_full = list(ALL_METRIC_NAMES)
+            raise ValueError(
+                f"Invalid metric '{metric_input}'. "
+                f"Available shorthand: {available_shorthand} "
+                f"or full names: {available_full}"
+            )
+
+    # Remove duplicates while preserving order
+    return list(dict.fromkeys(resolved_metrics))
 
 
 def to_naive_ts(x: Any) -> Optional[pd.Timestamp]:

@@ -65,7 +65,7 @@ def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
     """Build LaTeX header and column specification from column list.
 
     Uses COLUMN_NAMES_TO_LATEX_MAP for header display names (not escaped).
-    Column spec uses p{50pt} for Metric column, appropriate types for others.
+    Column spec uses p{100pt} for Metric column, appropriate types for others.
 
     Args:
         columns: List of CSV column names.
@@ -88,7 +88,7 @@ def _build_header_and_colspec(columns: List[str]) -> tuple[str, str]:
 
         # Build column spec
         if col == "Metric":
-            colspec_parts.append("p{50pt}")
+            colspec_parts.append("p{100pt}")
         elif col in [
             "Basis",
             "Log",
@@ -947,3 +947,56 @@ def write_comparison_latex_tables(
     write_comparison_ci_plateau_means_table(
         comparison_csv_path, out_dir, scenario_key, scenario_title
     )
+
+
+def generate_all_latex_tables(
+    master_csv_path: str,
+    out_dir: str,
+    scenario_key: str,
+    scenario_title: str,
+    correlation: str = "Spearman",
+    comparison_csv_path: str | None = None,
+) -> None:
+    """Generate all LaTeX tables from master CSV and optionally comparison CSV.
+
+    This function handles both master and comparison table generation with error handling.
+    It will attempt to generate all tables and print warnings for any failures.
+
+    Args:
+        master_csv_path: Path to master.csv file.
+        out_dir: Directory to save LaTeX files.
+        scenario_key: Key for table labels (e.g., "test").
+        scenario_title: Title for table captions (e.g., "Test Scenario").
+        correlation: Correlation type to use ("Spearman" or "Pearson"), default "Spearman".
+        comparison_csv_path: Optional path to metrics_comparison.csv file.
+    """
+    from pathlib import Path
+
+    # Ensure output directory exists
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+
+    # Generate master LaTeX tables
+    try:
+        write_master_latex_tables(
+            master_csv_path=master_csv_path,
+            out_dir=out_dir,
+            scenario_key=scenario_key,
+            scenario_title=scenario_title,
+            correlation=correlation,
+        )
+        print(f"Master LaTeX tables saved to: {out_dir}")
+    except Exception as e:
+        print(f"[WARNING] Could not generate master LaTeX tables: {e}")
+
+    # Generate comparison LaTeX tables if comparison CSV exists
+    if comparison_csv_path is not None and Path(comparison_csv_path).exists():
+        try:
+            write_comparison_latex_tables(
+                comparison_csv_path=comparison_csv_path,
+                out_dir=out_dir,
+                scenario_key=scenario_key,
+                scenario_title=scenario_title,
+            )
+            print(f"Comparison LaTeX tables saved to: {out_dir}")
+        except Exception as e:
+            print(f"[WARNING] Could not generate comparison LaTeX tables: {e}")
