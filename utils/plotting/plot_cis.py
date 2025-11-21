@@ -87,6 +87,7 @@ def plot_aggregated_measures_bootstrap_cis(
     ncols: int = 3,
     figsize_per_panel: Tuple[float, float] = (5.0, 3.2),
     plot_breakdown: str | None = None,
+    metric_order: List[str] | None = None,
 ) -> str:
     """
     Create a multi-panel plot (one subplot per measure) that shows, over sample_size:
@@ -107,6 +108,9 @@ def plot_aggregated_measures_bootstrap_cis(
     plot_breakdown : None, "basis", or "dimension" — if specified, creates separate plots
                      grouped by metric basis or dimension. Each plot is saved with the
                      breakdown value appended to the filename.
+    metric_order : List[str] | None
+                   Optional list of metric names in desired order. If provided, metrics will be
+                   sorted according to this order instead of alphabetically.
 
     Returns
     -------
@@ -138,8 +142,17 @@ def plot_aggregated_measures_bootstrap_cis(
     if missing:
         raise ValueError(f"long_df is missing required columns: {missing}")
 
-    # Get unique metrics
-    measure_cols = sorted(long_df["Metric"].unique().tolist())
+    # Get unique metrics, preserving order if metric_order is provided
+    unique_metrics = long_df["Metric"].unique().tolist()
+    if metric_order is not None:
+        # Sort according to metric_order, keeping only metrics that exist in the data
+        metric_order_dict = {metric: idx for idx, metric in enumerate(metric_order)}
+        measure_cols = sorted(
+            unique_metrics,
+            key=lambda x: metric_order_dict.get(x, 9999),  # Unknown metrics go to end
+        )
+    else:
+        measure_cols = sorted(unique_metrics)
 
     # Group measures by breakdown type if specified
     measure_groups = _group_measures_by_breakdown(measure_cols, plot_breakdown)
@@ -149,6 +162,16 @@ def plot_aggregated_measures_bootstrap_cis(
     for group_key, group_measures in measure_groups.items():
         if not group_measures:
             continue  # Skip empty groups
+
+        # Preserve metric order within each group
+        if metric_order is not None:
+            metric_order_dict = {metric: idx for idx, metric in enumerate(metric_order)}
+            group_measures = sorted(
+                group_measures,
+                key=lambda x: metric_order_dict.get(
+                    x, 9999
+                ),  # Unknown metrics go to end
+            )
 
         # Prepare file path and title with breakdown suffix
         group_out_path, group_title = _prepare_breakdown_path_and_title(
@@ -318,6 +341,7 @@ def plot_aggregated_measures_sample_cis(
     ncols: int = 3,
     figsize_per_panel: Tuple[float, float] = (5.0, 3.2),
     plot_breakdown: str | None = None,
+    metric_order: List[str] | None = None,
 ) -> str:
     """
     Create a multi-panel plot (one subplot per measure) that shows, over sample_size:
@@ -344,6 +368,9 @@ def plot_aggregated_measures_sample_cis(
     plot_breakdown : None, "basis", or "dimension" — if specified, creates separate plots
                      grouped by metric basis or dimension. Each plot is saved with the
                      breakdown value appended to the filename.
+    metric_order : List[str] | None
+                   Optional list of metric names in desired order. If provided, metrics will be
+                   sorted according to this order instead of alphabetically.
 
     Returns
     -------
@@ -376,8 +403,17 @@ def plot_aggregated_measures_sample_cis(
     if missing:
         raise ValueError(f"long_df is missing required columns: {missing}")
 
-    # Get unique metrics
-    measure_cols = sorted(long_df["Metric"].unique().tolist())
+    # Get unique metrics, preserving order if metric_order is provided
+    unique_metrics = long_df["Metric"].unique().tolist()
+    if metric_order is not None:
+        # Sort according to metric_order, keeping only metrics that exist in the data
+        metric_order_dict = {metric: idx for idx, metric in enumerate(metric_order)}
+        measure_cols = sorted(
+            unique_metrics,
+            key=lambda x: metric_order_dict.get(x, 9999),  # Unknown metrics go to end
+        )
+    else:
+        measure_cols = sorted(unique_metrics)
 
     # Group measures by breakdown type if specified
     measure_groups = _group_measures_by_breakdown(measure_cols, plot_breakdown)
@@ -387,6 +423,16 @@ def plot_aggregated_measures_sample_cis(
     for group_key, group_measures in measure_groups.items():
         if not group_measures:
             continue  # Skip empty groups
+
+        # Preserve metric order within each group
+        if metric_order is not None:
+            metric_order_dict = {metric: idx for idx, metric in enumerate(metric_order)}
+            group_measures = sorted(
+                group_measures,
+                key=lambda x: metric_order_dict.get(
+                    x, 9999
+                ),  # Unknown metrics go to end
+            )
 
         # Prepare file path and title with breakdown suffix
         group_out_path, group_title = _prepare_breakdown_path_and_title(
@@ -509,6 +555,7 @@ def plot_ci_results(
     out_dir: Path,
     plot_breakdown: str | None = None,
     ncols: int = 3,
+    metric_order: List[str] | None = None,
 ) -> None:
     """Wrapper function that prepares data and triggers CI plotting.
 
@@ -521,6 +568,8 @@ def plot_ci_results(
         out_dir: Directory where plots will be saved.
         plot_breakdown: Optional breakdown type ("basis" or "dimension") for grouping plots.
         ncols: Number of columns in the plot grid.
+        metric_order: Optional list of metric names in desired order. If provided, metrics will be
+                     sorted according to this order instead of alphabetically.
     """
     # Merge sample CIs back into metrics_df for plotting
     metrics_df_reset = metrics_df.reset_index()
@@ -553,6 +602,7 @@ def plot_ci_results(
             plot_breakdown=plot_breakdown,
             agg="mean",
             ncols=ncols,
+            metric_order=metric_order,
         )
 
     # Create sample CI plots if columns are present
@@ -566,4 +616,5 @@ def plot_ci_results(
             agg="mean",
             plot_breakdown=plot_breakdown,
             ncols=ncols,
+            metric_order=metric_order,
         )

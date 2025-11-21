@@ -51,7 +51,7 @@ SIZES = range(50, 501, 50)
 
 REF_SIZES = [50, 250, 500]
 
-BREAKDOWN_OF_PLOTS = "basis"  # None=No breakdown
+BREAKDOWN_BY = "dimension"  # None, "basis", or "dimension"
 
 CORRELATION_TYPE = (
     "Spearman"  # Correlation type to use in LaTeX tables ("Pearson" or "Spearman")
@@ -139,8 +139,9 @@ def compute_results(
             metrics_df=metrics_df,
             analysis_df=analysis_df,
             out_dir=out_dir,
-            plot_breakdown=BREAKDOWN_OF_PLOTS,
+            plot_breakdown=BREAKDOWN_BY,
             ncols=3,
+            metric_order=include_metrics,
         )
 
         # Store for downstream processing
@@ -210,6 +211,7 @@ def compute_results(
         scenario_title=clear_name,
         correlation=CORRELATION_TYPE,
         comparison_csv_path=comparison_csv_path,
+        breakdown_by=BREAKDOWN_BY,
     )
 
 

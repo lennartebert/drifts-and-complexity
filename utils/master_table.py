@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
-from .constants import FLOAT_COLUMNS
+from .constants import FLOAT_COLUMNS, METRIC_DIMENSION_MAP
 from .helpers import TAU
 
 
@@ -92,8 +92,9 @@ def combine_analysis_with_means(
 
     # Process each metric-log combination
     for m in all_metrics:
-        # Get basis for this metric
+        # Get basis and dimension for this metric
         basis = measure_basis_map.get(m, "Unknown") if measure_basis_map else "Unknown"
+        dimension = METRIC_DIMENSION_MAP.get(m, "Unknown")
 
         for log in all_logs:
             if log not in analysis_per_log:
@@ -184,6 +185,7 @@ def combine_analysis_with_means(
             row = {
                 "Metric": m,
                 "Basis": basis,
+                "Dimension": dimension,
                 "Log": str(log),
                 "Pearson Rho": pearson_rho,
                 "Spearman Rho": spearman_rho,
@@ -211,6 +213,7 @@ def combine_analysis_with_means(
         [
             "Metric",
             "Basis",
+            "Dimension",
             "Log",
             "Pearson Rho",
             "Spearman Rho",
@@ -248,7 +251,7 @@ def combine_analysis_with_means(
     # Group by Metric and Basis, calculating means for numeric columns
     if len(table_df) > 0:
         means = (
-            table_df.groupby(["Metric", "Basis"])[numeric_cols]
+            table_df.groupby(["Metric", "Basis", "Dimension"])[numeric_cols]
             .mean(numeric_only=True)
             .reset_index()
         )
@@ -260,9 +263,11 @@ def combine_analysis_with_means(
             # Special handling for Plateau Found and Plateau n
             metric = mean_row["Metric"]
             basis = mean_row["Basis"]
+            dimension = mean_row["Dimension"]
             metric_basis_rows = table_df[
                 (table_df["Metric"] == metric)
                 & (table_df["Basis"] == basis)
+                & (table_df["Dimension"] == dimension)
                 & (table_df["Log"] != "MEAN")
             ]
 
@@ -361,15 +366,17 @@ def combine_analysis_with_means(
         for idx, row in table_df.iterrows():
             metric = row["Metric"]
             basis = row["Basis"]
+            dimension = row["Dimension"]
             log = row["Log"]
-            group_key = (metric, basis)
+            group_key = (metric, basis, dimension)
 
-            # If we're starting a new (Metric, Basis) group, insert MEAN row for previous group
+            # If we're starting a new (Metric, Basis, Dimension) group, insert MEAN row for previous group
             if current_group is not None and group_key != current_group:
                 # Insert MEAN row for previous group before starting new group
                 prev_mean = mean_df[
                     (mean_df["Metric"] == current_group[0])
                     & (mean_df["Basis"] == current_group[1])
+                    & (mean_df["Dimension"] == current_group[2])
                 ]
                 if len(prev_mean) > 0:
                     final_rows.append(prev_mean.iloc[0].to_dict())
@@ -385,6 +392,7 @@ def combine_analysis_with_means(
             last_mean = mean_df[
                 (mean_df["Metric"] == current_group[0])
                 & (mean_df["Basis"] == current_group[1])
+                & (mean_df["Dimension"] == current_group[2])
             ]
             if len(last_mean) > 0:
                 final_rows.append(last_mean.iloc[0].to_dict())

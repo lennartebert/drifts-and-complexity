@@ -42,8 +42,8 @@ DEFAULT_CORRELATION_ANALYSIS_NAME = "default"
 # All available complexity metrics in the system
 ALL_METRIC_NAMES = [
     "Number of Events",
-    "Number of Distinct Activities",
     "Number of Traces",
+    "Number of Distinct Activities",
     "Number of Distinct Traces",
     "Number of Distinct Activity Transitions",
     "Min. Trace Length",
@@ -100,9 +100,9 @@ METRIC_BASIS_MAP = {
 }
 
 METRIC_DIMENSION_MAP = {
-    "Number of Events": "Size",
+    "Number of Events": "Length",
+    "Number of Traces": "Length",
     "Number of Distinct Activities": "Size",
-    "Number of Traces": "Size",
     "Number of Distinct Traces": "Size",
     "Number of Distinct Activity Transitions": "Size",
     "Min. Trace Length": "Size",
@@ -128,6 +128,9 @@ PC_METRICS = [metric for metric, basis in METRIC_BASIS_MAP.items() if basis == "
 # Basis ordering for LaTeX tables
 BASIS_ORDER = ["OC", "PC", "PD", "CT"]
 
+# Dimensions ordering for LaTeX tables
+DIMENSIONS_ORDER = ["Length", "Size", "Variation", "Distance", "Graph Entropy"]
+
 # Column name mapping for LaTeX display (CSV column name -> LaTeX display name)
 # When using this map, column names are NOT escaped (they're already formatted)
 # Consolidated mapping from internal column names (with spaces) to LaTeX display names
@@ -135,6 +138,7 @@ COLUMN_NAMES_TO_LATEX_MAP = {
     # Basic identifiers
     "Metric": "Measure",  # LaTeX uses "Measure" instead of "Metric"
     "Basis": "Basis",
+    "Dimension": "Dimension",
     "Log": "Log",
     "Sample Size": "Sample Size",
     "Sample ID": "Sample ID",

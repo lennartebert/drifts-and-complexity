@@ -11,6 +11,7 @@ import pandas as pd
 from .constants import (
     BASIS_ORDER,
     COLUMN_NAMES_TO_LATEX_MAP,
+    DIMENSIONS_ORDER,
     METRIC_BASIS_MAP,
     METRIC_NAMES_TO_LATEX_MAP,
 )
@@ -168,28 +169,19 @@ def _build_header_and_colspec(
     return header, colspec
 
 
-def _sort_dataframe_by_basis(
-    df: pd.DataFrame, order_by_basis: bool = True
+def _sort_dataframe_by_breakdown(
+    df: pd.DataFrame, breakdown_by: str | None = "basis"
 ) -> pd.DataFrame:
-    """Sort dataframe by Basis (OC, PC, PD, CT), then metric order, then MEAN rows last.
-
-    When order_by_basis is True, Basis is put first in the sort order.
-    When order_by_basis is False, metric order comes first.
+    """Sort dataframe by breakdown column (Basis or Dimension), then metric order, then MEAN rows last.
 
     Args:
         df: DataFrame to sort.
-        order_by_basis: If True, sort by Basis first. If False, sort by metric order first.
+        breakdown_by: "basis", "dimension", or None. If None, sort by metric order only.
 
     Returns:
         Sorted DataFrame.
     """
     df = df.copy()
-
-    # Create basis order mapping
-    basis_order_map = {basis: idx for idx, basis in enumerate(BASIS_ORDER)}
-    df["_basis_order"] = df["Basis"].map(
-        lambda x: basis_order_map.get(x, 999)
-    )  # Unknown basis goes to end
 
     # Create metric order mapping to preserve CSV order
     unique_metrics = df["Metric"].unique()
@@ -199,15 +191,35 @@ def _sort_dataframe_by_basis(
     # Sort key: MEAN rows at end for each group
     df["_sort_key"] = df["Log"].apply(lambda x: 1 if x == "MEAN" else 0)
 
-    if order_by_basis:
+    if breakdown_by == "basis" and "Basis" in df.columns:
+        # Create basis order mapping
+        basis_order_map = {basis: idx for idx, basis in enumerate(BASIS_ORDER)}
+        df["_breakdown_order"] = df["Basis"].map(
+            lambda x: basis_order_map.get(x, 999)
+        )  # Unknown basis goes to end
         # Sort by Basis first, then metric order, then MEAN rows last
-        df = df.sort_values(by=["_basis_order", "_metric_order", "_sort_key", "Log"])
+        df = df.sort_values(
+            by=["_breakdown_order", "_metric_order", "_sort_key", "Log"]
+        )
+    elif breakdown_by == "dimension" and "Dimension" in df.columns:
+        # Create dimension order mapping
+        dimension_order_map = {dim: idx for idx, dim in enumerate(DIMENSIONS_ORDER)}
+        df["_breakdown_order"] = df["Dimension"].map(
+            lambda x: dimension_order_map.get(x, 999)
+        )  # Unknown dimension goes to end
+        # Sort by Dimension first, then metric order, then MEAN rows last
+        df = df.sort_values(
+            by=["_breakdown_order", "_metric_order", "_sort_key", "Log"]
+        )
     else:
-        # Sort by metric order first, then Basis, then MEAN rows last
-        df = df.sort_values(by=["_metric_order", "_basis_order", "_sort_key", "Log"])
+        # Sort by metric order first, then MEAN rows last
+        df = df.sort_values(by=["_metric_order", "_sort_key", "Log"])
 
     # Drop temporary columns
-    df = df.drop(columns=["_basis_order", "_metric_order", "_sort_key"])
+    cols_to_drop = ["_metric_order", "_sort_key"]
+    if "_breakdown_order" in df.columns:
+        cols_to_drop.append("_breakdown_order")
+    df = df.drop(columns=cols_to_drop)
 
     return df
 
@@ -259,6 +271,7 @@ def _create_table_rows(
     rows = []
     prev_metric = None
     prev_basis = None
+    prev_dimension = None
 
     # Count rows per metric (for \multirow)
     metric_row_counts = {}
@@ -276,14 +289,19 @@ def _create_table_rows(
 
     for idx, row in df_subset.iterrows():
         metric = row["Metric"]
-        basis = row["Basis"]
+        basis = row.get("Basis", None)
+        dimension = row.get("Dimension", None)
         log = row["Log"]
         is_mean = log == "MEAN"
 
-        # Determine if we should repeat Metric and Basis
+        # Determine if we should repeat Metric, Basis, and Dimension
         repeat_metric = (metric == prev_metric) if prev_metric is not None else False
         # Only collapse basis if it repeats in consecutive rows (same as previous)
         repeat_basis = (basis == prev_basis) if prev_basis is not None else False
+        # Only collapse dimension if it repeats in consecutive rows (same as previous)
+        repeat_dimension = (
+            (dimension == prev_dimension) if prev_dimension is not None else False
+        )
 
         # Build row cells
         cells = []
@@ -310,7 +328,17 @@ def _create_table_rows(
                         # Single row, no need for \multirow
                         cell = metric_display_escaped
             elif col == "Basis":
-                cell = _escape_latex(basis) if not repeat_basis else ""
+                cell = (
+                    _escape_latex(basis)
+                    if not repeat_basis and basis is not None
+                    else ""
+                )
+            elif col == "Dimension":
+                cell = (
+                    _escape_latex(dimension)
+                    if not repeat_dimension and dimension is not None
+                    else ""
+                )
             elif col == "Log":
                 cell = "" if is_mean else _escape_latex(log)
             elif col == "Plateau Reached":
@@ -412,6 +440,7 @@ def _create_table_rows(
         rows.append(row_str)
         prev_metric = metric
         prev_basis = basis
+        prev_dimension = dimension
 
     return rows
 
@@ -460,7 +489,7 @@ def write_full_latex_table(
     label_extension: str,
     caption_extension: str,
     filename: str,
-    order_by_basis: bool = True,
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate full LaTeX table from CSV file.
 
@@ -473,7 +502,7 @@ def write_full_latex_table(
         label_extension: Extension for table label (e.g., "master_correlation_full").
         caption_extension: Human-readable caption extension (e.g., "Correlation table").
         filename: Output filename (e.g., "master_correlation_full.tex").
-        order_by_basis: If True, sort by Basis first and put Basis as first column.
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     df = pd.read_csv(csv_path)
 
@@ -482,21 +511,31 @@ def write_full_latex_table(
     if not available_columns:
         raise ValueError(f"No valid columns found in CSV: {include_columns}")
 
-    # When ordering by basis, put Basis first in column order
-    if (
-        order_by_basis
-        and "Basis" in available_columns
-        and "Metric" in available_columns
-    ):
-        # Remove Basis and Metric from their current positions
-        other_cols = [
-            col for col in available_columns if col not in ["Basis", "Metric"]
+    # Handle breakdown column: remove the one we're not using, put the active one first
+    if breakdown_by == "dimension" and "Dimension" in available_columns:
+        # Remove Basis if present, put Dimension first
+        available_columns = [col for col in available_columns if col != "Basis"]
+        if "Dimension" in available_columns and "Metric" in available_columns:
+            other_cols = [
+                col for col in available_columns if col not in ["Dimension", "Metric"]
+            ]
+            available_columns = ["Dimension", "Metric"] + other_cols
+    elif breakdown_by == "basis" and "Basis" in available_columns:
+        # Remove Dimension if present, put Basis first
+        available_columns = [col for col in available_columns if col != "Dimension"]
+        if "Basis" in available_columns and "Metric" in available_columns:
+            other_cols = [
+                col for col in available_columns if col not in ["Basis", "Metric"]
+            ]
+            available_columns = ["Basis", "Metric"] + other_cols
+    else:
+        # No breakdown or breakdown column not available - remove both Basis and Dimension
+        available_columns = [
+            col for col in available_columns if col not in ["Basis", "Dimension"]
         ]
-        # Put Basis first, then Metric, then others
-        available_columns = ["Basis", "Metric"] + other_cols
 
     # Sort dataframe
-    df = _sort_dataframe_by_basis(df, order_by_basis=order_by_basis)
+    df = _sort_dataframe_by_breakdown(df, breakdown_by=breakdown_by)
 
     # Create table rows
     rows = _create_table_rows(
@@ -531,7 +570,7 @@ def write_means_latex_table(
     label_extension: str,
     caption_extension: str,
     filename: str,
-    order_by_basis: bool = True,
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate means-only LaTeX table from CSV file.
 
@@ -544,7 +583,7 @@ def write_means_latex_table(
         label_extension: Extension for table label (e.g., "master_correlation_means").
         caption_extension: Human-readable caption extension (e.g., "Correlation means").
         filename: Output filename (e.g., "master_correlation_means.tex").
-        order_by_basis: If True, sort by Basis first and put Basis as first column.
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     df = pd.read_csv(csv_path)
 
@@ -556,21 +595,31 @@ def write_means_latex_table(
     if not available_columns:
         raise ValueError(f"No valid columns found in CSV: {include_columns}")
 
-    # When ordering by basis, put Basis first in column order
-    if (
-        order_by_basis
-        and "Basis" in available_columns
-        and "Metric" in available_columns
-    ):
-        # Remove Basis and Metric from their current positions
-        other_cols = [
-            col for col in available_columns if col not in ["Basis", "Metric"]
+    # Handle breakdown column: remove the one we're not using, put the active one first
+    if breakdown_by == "dimension" and "Dimension" in available_columns:
+        # Remove Basis if present, put Dimension first
+        available_columns = [col for col in available_columns if col != "Basis"]
+        if "Dimension" in available_columns and "Metric" in available_columns:
+            other_cols = [
+                col for col in available_columns if col not in ["Dimension", "Metric"]
+            ]
+            available_columns = ["Dimension", "Metric"] + other_cols
+    elif breakdown_by == "basis" and "Basis" in available_columns:
+        # Remove Dimension if present, put Basis first
+        available_columns = [col for col in available_columns if col != "Dimension"]
+        if "Basis" in available_columns and "Metric" in available_columns:
+            other_cols = [
+                col for col in available_columns if col not in ["Basis", "Metric"]
+            ]
+            available_columns = ["Basis", "Metric"] + other_cols
+    else:
+        # No breakdown or breakdown column not available - remove both Basis and Dimension
+        available_columns = [
+            col for col in available_columns if col not in ["Basis", "Dimension"]
         ]
-        # Put Basis first, then Metric, then others
-        available_columns = ["Basis", "Metric"] + other_cols
 
     # Sort dataframe
-    means_df = _sort_dataframe_by_basis(means_df, order_by_basis=order_by_basis)
+    means_df = _sort_dataframe_by_breakdown(means_df, breakdown_by=breakdown_by)
 
     # Create table rows
     rows = _create_table_rows(
@@ -606,6 +655,7 @@ def write_master_ci_plateau_table(
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate full master CI/Plateau table.
 
@@ -614,10 +664,12 @@ def write_master_ci_plateau_table(
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     columns = [
         "Metric",
         "Basis",
+        "Dimension",
         "Log",
         "RelCI 50",
         "RelCI 250",
@@ -633,7 +685,7 @@ def write_master_ci_plateau_table(
         label_extension="master_ci_plateau",
         caption_extension="CI/Plateau table",
         filename="master_ci_plateau.tex",
-        order_by_basis=True,
+        breakdown_by=breakdown_by,
     )
 
 
@@ -642,6 +694,7 @@ def write_master_ci_plateau_means_table(
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate means-only master CI/Plateau table.
 
@@ -650,10 +703,12 @@ def write_master_ci_plateau_means_table(
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     columns = [
         "Metric",
         "Basis",
+        "Dimension",
         "Log",
         "RelCI 50",
         "RelCI 250",
@@ -671,7 +726,7 @@ def write_master_ci_plateau_means_table(
         label_extension="master_ci_plateau_means",
         caption_extension="CI/Plateau means",
         filename="master_ci_plateau_means.tex",
-        order_by_basis=True,
+        breakdown_by=breakdown_by,
     )
 
 
@@ -680,6 +735,7 @@ def write_comparison_correlation_table(
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate full comparison correlation table.
 
@@ -688,10 +744,12 @@ def write_comparison_correlation_table(
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     columns = [
         "Metric",
         "Basis",
+        "Dimension",
         "Log",
         "Shape_before",
         "Shape_after",
@@ -713,7 +771,7 @@ def write_comparison_correlation_table(
         label_extension="comparison_correlation_full",
         caption_extension="Comparison correlation table",
         filename="comparison_correlation_full.tex",
-        order_by_basis=True,
+        breakdown_by=breakdown_by,
     )
 
 
@@ -722,6 +780,7 @@ def write_comparison_correlation_means_table(
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate means-only comparison correlation table.
 
@@ -730,10 +789,12 @@ def write_comparison_correlation_means_table(
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     columns = [
         "Metric",
         "Basis",
+        "Dimension",
         "Log",
         "Shape_before",
         "Shape_after",
@@ -770,7 +831,7 @@ def write_comparison_correlation_means_table(
         label_extension="comparison_correlation_means",
         caption_extension="Comparison correlation means",
         filename="comparison_correlation_means.tex",
-        order_by_basis=True,
+        breakdown_by=breakdown_by,
     )
 
 
@@ -779,6 +840,7 @@ def write_comparison_ci_plateau_table(
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate full comparison CI/Plateau table.
 
@@ -787,10 +849,12 @@ def write_comparison_ci_plateau_table(
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     columns = [
         "Metric",
         "Basis",
+        "Dimension",
         "Log",
         "RelCI 50 Before",
         "RelCI 50 After",
@@ -814,7 +878,7 @@ def write_comparison_ci_plateau_table(
         label_extension="comparison_ci_plateau",
         caption_extension="Comparison CI/Plateau table",
         filename="comparison_ci_plateau.tex",
-        order_by_basis=True,
+        breakdown_by=breakdown_by,
     )
 
 
@@ -823,6 +887,7 @@ def write_comparison_ci_plateau_means_table(
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate means-only comparison CI/Plateau table.
 
@@ -831,10 +896,12 @@ def write_comparison_ci_plateau_means_table(
         out_dir: Directory to save LaTeX file.
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     columns = [
         "Metric",
         "Basis",
+        "Dimension",
         "Log",
         "RelCI 50 Before",
         "RelCI 50 After",
@@ -860,7 +927,7 @@ def write_comparison_ci_plateau_means_table(
         label_extension="comparison_ci_plateau_means",
         caption_extension="Comparison CI/Plateau means",
         filename="comparison_ci_plateau_means.tex",
-        order_by_basis=True,
+        breakdown_by=breakdown_by,
     )
 
 
@@ -870,6 +937,7 @@ def write_summarized_master_table(
     scenario_key: str,
     scenario_title: str,
     correlation: str = "Spearman",
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate full summarized master table.
 
@@ -879,6 +947,7 @@ def write_summarized_master_table(
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
         correlation: Correlation type to display ("Pearson" or "Spearman"). Default is "Spearman".
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     if correlation not in ["Pearson", "Spearman"]:
         raise ValueError(
@@ -890,6 +959,7 @@ def write_summarized_master_table(
 
     columns = [
         "Basis",
+        "Dimension",
         "Metric",
         "Log",
         rho_col,
@@ -908,7 +978,7 @@ def write_summarized_master_table(
         label_extension="summarized_master_full",
         caption_extension="Summarized master table",
         filename="summarized_master_full.tex",
-        order_by_basis=True,
+        breakdown_by=breakdown_by,
     )
 
 
@@ -918,6 +988,7 @@ def write_summarized_means_table(
     scenario_key: str,
     scenario_title: str,
     correlation: str = "Spearman",
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate means-only summarized master table.
 
@@ -927,6 +998,7 @@ def write_summarized_means_table(
         scenario_key: Key for table label.
         scenario_title: Title for table caption.
         correlation: Correlation type to display ("Pearson" or "Spearman"). Default is "Spearman".
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     if correlation not in ["Pearson", "Spearman"]:
         raise ValueError(
@@ -938,6 +1010,7 @@ def write_summarized_means_table(
 
     columns = [
         "Basis",
+        "Dimension",
         "Metric",
         "Log",
         rho_col,
@@ -958,7 +1031,7 @@ def write_summarized_means_table(
         label_extension="summarized_master_means",
         caption_extension="Summarized master means",
         filename="summarized_master_means.tex",
-        order_by_basis=True,
+        breakdown_by=breakdown_by,
     )
 
 
@@ -973,6 +1046,7 @@ def write_master_latex_tables(
     scenario_key: str,
     scenario_title: str,
     correlation: str = "Spearman",
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Entry point: Generate all master LaTeX tables from master.csv.
 
@@ -987,18 +1061,37 @@ def write_master_latex_tables(
         scenario_key: Key for table labels (e.g., "test").
         scenario_title: Title for table captions (e.g., "Test Scenario").
         correlation: Correlation type to display ("Pearson" or "Spearman"). Default is "Spearman".
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     write_master_ci_plateau_table(
-        master_csv_path, out_dir, scenario_key, scenario_title
+        master_csv_path,
+        out_dir,
+        scenario_key,
+        scenario_title,
+        breakdown_by=breakdown_by,
     )
     write_master_ci_plateau_means_table(
-        master_csv_path, out_dir, scenario_key, scenario_title
+        master_csv_path,
+        out_dir,
+        scenario_key,
+        scenario_title,
+        breakdown_by=breakdown_by,
     )
     write_summarized_master_table(
-        master_csv_path, out_dir, scenario_key, scenario_title, correlation=correlation
+        master_csv_path,
+        out_dir,
+        scenario_key,
+        scenario_title,
+        correlation=correlation,
+        breakdown_by=breakdown_by,
     )
     write_summarized_means_table(
-        master_csv_path, out_dir, scenario_key, scenario_title, correlation=correlation
+        master_csv_path,
+        out_dir,
+        scenario_key,
+        scenario_title,
+        correlation=correlation,
+        breakdown_by=breakdown_by,
     )
 
 
@@ -1007,6 +1100,7 @@ def write_comparison_latex_tables(
     out_dir: str,
     scenario_key: str,
     scenario_title: str,
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Entry point: Generate all comparison LaTeX tables from metrics_comparison.csv.
 
@@ -1019,18 +1113,35 @@ def write_comparison_latex_tables(
         out_dir: Directory to save LaTeX files.
         scenario_key: Key for table labels (e.g., "test").
         scenario_title: Title for table captions (e.g., "Test Scenario").
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     write_comparison_correlation_table(
-        comparison_csv_path, out_dir, scenario_key, scenario_title
+        comparison_csv_path,
+        out_dir,
+        scenario_key,
+        scenario_title,
+        breakdown_by=breakdown_by,
     )
     write_comparison_correlation_means_table(
-        comparison_csv_path, out_dir, scenario_key, scenario_title
+        comparison_csv_path,
+        out_dir,
+        scenario_key,
+        scenario_title,
+        breakdown_by=breakdown_by,
     )
     write_comparison_ci_plateau_table(
-        comparison_csv_path, out_dir, scenario_key, scenario_title
+        comparison_csv_path,
+        out_dir,
+        scenario_key,
+        scenario_title,
+        breakdown_by=breakdown_by,
     )
     write_comparison_ci_plateau_means_table(
-        comparison_csv_path, out_dir, scenario_key, scenario_title
+        comparison_csv_path,
+        out_dir,
+        scenario_key,
+        scenario_title,
+        breakdown_by=breakdown_by,
     )
 
 
@@ -1041,6 +1152,7 @@ def generate_all_latex_tables(
     scenario_title: str,
     correlation: str = "Spearman",
     comparison_csv_path: str | None = None,
+    breakdown_by: str | None = "basis",
 ) -> None:
     """Generate all LaTeX tables from master CSV and optionally comparison CSV.
 
@@ -1054,6 +1166,7 @@ def generate_all_latex_tables(
         scenario_title: Title for table captions (e.g., "Test Scenario").
         correlation: Correlation type to use ("Spearman" or "Pearson"), default "Spearman".
         comparison_csv_path: Optional path to metrics_comparison.csv file.
+        breakdown_by: "basis", "dimension", or None. Determines which column to use for sorting and display.
     """
     from pathlib import Path
 
@@ -1068,6 +1181,7 @@ def generate_all_latex_tables(
             scenario_key=scenario_key,
             scenario_title=scenario_title,
             correlation=correlation,
+            breakdown_by=breakdown_by,
         )
         print(f"Master LaTeX tables saved to: {out_dir}")
     except Exception as e:
@@ -1081,6 +1195,7 @@ def generate_all_latex_tables(
                 out_dir=out_dir,
                 scenario_key=scenario_key,
                 scenario_title=scenario_title,
+                breakdown_by=breakdown_by,
             )
             print(f"Comparison LaTeX tables saved to: {out_dir}")
         except Exception as e:
