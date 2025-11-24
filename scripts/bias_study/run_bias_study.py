@@ -59,7 +59,7 @@ CORRELATION_TYPE = (
 
 default_population_extractor = NaivePopulationExtractor()
 default_metric_adapters = [LocalMetricsAdapter(), VidgofMetricsAdapter()]
-default_bootstrap_sampler = BootstrapSampler(B=BOOTSTRAP_SIZE)
+default_bootstrap_sampler = BootstrapSampler(B=BOOTSTRAP_SIZE, seed=RANDOM_STATE)
 default_normalizers: Optional[List] = None
 default_sample_confidence_interval_extractor = SampleConfidenceIntervalExtractor(
     conf_level=0.95
