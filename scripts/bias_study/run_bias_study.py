@@ -103,7 +103,7 @@ def compute_results(
         log_population_sizes[log_name] = len(pm4py_log)
 
         window_samples = (
-            sampling_helper.sample_random_windows_no_replacement_within_only(
+            sampling_helper.sample_consecutive_trace_windows_with_replacement(
                 pm4py_log, SIZES, SAMPLES_PER_SIZE, RANDOM_STATE
             )
         )

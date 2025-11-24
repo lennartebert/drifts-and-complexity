@@ -120,7 +120,29 @@ def sample_random_traces_with_replacement(
     samples_per_size: int = 10,
     random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, List[Trace]]]:
-    """(1) Duplicates allowed within and across samples."""
+    """
+    Sample random trace sets from an event log with replacement.
+
+    Duplicates are allowed both within a sample and across samples. Each trace
+    is sampled independently with replacement, meaning the same trace can appear
+    multiple times in the same sample and across different samples.
+
+    Parameters
+    ----------
+    event_log
+        Iterable of traces (will be materialized to a list).
+    sizes
+        Iterable of positive integers indicating sample sizes to draw.
+    samples_per_size
+        Number of samples to draw per size.
+    random_state
+        Seed for reproducible sampling.
+
+    Returns
+    -------
+    List[Tuple[int, str, List[Trace]]]
+        List of (window_size, sample_id, trace_list).
+    """
     return sample_random_traces(
         event_log=event_log,
         sizes=sizes,
@@ -136,7 +158,35 @@ def sample_random_trace_sets_no_replacement_within_only(
     samples_per_size: int = 10,
     random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, List[Trace]]]:
-    """(2) No duplicates within a sample; samples are independent across runs."""
+    """
+    Sample random trace sets from an event log without replacement within samples.
+
+    No duplicates are allowed within a sample, but samples are independent across
+    runs. Each sample is an independent no-replacement draw from the full log,
+    meaning the same trace can appear in different samples but not within the
+    same sample.
+
+    Parameters
+    ----------
+    event_log
+        Iterable of traces (will be materialized to a list).
+    sizes
+        Iterable of positive integers indicating sample sizes to draw.
+    samples_per_size
+        Number of samples to draw per size.
+    random_state
+        Seed for reproducible sampling.
+
+    Returns
+    -------
+    List[Tuple[int, str, List[Trace]]]
+        List of (window_size, sample_id, trace_list).
+
+    Raises
+    ------
+    ValueError
+        If any requested size exceeds the number of traces in the log.
+    """
     return sample_random_traces(
         event_log=event_log,
         sizes=sizes,
@@ -152,7 +202,35 @@ def sample_random_trace_sets_no_replacement_global(
     samples_per_size: int = 10,
     random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, List[Trace]]]:
-    """(3) No replacement globally across all samples and sizes."""
+    """
+    Sample random trace sets from an event log without replacement globally.
+
+    No replacement is used globally across all samples and sizes. Each trace is
+    used at most once across all samples. The log is shuffled once, and samples
+    are carved sequentially from the shuffled pool.
+
+    Parameters
+    ----------
+    event_log
+        Iterable of traces (will be materialized to a list).
+    sizes
+        Iterable of positive integers indicating sample sizes to draw.
+    samples_per_size
+        Number of samples to draw per size.
+    random_state
+        Seed for reproducible sampling.
+
+    Returns
+    -------
+    List[Tuple[int, str, List[Trace]]]
+        List of (window_size, sample_id, trace_list).
+
+    Raises
+    ------
+    ValueError
+        If the total number of traces needed exceeds the number of traces in
+        the log.
+    """
     return sample_random_traces(
         event_log=event_log,
         sizes=sizes,
@@ -171,7 +249,30 @@ def sample_random_windows_with_replacement(
     samples_per_size: int = 10,
     random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, Window]]:
-    """(1) Duplicates allowed within and across samples."""
+    """
+    Sample random trace windows from an event log with replacement.
+
+    Duplicates are allowed both within a window and across windows. Each trace
+    is sampled independently with replacement, meaning the same trace can appear
+    multiple times in the same window and across different windows.
+
+    Parameters
+    ----------
+    event_log
+        Iterable of traces (will be materialized to a list).
+    sizes
+        Iterable of positive integers indicating sample sizes to draw.
+    samples_per_size
+        Number of samples to draw per size.
+    random_state
+        Seed for reproducible sampling.
+
+    Returns
+    -------
+    List[Tuple[int, str, Window]]
+        List of (window_size, sample_id, Window) where each Window contains
+        randomly sampled traces.
+    """
     trace_samples = sample_random_traces(
         event_log=event_log,
         sizes=sizes,
@@ -196,7 +297,36 @@ def sample_random_windows_no_replacement_within_only(
     samples_per_size: int = 10,
     random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, Window]]:
-    """(2) No duplicates within a sample; samples are independent across runs."""
+    """
+    Sample random trace windows from an event log without replacement within windows.
+
+    No duplicates are allowed within a window, but windows are independent across
+    runs. Each window is an independent no-replacement draw from the full log,
+    meaning the same trace can appear in different windows but not within the
+    same window.
+
+    Parameters
+    ----------
+    event_log
+        Iterable of traces (will be materialized to a list).
+    sizes
+        Iterable of positive integers indicating sample sizes to draw.
+    samples_per_size
+        Number of samples to draw per size.
+    random_state
+        Seed for reproducible sampling.
+
+    Returns
+    -------
+    List[Tuple[int, str, Window]]
+        List of (window_size, sample_id, Window) where each Window contains
+        randomly sampled traces without duplicates.
+
+    Raises
+    ------
+    ValueError
+        If any requested size exceeds the number of traces in the log.
+    """
     trace_samples = sample_random_traces(
         event_log=event_log,
         sizes=sizes,
@@ -221,12 +351,165 @@ def sample_random_windows_no_replacement_global(
     samples_per_size: int = 10,
     random_state: Optional[int] = None,
 ) -> List[Tuple[int, str, Window]]:
-    """(3) No replacement globally across all samples and sizes."""
+    """
+    Sample random trace windows from an event log without replacement globally.
+
+    No replacement is used globally across all windows and sizes. Each trace is
+    used at most once across all windows. The log is shuffled once, and windows
+    are carved sequentially from the shuffled pool.
+
+    Parameters
+    ----------
+    event_log
+        Iterable of traces (will be materialized to a list).
+    sizes
+        Iterable of positive integers indicating sample sizes to draw.
+    samples_per_size
+        Number of samples to draw per size.
+    random_state
+        Seed for reproducible sampling.
+
+    Returns
+    -------
+    List[Tuple[int, str, Window]]
+        List of (window_size, sample_id, Window) where each Window contains
+        randomly sampled traces without duplicates across all windows.
+
+    Raises
+    ------
+    ValueError
+        If the total number of traces needed exceeds the number of traces in
+        the log.
+    """
     trace_samples = sample_random_traces(
         event_log=event_log,
         sizes=sizes,
         samples_per_size=samples_per_size,
         policy="none",
+        random_state=random_state,
+    )
+    window_samples: List[Tuple[int, str, Window]] = [
+        (
+            window_size,
+            sample_id,
+            Window(id=sample_id, size=len(trace_list), traces=trace_list),
+        )
+        for window_size, sample_id, trace_list in trace_samples
+    ]
+    return window_samples
+
+
+# --- Consecutive trace sampling --------------------------
+
+
+def sample_consecutive_traces(
+    event_log: Iterable[Trace],
+    sizes: Iterable[int] = range(10, 501, 50),
+    samples_per_size: int = 10,
+    random_state: Optional[int] = None,
+) -> List[Tuple[int, str, List[Trace]]]:
+    """
+    Sample consecutive trace sets from an event log with replacement.
+
+    Each sample consists of directly consecutive traces from the log. Samples are
+    drawn independently with replacement, meaning each sample can start at any
+    valid position in the log, and samples can overlap.
+
+    Parameters
+    ----------
+    event_log
+        Iterable of traces (will be materialized to a list).
+    sizes
+        Iterable of positive integers indicating sample sizes to draw.
+    samples_per_size
+        Number of samples to draw per size.
+    random_state
+        Seed for reproducible sampling.
+
+    Returns
+    -------
+    List[Tuple[int, str, List[Trace]]]
+        List of (window_size, sample_id, trace_list) where trace_list contains
+        consecutive traces from the log.
+
+    Raises
+    ------
+    ValueError
+        If a requested size exceeds the number of traces in the log.
+    """
+    # Materialize and validate
+    event_log = list(event_log)
+    n_traces = len(event_log)
+
+    if n_traces == 0 or samples_per_size <= 0:
+        return []
+
+    sizes = [int(s) for s in sizes if int(s) > 0]
+    if not sizes:
+        return []
+
+    # Check if any requested size exceeds log length
+    max_s = max(sizes)
+    if max_s > n_traces:
+        raise ValueError(
+            f"Requested size {max_s} exceeds number of traces {n_traces} "
+            f"for consecutive sampling."
+        )
+
+    rng = np.random.default_rng(seed=random_state)
+    results: List[Tuple[int, str, List[Trace]]] = []
+
+    for sample_id in range(samples_per_size):
+        for s in sizes:
+            # Pick a random starting position (0 to n_traces - s)
+            # This ensures the full window fits within the log
+            start_idx = rng.integers(low=0, high=n_traces - s + 1)
+            # Take consecutive traces from start_idx
+            chosen_traces = event_log[start_idx : start_idx + s]
+            results.append((s, str(sample_id), chosen_traces))
+
+    return results
+
+
+def sample_consecutive_trace_windows_with_replacement(
+    event_log: Iterable[Trace],
+    sizes: Iterable[int] = range(10, 501, 50),
+    samples_per_size: int = 10,
+    random_state: Optional[int] = None,
+) -> List[Tuple[int, str, Window]]:
+    """
+    Sample consecutive trace windows from an event log with replacement.
+
+    Each window consists of directly consecutive traces from the log. Windows are
+    drawn independently with replacement, meaning each window can start at any
+    valid position in the log, and windows can overlap.
+
+    Parameters
+    ----------
+    event_log
+        Iterable of traces (will be materialized to a list).
+    sizes
+        Iterable of positive integers indicating sample sizes to draw.
+    samples_per_size
+        Number of samples to draw per size.
+    random_state
+        Seed for reproducible sampling.
+
+    Returns
+    -------
+    List[Tuple[int, str, Window]]
+        List of (window_size, sample_id, Window) where each Window contains
+        consecutive traces from the log.
+
+    Raises
+    ------
+    ValueError
+        If any requested size exceeds the number of traces in the log.
+    """
+    trace_samples = sample_consecutive_traces(
+        event_log=event_log,
+        sizes=sizes,
+        samples_per_size=samples_per_size,
         random_state=random_state,
     )
     window_samples: List[Tuple[int, str, Window]] = [
