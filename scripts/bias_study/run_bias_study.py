@@ -467,7 +467,7 @@ SCENARIOS = {
         base_scenario_name="synthetic_base",
     ),
     "real_base": dict(
-        logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
+        logs=["BPIC12", "RTFMP"],
         clear_name="Real (Base)",
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
@@ -477,7 +477,7 @@ SCENARIOS = {
         base_scenario_name=None,
     ),
     "real_normalized": dict(
-        logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
+        logs=["BPIC12", "RTFMP"],
         clear_name="Real (Normalized)",
         population_extractor=default_population_extractor,
         metric_adapters=default_metric_adapters,
@@ -487,7 +487,7 @@ SCENARIOS = {
         base_scenario_name="real_base",
     ),
     "real_normalized_and_population": dict(
-        logs=["BPIC12", "BPIC15_1", "BPIC15_2", "ITHD"],
+        logs=["BPIC12", "RTFMP"],
         clear_name="Real (Normalized + Population)",
         population_extractor=Chao1PopulationExtractor(),
         metric_adapters=default_metric_adapters,
