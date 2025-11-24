@@ -44,7 +44,7 @@ from utils.SampleConfidenceIntervalExtractor import SampleConfidenceIntervalExtr
 # --- defaults (same as before) ---
 SORTED_METRICS = constants.ALL_METRIC_NAMES  # constants.PC_METRICS
 
-SAMPLES_PER_SIZE = 200
+SAMPLES_PER_SIZE = 500
 RANDOM_STATE = 123
 BOOTSTRAP_SIZE = 200
 SIZES = range(50, 501, 50)
