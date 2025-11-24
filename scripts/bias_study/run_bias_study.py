@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -40,6 +40,7 @@ from utils.population.extractors.naive_population_extractor import (
     NaivePopulationExtractor,
 )
 from utils.SampleConfidenceIntervalExtractor import SampleConfidenceIntervalExtractor
+from utils.windowing.window import Window
 
 # --- defaults (same as before) ---
 SORTED_METRICS = constants.ALL_METRIC_NAMES  # constants.PC_METRICS
@@ -64,6 +65,191 @@ default_normalizers: Optional[List] = None
 default_sample_confidence_interval_extractor = SampleConfidenceIntervalExtractor(
     conf_level=0.95
 )
+
+
+# --- Helper functions for event log statistics ---
+
+
+def compute_basic_log_metrics(
+    pm4py_log, metric_adapter: LocalMetricsAdapter, population_extractor
+) -> Dict[str, float]:
+    """
+    Compute basic metrics for a full event log.
+
+    Parameters
+    ----------
+    pm4py_log
+        PM4Py event log.
+    metric_adapter
+        Metrics adapter to compute metrics.
+    population_extractor
+        Population extractor to apply to window.
+
+    Returns
+    -------
+    Dict[str, float]
+        Dictionary with metric names as keys and values.
+    """
+    # Create a window from the full log
+    window = Window(
+        id="full_log",
+        size=len(pm4py_log),
+        traces=list(pm4py_log),
+        population_distributions=None,
+    )
+
+    # Apply population extractor
+    population_extractor.apply(window)
+
+    # Compute metrics
+    required_metrics = [
+        "Number of Traces",
+        "Number of Distinct Activities",
+        "Number of Distinct Traces",
+        "Avg. Trace Length",
+    ]
+    store, _ = metric_adapter.compute_measures_for_window(
+        window, include_metrics=required_metrics
+    )
+
+    # Extract values
+    result = {}
+    for metric_name in required_metrics:
+        if store.has(metric_name):
+            measure = store.get(metric_name)
+            result[metric_name] = measure.value
+        else:
+            result[metric_name] = None
+
+    return result
+
+
+def build_log_statistics_dataframe(log_data_list: List[Dict[str, Any]]) -> pd.DataFrame:
+    """
+    Build a DataFrame from collected log statistics.
+
+    Parameters
+    ----------
+    log_data_list
+        List of dictionaries, each containing log statistics.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: Type, Event Log, Description, # Traces,
+        # Distinct Activities, # Distinct Traces, Avg. trace length
+    """
+    df = pd.DataFrame(log_data_list)
+    # Capitalize type values
+    if "type" in df.columns:
+        df["type"] = df["type"].str.capitalize()
+    # Rename columns for output
+    column_mapping = {
+        "type": "Type",
+        "log_name": "Event Log",
+        "description": "Description",
+        "Number of Traces": "# Traces",
+        "Number of Distinct Activities": "# Distinct Activities",
+        "Number of Distinct Traces": "# Distinct Traces",
+        "Avg. Trace Length": "Avg. trace length",
+    }
+    df = df.rename(columns=column_mapping)
+
+    # Reorder columns
+    column_order = [
+        "Type",
+        "Event Log",
+        "Description",
+        "# Traces",
+        "# Distinct Activities",
+        "# Distinct Traces",
+        "Avg. trace length",
+    ]
+    df = df[column_order]
+
+    return df
+
+
+def generate_latex_log_statistics_table(
+    df: pd.DataFrame,
+    caption: str = "Event Logs Used in this Study",
+    label: str = "tab:list_event_logs",
+) -> str:
+    """
+    Generate LaTeX table from log statistics DataFrame.
+
+    Parameters
+    ----------
+    df
+        DataFrame with log statistics.
+    caption
+        Table caption.
+    label
+        Table label.
+
+    Returns
+    -------
+    str
+        LaTeX table code.
+    """
+    lines = [
+        "\\begin{table}[ht]",
+        "\\centering",
+        f"\\caption{{{caption}}}",
+        f"\\label{{{label}}}",
+        "\\setlength{\\tabcolsep}{4pt} % reduce column padding",
+        "\\begin{tabular}{l@{}lllccc@{}}",
+        "\\toprule",
+        " Type&Event Log   &Description&  \\# Traces& \\# Distinct Activities& \\# Distinct Traces& Avg. trace length\\\\",
+        "",
+    ]
+
+    # Group by type and sort
+    df_sorted = df.sort_values(by=["Type", "Event Log"])
+
+    # Group by type
+    current_type = None
+    for _, row in df_sorted.iterrows():
+        row_type = row["Type"]
+        log_name = row["Event Log"]
+        description = row["Description"]
+        num_traces = f"{int(row['# Traces']):,}" if pd.notna(row["# Traces"]) else ""
+        num_activities = (
+            f"{int(row['# Distinct Activities']):,}"
+            if pd.notna(row["# Distinct Activities"])
+            else ""
+        )
+        num_traces_distinct = (
+            f"{int(row['# Distinct Traces']):,}"
+            if pd.notna(row["# Distinct Traces"])
+            else ""
+        )
+        avg_trace_length = (
+            f"{row['Avg. trace length']:.2f}"
+            if pd.notna(row["Avg. trace length"])
+            else ""
+        )
+
+        # Add type label if it changed
+        if row_type != current_type:
+            if current_type is not None:
+                lines.append("")
+                lines.append("\\midrule")
+            current_type = row_type
+            type_label = row_type.capitalize()
+        else:
+            type_label = ""
+
+        # Format the row - match the example format exactly
+        line = f" {type_label}&{log_name}& {description}&  {num_traces}& {num_activities}& {num_traces_distinct}& {avg_trace_length}\\\\"
+        lines.append(line)
+
+    lines.append("")
+    lines.append("\\bottomrule")
+    lines.append("\\end{tabular}")
+    lines.append("\\end{table}")
+
+    return "\n".join(lines)
 
 
 # --- core compute function ---
@@ -94,6 +280,11 @@ def compute_results(
     log_population_sizes: Dict[str, int] = {}
     # Store analysis results per log
     analysis_per_log: Dict[str, pd.DataFrame] = {}
+    # Store log statistics for summary table
+    log_statistics: List[Dict[str, any]] = []
+
+    # Get metric adapter for computing basic log statistics
+    basic_metrics_adapter = LocalMetricsAdapter()
 
     for log_name, dataset_info in data_dictionary.items():
         print(f"Computing for {log_name}")
@@ -101,6 +292,19 @@ def compute_results(
         pm4py_log = xes_importer.apply(str(log_path))
         # Store population size (number of traces) for FPC
         log_population_sizes[log_name] = len(pm4py_log)
+
+        # Compute basic log statistics
+        basic_metrics = compute_basic_log_metrics(
+            pm4py_log, basic_metrics_adapter, population_extractor
+        )
+        log_statistics.append(
+            {
+                "type": dataset_info["type"],
+                "log_name": log_name,  # Use the key (e.g., BPIC12)
+                "description": dataset_info["name"],
+                **basic_metrics,
+            }
+        )
 
         window_samples = (
             sampling_helper.sample_consecutive_trace_windows_with_replacement(
@@ -213,6 +417,22 @@ def compute_results(
         comparison_csv_path=comparison_csv_path,
         breakdown_by=BREAKDOWN_BY,
     )
+
+    # 5) Generate and save log statistics table
+    if log_statistics:
+        log_stats_df = build_log_statistics_dataframe(log_statistics)
+        # Save CSV
+        log_stats_csv_path = out_dir / "log_statistics.csv"
+        log_stats_df.to_csv(log_stats_csv_path, index=False)
+        print(f"Log statistics table saved to: {log_stats_csv_path}")
+
+        # Generate and save LaTeX
+        latex_table = generate_latex_log_statistics_table(log_stats_df)
+        log_stats_latex_path = latex_out_dir / "log_statistics.tex"
+        log_stats_latex_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_stats_latex_path, "w", encoding="utf-8") as f:
+            f.write(latex_table)
+        print(f"Log statistics LaTeX table saved to: {log_stats_latex_path}")
 
 
 # --- scenario registry ---
