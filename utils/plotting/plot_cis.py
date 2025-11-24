@@ -306,7 +306,7 @@ def _create_bootstrap_ci_plot_long(
                 )
 
         ax.set_title(m, fontsize=10)
-        ax.set_xlabel("Sample size")
+        ax.set_xlabel("Window Size")
         ax.set_xlim(x.min(), x.max())
         ax.grid(True, alpha=0.25)
 
@@ -524,7 +524,7 @@ def _create_sample_ci_plot_long(
 
         # Axis cosmetics
         ax.set_title(m, fontsize=10)
-        ax.set_xlabel("Sample size")
+        ax.set_xlabel("Window Size")
         ax.set_xlim(x.min(), x.max())
         ax.grid(True, alpha=0.25)
         if i % ncols == 0:
