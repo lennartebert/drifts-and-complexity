@@ -24,14 +24,17 @@ def _group_measures_by_breakdown(
     Args:
         measure_cols: List of measure column names.
         plot_breakdown: None, "basis", or "dimension".
+                       When None, creates one group per measure (one plot per measure).
 
     Returns:
         Dictionary mapping breakdown key to list of measure columns.
+        When plot_breakdown is None, keys are measure names (one measure per group).
     """
     measure_groups: dict[str | None, list[str]] = {}
     if plot_breakdown is None:
-        # Single plot with all measures
-        measure_groups[None] = measure_cols
+        # One plot per measure - create one group per measure
+        for col in measure_cols:
+            measure_groups[col] = [col]
     elif plot_breakdown == "basis":
         # Group by basis from METRIC_BASIS_MAP
         for col in measure_cols:
@@ -57,7 +60,8 @@ def _prepare_breakdown_path_and_title(
     Args:
         out_path: Original output path.
         title: Original title (may be None).
-        group_key: Breakdown group key (None if no breakdown).
+        group_key: Breakdown group key. When breakdown is None, this is the measure name.
+                   When breakdown is "basis" or "dimension", this is the basis/dimension name.
 
     Returns:
         Tuple of (modified_out_path, modified_title).
@@ -70,7 +74,9 @@ def _prepare_breakdown_path_and_title(
         path_obj = Path(out_path)
         stem = path_obj.stem
         suffix = path_obj.suffix
-        group_out_path = str(path_obj.parent / f"{stem}_{group_key}{suffix}")
+        # Sanitize group_key for filename (replace spaces/special chars with underscores)
+        safe_key = group_key.replace(" ", "_").replace("/", "_").replace("\\", "_")
+        group_out_path = str(path_obj.parent / f"{stem}_{safe_key}{suffix}")
         # Add breakdown to title if title is not None
         if title is not None:
             group_title = f"{title} — {group_key}"
@@ -596,9 +602,11 @@ def plot_ci_results(
         "Bootstrap CI Low" in metrics_df_for_plotting.columns
         and "Bootstrap CI High" in metrics_df_for_plotting.columns
     ):
+        bootstrap_dir = out_dir / "bootstrap_cis_plots"
+        bootstrap_dir.mkdir(parents=True, exist_ok=True)
         plot_aggregated_measures_bootstrap_cis(
             metrics_df_for_plotting,
-            out_path=str(out_dir / "measures_bootstrap_cis_mean.png"),
+            out_path=str(bootstrap_dir / "measures_bootstrap_cis_mean.png"),
             plot_breakdown=plot_breakdown,
             agg="mean",
             ncols=ncols,
@@ -610,9 +618,11 @@ def plot_ci_results(
         "Sample CI Low" in metrics_df_for_plotting.columns
         and "Sample CI High" in metrics_df_for_plotting.columns
     ):
+        sample_dir = out_dir / "sample_cis_plots"
+        sample_dir.mkdir(parents=True, exist_ok=True)
         plot_aggregated_measures_sample_cis(
             metrics_df_for_plotting,
-            out_path=str(out_dir / "measures_sample_cis_mean.png"),
+            out_path=str(sample_dir / "measures_sample_cis_mean.png"),
             agg="mean",
             plot_breakdown=plot_breakdown,
             ncols=ncols,

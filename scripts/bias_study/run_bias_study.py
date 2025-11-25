@@ -39,7 +39,7 @@ from utils.population.extractors.chao1_population_extractor import (
 from utils.population.extractors.naive_population_extractor import (
     NaivePopulationExtractor,
 )
-from utils.SampleConfidenceIntervalExtractor import SampleConfidenceIntervalExtractor
+from utils.sample_confidence_interval_extractor import SampleConfidenceIntervalExtractor
 from utils.windowing.window import Window
 
 # --- defaults (same as before) ---
@@ -343,7 +343,7 @@ def compute_results(
             metrics_df=metrics_df,
             analysis_df=analysis_df,
             out_dir=out_dir,
-            plot_breakdown=BREAKDOWN_BY,
+            plot_breakdown=None,  # Create one plot per measure
             ncols=3,
             metric_order=include_metrics,
         )

@@ -23,7 +23,7 @@ from utils.population.extractors.naive_population_extractor import (
     NaivePopulationExtractor,
 )
 from utils.population.extractors.population_extractor import PopulationExtractor
-from utils.SampleConfidenceIntervalExtractor import SampleConfidenceIntervalExtractor
+from utils.sample_confidence_interval_extractor import SampleConfidenceIntervalExtractor
 from utils.windowing.window import Window
 
 
