@@ -67,10 +67,21 @@ default_sample_confidence_interval_extractor = SampleConfidenceIntervalExtractor
 )
 
 
+# Metrics used for the log-level statistics (CSV + LaTeX table)
+METRICS_FOR_LOG_STATISTICS = [
+    "Number of Events",
+    "Number of Traces",
+    "Number of Distinct Activities",
+    "Number of Distinct Traces",
+    "Number of Distinct Activity Transitions",
+    "Avg. Trace Length",
+]
+
+
 # --- Helper functions for event log statistics ---
 
 
-def compute_basic_log_metrics(
+def compute_metrics_for_log_statistics(
     pm4py_log, metric_adapter: LocalMetricsAdapter, population_extractor
 ) -> Dict[str, float]:
     """
@@ -102,19 +113,13 @@ def compute_basic_log_metrics(
     population_extractor.apply(window)
 
     # Compute metrics
-    required_metrics = [
-        "Number of Traces",
-        "Number of Distinct Activities",
-        "Number of Distinct Traces",
-        "Avg. Trace Length",
-    ]
     store, _ = metric_adapter.compute_measures_for_window(
-        window, include_metrics=required_metrics
+        window, include_metrics=METRICS_FOR_LOG_STATISTICS
     )
 
     # Extract values
     result = {}
-    for metric_name in required_metrics:
+    for metric_name in METRICS_FOR_LOG_STATISTICS:
         if store.has(metric_name):
             measure = store.get(metric_name)
             result[metric_name] = measure.value
@@ -136,35 +141,28 @@ def build_log_statistics_dataframe(log_data_list: List[Dict[str, Any]]) -> pd.Da
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns: Type, Event Log, Description, # Traces,
-        # Distinct Activities, # Distinct Traces, Avg. trace length
+        DataFrame with columns: Type, Event Log, Description, plus metric columns
+        as defined in METRICS_FOR_LOG_STATISTICS.
     """
     df = pd.DataFrame(log_data_list)
     # Capitalize type values
     if "type" in df.columns:
         df["type"] = df["type"].str.capitalize()
-    # Rename columns for output
+    # Rename only non-metric columns for output
     column_mapping = {
         "type": "Type",
         "log_name": "Event Log",
         "description": "Description",
-        "Number of Traces": "# Traces",
-        "Number of Distinct Activities": "# Distinct Activities",
-        "Number of Distinct Traces": "# Distinct Traces",
-        "Avg. Trace Length": "Avg. trace length",
     }
     df = df.rename(columns=column_mapping)
 
-    # Reorder columns
-    column_order = [
-        "Type",
-        "Event Log",
-        "Description",
-        "# Traces",
-        "# Distinct Activities",
-        "# Distinct Traces",
-        "Avg. trace length",
-    ]
+    # Reorder columns: Type, Event Log, Description, then metrics in the global list
+    column_order: List[str] = ["Type", "Event Log", "Description"]
+    # Only include metrics that are present in the DataFrame
+    for metric in METRICS_FOR_LOG_STATISTICS:
+        if metric in df.columns:
+            column_order.append(metric)
+
     df = df[column_order]
 
     return df
@@ -192,43 +190,45 @@ def generate_latex_log_statistics_table(
     str
         LaTeX table code.
     """
+    # Determine LaTeX column specification dynamically:
+    #  - 3 left-aligned columns (Type, Event Log, Description)
+    #  - one centered column per metric
+    num_metrics = len(METRICS_FOR_LOG_STATISTICS)
+    colspec = "l@{}ll" + "c" * num_metrics + "@{}"
+
+    # Header row: use METRIC_NAMES_TO_LATEX_MAP for metric display names
+    metric_headers = [
+        constants.METRIC_NAMES_TO_LATEX_MAP.get(metric, metric)
+        for metric in METRICS_FOR_LOG_STATISTICS
+    ]
+    header_metrics_part = " & ".join(metric_headers)
+
     lines = [
         "\\begin{table}[ht]",
         "\\centering",
         f"\\caption{{{caption}}}",
         f"\\label{{{label}}}",
         "\\setlength{\\tabcolsep}{4pt} % reduce column padding",
-        "\\begin{tabular}{l@{}lllccc@{}}",
+        f"\\begin{{tabular}}{{{colspec}}}",
         "\\toprule",
-        " Type&Event Log   &Description&  \\# Traces& \\# Distinct Activities& \\# Distinct Traces& Avg. trace length\\\\",
+        f" Type&Event Log   &Description&  {header_metrics_part}\\\\",
         "",
     ]
 
-    # Group by type and sort
+    # Sort rows by type and event log
     df_sorted = df.sort_values(by=["Type", "Event Log"])
 
-    # Group by type
-    current_type = None
+    current_type: Optional[str] = None
     for _, row in df_sorted.iterrows():
         row_type = row["Type"]
         log_name = row["Event Log"]
         description = row["Description"]
-        num_traces = f"{int(row['# Traces']):,}" if pd.notna(row["# Traces"]) else ""
-        num_activities = (
-            f"{int(row['# Distinct Activities']):,}"
-            if pd.notna(row["# Distinct Activities"])
-            else ""
-        )
-        num_traces_distinct = (
-            f"{int(row['# Distinct Traces']):,}"
-            if pd.notna(row["# Distinct Traces"])
-            else ""
-        )
-        avg_trace_length = (
-            f"{row['Avg. trace length']:.2f}"
-            if pd.notna(row["Avg. trace length"])
-            else ""
-        )
+
+        # Escape underscores in log names for LaTeX
+        if isinstance(log_name, str):
+            escaped_log_name = log_name.replace("_", "\\_")
+        else:
+            escaped_log_name = str(log_name)
 
         # Add type label if it changed
         if row_type != current_type:
@@ -240,8 +240,31 @@ def generate_latex_log_statistics_table(
         else:
             type_label = ""
 
-        # Format the row - match the example format exactly
-        line = f" {type_label}&{log_name}& {description}&  {num_traces}& {num_activities}& {num_traces_distinct}& {avg_trace_length}\\\\"
+        # Build metric value cells in the order of METRICS_FOR_LOG_STATISTICS
+        metric_cells: List[str] = []
+        for metric in METRICS_FOR_LOG_STATISTICS:
+            if metric not in row or pd.isna(row[metric]):
+                metric_cells.append("")
+                continue
+
+            value = row[metric]
+            # Heuristic: average-like metrics as floats, others as integers with thousands separator
+            if (
+                isinstance(value, (int, np.integer))
+                and "Avg." not in metric
+                and "Average" not in metric
+            ):
+                metric_cells.append(f"{int(value):,}")
+            elif isinstance(value, (float, np.floating)) and (
+                "Avg." in metric or "Average" in metric
+            ):
+                metric_cells.append(f"{float(value):.2f}")
+            else:
+                # Fallback: string representation
+                metric_cells.append(str(value))
+
+        metrics_part = " & ".join(metric_cells)
+        line = f" {type_label}&{escaped_log_name}& {description}&  {metrics_part}\\\\"
         lines.append(line)
 
     lines.append("")
@@ -294,7 +317,7 @@ def compute_results(
         log_population_sizes[log_name] = len(pm4py_log)
 
         # Compute basic log statistics
-        basic_metrics = compute_basic_log_metrics(
+        basic_metrics = compute_metrics_for_log_statistics(
             pm4py_log, basic_metrics_adapter, population_extractor
         )
         log_statistics.append(
