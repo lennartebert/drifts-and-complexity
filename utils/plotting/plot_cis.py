@@ -6,6 +6,7 @@ from typing import Sequence
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.lines import Line2D
+from matplotlib.ticker import FuncFormatter
 
 
 def plot_sample_cis(
@@ -98,17 +99,31 @@ def plot_sample_cis(
                 y_low = data["Sample CI Low"].values
                 y_high = data["Sample CI High"].values
 
-                # Mean line and CI bounds
+                # Mean line
                 ax.plot(x, y, color="C0", linestyle="-", linewidth=2)
-                ax.plot(x, y_low, color="C1", linestyle="--", linewidth=1.2)
-                ax.plot(x, y_high, color="C2", linestyle=":", linewidth=1.2)
-                # Shaded CI band
+                # Shaded CI band only (no CI boundary lines)
                 ax.fill_between(x, y_low, y_high, color="C0", alpha=0.15)
 
             ax.grid(alpha=0.5)
             ax.set_title(", ".join(metrics_in_cell))
 
-    # Axis labelling: only left column has y-labels; all subplots keep y tick marks/values.
+    # Axis labelling and tick formatting:
+    # - only left column has y-label text; all subplots keep y tick marks/values
+    # - disable scientific notation/offset on the y-axis
+    # Formatter that shows scientific notation as Python-style 'X.YeK' directly on the ticks
+    def _y_formatter(value: float, _pos: int) -> str:
+        s = f"{value:.3g}"
+        return s
+        # if "e" not in s:
+        #     return s
+        # coeff, exp = s.split("e")
+        # try:
+        #     exp_int = int(exp)
+        # except ValueError:
+        #     return s
+        # # Use standard Python scientific notation, e.g. '1.5e5'
+        # return f"{coeff}e{exp_int}"
+
     for row_idx in range(n_rows):
         for col_idx in range(n_cols):
             ax = axes[row_idx][col_idx]
@@ -120,6 +135,9 @@ def plot_sample_cis(
             else:
                 # Keep y ticks/values visible, but avoid repeating the axis label text.
                 ax.set_ylabel("")
+
+            # Apply custom formatter that writes scientific notation as 'XX*10^k'
+            ax.yaxis.set_major_formatter(FuncFormatter(_y_formatter))
 
             ax.tick_params(axis="both")
 
@@ -144,11 +162,11 @@ def plot_sample_cis(
         )
 
     # Figure-level legend under the grid.
-    legend_handles = [
-        Line2D([0], [0], color="C0", linestyle="-", linewidth=2, label="Mean"),
-        Line2D([0], [0], color="C1", linestyle="--", linewidth=1.2, label="CI low"),
-        Line2D([0], [0], color="C2", linestyle=":", linewidth=1.2, label="CI high"),
-    ]
+    # Legend: mean line + shaded confidence interval
+    mean_handle = Line2D([0], [0], color="C0", linestyle="-", linewidth=2, label="Mean")
+    ci_patch = plt.Rectangle((0, 0), 1, 1, facecolor="C0", alpha=0.15, edgecolor="none")
+    ci_patch.set_label("95% confidence interval")
+    legend_handles = [mean_handle, ci_patch]
     fig.legend(
         handles=legend_handles,
         loc="lower center",
@@ -176,8 +194,9 @@ def plot_sample_cis(
             else:
                 ax.set_xlabel("Window Size")
 
-    # First pass layout and margin adjustments (slightly more horizontal padding).
-    fig.tight_layout(pad=0.5, h_pad=0.3, w_pad=0.8)
+    # First pass layout and margin adjustments (slightly more horizontal padding,
+    # reduced vertical spacing between subplots).
+    fig.tight_layout(pad=0.5, h_pad=0.15, w_pad=0.8)
     # More bottom margin so the legend sits fully below the grid; top margin for group labels.
     fig.subplots_adjust(left=0.08, bottom=0.12, top=0.96)
     # fig.subplots_adjust(bottom=0.09)   # reduce bottom whitespace
@@ -193,7 +212,8 @@ def plot_sample_cis(
             breaks.append(r)
 
     # Vertical gap between groups (in figure coordinates) to add whitespace mainly below labels.
-    gap = 0.01
+    # Keep this small so overall vertical spacing stays tight.
+    gap = 0.008
     for br in breaks:
         # start shifting from the *next* row after the break so the label row itself stays put
         for r in range(br + 1, n_rows):
