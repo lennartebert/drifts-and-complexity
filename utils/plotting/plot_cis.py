@@ -75,8 +75,8 @@ def plot_sample_cis(
     for metric, df_metric in analysis_df.groupby("Metric"):
         metric_data[str(metric)] = df_metric.sort_values("Sample Size")
 
-    # Create figure and axes (slightly reduced height).
-    figsize = (3.5 * n_cols, 1.7 * n_rows)
+    # Create figure and axes (slightly reduced height and width per subplot).
+    figsize = (3.1 * n_cols, 1.7 * n_rows)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, squeeze=False)
 
     # Draw all panels according to the grid.
@@ -108,7 +108,7 @@ def plot_sample_cis(
             ax.grid(alpha=0.5)
             ax.set_title(", ".join(metrics_in_cell))
 
-    # Axis labelling: only left column has y-labels; others hide them and their y tick labels.
+    # Axis labelling: only left column has y-labels; all subplots keep y tick marks/values.
     for row_idx in range(n_rows):
         for col_idx in range(n_cols):
             ax = axes[row_idx][col_idx]
@@ -118,8 +118,8 @@ def plot_sample_cis(
             if col_idx == 0:
                 ax.set_ylabel("Measure Value")
             else:
+                # Keep y ticks/values visible, but avoid repeating the axis label text.
                 ax.set_ylabel("")
-                ax.tick_params(axis="y", labelleft=False)
 
             ax.tick_params(axis="both")
 
@@ -171,12 +171,13 @@ def plot_sample_cis(
                 continue
             if r != last_row_with_data[c]:
                 # ax.set_xticklabels([])
-                ax.set_xlabel("")
+                # ax.set_xlabel("")
+                ax.set_xlabel("Window Size")
             else:
                 ax.set_xlabel("Window Size")
 
-    # First pass layout and margin adjustments.
-    fig.tight_layout(pad=0.5, h_pad=0.3, w_pad=0.5)
+    # First pass layout and margin adjustments (slightly more horizontal padding).
+    fig.tight_layout(pad=0.5, h_pad=0.3, w_pad=0.8)
     # More bottom margin so the legend sits fully below the grid; top margin for group labels.
     fig.subplots_adjust(left=0.08, bottom=0.12, top=0.96)
     # fig.subplots_adjust(bottom=0.09)   # reduce bottom whitespace
