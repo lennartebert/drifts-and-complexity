@@ -23,7 +23,7 @@ class Structure(TraceMetric):
     name = "Structure"
     requires: list[str] = [
         "Number of Distinct Activities",
-        "Number of Distinct Activity Transitions",
+        "Number of Distinct Directly-Follows Relations",
     ]
 
     def compute(self, traces: List[Trace], measures: MeasureStore) -> None:
@@ -38,7 +38,7 @@ class Structure(TraceMetric):
 
         number_of_distinct_activities = measures.get("Number of Distinct Activities")
         number_of_activity_transitions = measures.get(
-            "Number of Distinct Activity Transitions"
+            "Number of Distinct Directly-Follows Relations"
         )
         if (
             number_of_distinct_activities is None
@@ -47,7 +47,7 @@ class Structure(TraceMetric):
             raise ValueError(
                 "Required measures missing: "
                 f"Number of Distinct Activities={number_of_distinct_activities}, "
-                f"Number of Distinct Activity Transitions={number_of_activity_transitions}"
+                f"Number of Distinct Directly-Follows Relations={number_of_activity_transitions}"
             )
 
         value = (

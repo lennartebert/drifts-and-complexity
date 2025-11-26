@@ -42,14 +42,14 @@ def _observed_n_act_transitions(traces: List[Trace]) -> int:
     return len(distinct_activity_transitions)
 
 
-@register_metric("Number of Distinct Activity Transitions")
+@register_metric("Number of Distinct Directly-Follows Relations")
 class NumberOfDistinctActivityTransitions(TraceMetric):
-    """Trace-based count of distinct activity transitions (ordered pairs of consecutive activities)."""
+    """Trace-based count of distinct directly-follows relations (ordered pairs of consecutive activities)."""
 
-    name = "Number of Distinct Activity Transitions"
+    name = "Number of Distinct Directly-Follows Relations"
 
     def compute(self, traces: List[Trace], measures: MeasureStore) -> None:
-        """Compute the number of distinct activity transitions.
+        """Compute the number of distinct directly-follows relations.
 
         Args:
             traces: List of PM4Py Trace objects.

@@ -1,4 +1,4 @@
-"""Number of distinct activity transitions metric implementation (distribution-based)."""
+"""Number of distinct directly-follows relations metric implementation (distribution-based)."""
 
 from __future__ import annotations
 
@@ -10,17 +10,17 @@ from utils.complexity.metrics.registry import register_metric
 from utils.population.population_distributions import PopulationDistributions
 
 
-@register_metric("Number of Distinct Activity Transitions")
+@register_metric("Number of Distinct Directly-Follows Relations")
 class NumberOfDistinctActivityTransitions(PopulationDistributionsMetric):
-    """Distribution-based count of distinct activity transitions."""
+    """Distribution-based count of distinct directly-follows relations."""
 
-    name = "Number of Distinct Activity Transitions"
+    name = "Number of Distinct Directly-Follows Relations"
     requires: list[str] = []
 
     def compute(
         self, population_distribution: PopulationDistributions, measures: MeasureStore
     ) -> None:
-        """Compute the number of distinct activity transitions from population distribution.
+        """Compute the number of distinct directly-follows relations from population distribution.
 
         Args:
             population_distribution: PopulationDistributions object.

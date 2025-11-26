@@ -73,7 +73,7 @@ METRICS_FOR_LOG_STATISTICS = [
     "Number of Traces",
     "Number of Distinct Activities",
     "Number of Distinct Traces",
-    "Number of Distinct Activity Transitions",
+    "Number of Distinct Directly-Follows Relations",
     "Avg. Trace Length",
 ]
 

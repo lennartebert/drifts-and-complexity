@@ -45,7 +45,7 @@ ALL_METRIC_NAMES = [
     "Number of Traces",
     "Number of Distinct Activities",
     "Number of Distinct Traces",
-    "Number of Distinct Activity Transitions",
+    "Number of Distinct Directly-Follows Relations",
     "Min. Trace Length",
     "Avg. Trace Length",
     "Max. Trace Length",
@@ -68,7 +68,7 @@ ALL_METRIC_NAMES = [
 DUAL_VARIANT_METRIC_NAMES = [
     "Number of Distinct Traces",
     "Number of Distinct Activities",
-    "Number of Distinct Activity Transitions",
+    "Number of Distinct Directly-Follows Relations",
 ]
 
 METRIC_BASIS_MAP = {
@@ -78,7 +78,7 @@ METRIC_BASIS_MAP = {
     # Population counts (richness-style)
     "Number of Distinct Activities": "PC",
     "Number of Distinct Traces": "PC",
-    "Number of Distinct Activity Transitions": "PC",
+    "Number of Distinct Directly-Follows Relations": "PC",
     "Structure": "PC",
     "Estimated Number of Acyclic Paths": "PC",
     "Percentage of Distinct Traces": "PC",
@@ -104,7 +104,7 @@ METRIC_DIMENSION_MAP = {
     "Number of Traces": "Length",
     "Number of Distinct Activities": "Size",
     "Number of Distinct Traces": "Size",
-    "Number of Distinct Activity Transitions": "Size",
+    "Number of Distinct Directly-Follows Relations": "Size",
     "Min. Trace Length": "Size",
     "Avg. Trace Length": "Size",
     "Max. Trace Length": "Size",
@@ -236,7 +236,7 @@ METRIC_SHORTHAND = {
     "distinct_activities": "Number of Distinct Activities",
     "traces": "Number of Traces",
     "distinct_traces": "Number of Distinct Traces",
-    "transitions": "Number of Distinct Activity Transitions",
+    "transitions": "Number of Distinct Directly-Follows Relations",
     # Trace length metrics
     "min_length": "Min. Trace Length",
     "avg_length": "Avg. Trace Length",
@@ -265,7 +265,7 @@ METRIC_NAMES_TO_LATEX_MAP = {
     "Number of Distinct Activities": "\\# Distinct Activities",
     "Number of Traces": "\\# Traces",
     "Number of Distinct Traces": "\\# Distinct Traces",
-    "Number of Distinct Activity Transitions": "\\# Distinct Activity Transitions",
+    "Number of Distinct Directly-Follows Relations": "\\# Distinct Directly-Follows Relations",
     "Min. Trace Length": "Min. Trace Length",
     "Avg. Trace Length": "Avg. Trace Length",
     "Max. Trace Length": "Max. Trace Length",
