@@ -29,7 +29,7 @@ from utils.pipeline.compute import (
     compute_analysis_for_metrics,
     compute_metrics_for_samples,
 )
-from utils.plotting.plot_cis import plot_ci_results
+from utils.plotting.plot_cis import plot_sample_cis
 from utils.plotting.plot_correlations import plot_all_correlation_results
 
 # plot_inext_curves module removed - no longer needed
@@ -45,6 +45,44 @@ from utils.windowing.window import Window
 # --- defaults (same as before) ---
 SORTED_METRICS = constants.ALL_METRIC_NAMES  # constants.PC_METRICS
 
+PLOT_GRID = [
+    # ----- LENGTH -----
+    [["Number of Events"], ["Number of Traces"], []],
+    # ----- SIZE -----
+    [
+        ["Number of Distinct Activities"],
+        ["Number of Distinct Traces"],
+        ["Number of Distinct Directly-Follows Relations"],
+    ],
+    [["Min. Trace Length"], ["Avg. Trace Length"], ["Max. Trace Length"]],
+    # ----- VARIATION -----
+    [
+        ["Percentage of Distinct Traces"],
+        ["Average Distinct Activities per Trace"],
+        ["Structure"],
+    ],
+    [
+        ["Estimated Number of Acyclic Paths"],
+        ["Number of Ties in Paths to Goal"],
+        ["Lempel-Ziv Complexity"],
+    ],
+    # ----- DISTANCE -----
+    [["Average Affinity"], ["Deviation from Random"], ["Average Edit Distance"]],
+    # ----- GRAPH ENTROPY -----
+    [["Sequence Entropy"], ["Normalized Sequence Entropy"], []],
+    [["Variant Entropy"], ["Normalized Variant Entropy"], []],
+]
+
+PLOT_ROW_GROUPS = [
+    "Length",
+    "Size",
+    "Size",
+    "Variation",
+    "Variation",
+    "Distance",
+    "Graph Entropy",
+    "Graph Entropy",
+]
 SAMPLES_PER_SIZE = 500
 RANDOM_STATE = 123
 BOOTSTRAP_SIZE = 200
@@ -362,13 +400,11 @@ def compute_results(
         analysis_df.to_csv(out_dir / "analysis.csv")
 
         # Create CI plots
-        plot_ci_results(
-            metrics_df=metrics_df,
+        plot_sample_cis(
             analysis_df=analysis_df,
+            plot_grid=PLOT_GRID,
+            plot_row_groups=PLOT_ROW_GROUPS,
             out_dir=out_dir,
-            plot_breakdown=None,  # Create one plot per measure
-            ncols=3,
-            metric_order=include_metrics,
         )
 
         # Store for downstream processing
