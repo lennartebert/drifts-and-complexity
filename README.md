@@ -111,8 +111,7 @@ drifts-and-complexity/
 │   ├── vidgof_complexity/       # Process complexity metrics plugin (required)
 │   ├── drift_characterization/  # Concept drift detection plugin (optional)
 │   └── cdrift_evaluation/       # Drift evaluation tools plugin (optional)
-├── tests/                   # Unit and integration tests
-└── dev/                     # Development tools and configuration
+└── tests/                   # Unit and integration tests
 ```
 
 **Note:** The `plugins/` directory contains git submodules. The required `vidgof_complexity` plugin is initialized during installation (see Installation section). Optional plugins can be installed separately if needed.
@@ -191,7 +190,7 @@ The code automatically uses `data/data_dictionary.json` if it exists, otherwise 
 
 ```bash
 # Run type checking
-mypy --config-file=dev/config/mypy.ini utils
+mypy utils
 
 # Run tests
 pytest
@@ -203,18 +202,10 @@ isort utils tests
 
 ### Development Tools
 
-- **Type Checking**: MyPy configuration in `dev/config/mypy.ini`
-- **Code Formatting**: Black, isort, flake8 configured in `dev/config/`
-- **Pre-commit Hooks**: Automated quality checks in `dev/config/.pre-commit-config.yaml`
+- **Type Checking**: MyPy configuration in `mypy.ini`
+- **Code Formatting**: Black, isort, flake8 configured in `pyproject.toml`
+- **Pre-commit Hooks**: Automated quality checks in `.pre-commit-config.yaml`
 - **Testing**: Pytest configuration in `pytest.ini`
-
-### Configuration Files
-
-Development configuration files are located in `dev/config/`:
-- `mypy.ini`: Type checking configuration
-- `pytest.ini`: Test configuration (also in root)
-- `.pre-commit-config.yaml`: Pre-commit hooks
-- `pyproject.toml`: Project metadata and tool configurations
 
 
 ## License
