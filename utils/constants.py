@@ -9,7 +9,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 # configs
+DEFAULT_DATA_DICTIONARY_FILE_PATH = ROOT / "data" / "default_data_dictionary.json"
 DATA_DICTIONARY_FILE_PATH = ROOT / "data" / "data_dictionary.json"
+
+
+def get_data_dictionary_path() -> Path:
+    """
+    Get the path to the data dictionary file.
+
+    Checks for data_dictionary.json first (user's custom configuration),
+    then falls back to default_data_dictionary.json (shipped with repository).
+
+    Returns:
+        Path to the data dictionary file to use.
+    """
+    if DATA_DICTIONARY_FILE_PATH.exists():
+        return DATA_DICTIONARY_FILE_PATH
+    return DEFAULT_DATA_DICTIONARY_FILE_PATH
+
 
 # drift characterization
 DRIFT_CHARACTERIZATION_DIR = ROOT / "plugins" / "drift_characterization"

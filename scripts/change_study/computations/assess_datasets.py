@@ -318,7 +318,7 @@ def main_per_dataset(
 def main(datasets=None, mode="all", plot_coverage_curves: bool = False):
     print(f"#### Starting drift complexity analysis ####")
 
-    data_dictionary = helpers.load_data_dictionary(constants.DATA_DICTIONARY_FILE_PATH)
+    data_dictionary = helpers.load_data_dictionary(constants.get_data_dictionary_path())
 
     # only keep datasets in data_dictionary that are in the datasets
     if datasets is not None:

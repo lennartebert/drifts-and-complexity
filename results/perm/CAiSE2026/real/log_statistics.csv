@@ -1,0 +1,3 @@
+Type,Event Log,Description,Number of Events,Number of Traces,Number of Distinct Activities,Number of Distinct Traces,Number of Distinct Directly-Follows Relations,Avg. Trace Length
+Real,BPIC12,BPIC 2012 (Loan Applications),262200.0,13087.0,24.0,4366.0,125.0,20.035149384885763
+Real,RTFMP,TBD,561470.0,150370.0,11.0,231.0,70.0,3.7339229899581032

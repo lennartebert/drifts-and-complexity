@@ -1,2 +1,6 @@
 /*
 !.gitignore
+!BPIC12/
+!BPIC12/**
+!RTFMP/
+!RTFMP/**

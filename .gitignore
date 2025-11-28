@@ -183,3 +183,6 @@ cython_debug/
 
 # VS Code specific ignores
 .vscode/
+
+# User-specific data dictionary (default_data_dictionary.json is the template)
+data/data_dictionary.json
