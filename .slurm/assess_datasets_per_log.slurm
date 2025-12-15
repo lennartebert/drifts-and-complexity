@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=assess_datasets
-#SBATCH --output=.scripts/logs/%A/log_%A_%a.out
-#SBATCH --error=.scripts/logs/%A/log_%A_%a.err
+#SBATCH --output=.slurm/logs/%A/log_%A_%a.out
+#SBATCH --error=.slurm/logs/%A/log_%A_%a.err
 #SBATCH --array=0-22
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=16G
