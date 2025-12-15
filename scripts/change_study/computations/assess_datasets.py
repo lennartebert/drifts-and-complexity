@@ -162,19 +162,18 @@ def concept_drift_characterization(
     target_dir = constants.CHANGE_STUDY_RESULTS_DIR / "drift_detection" / dataset_key
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # In test mode, check for existing results first
+    # In test mode, check for existing results first to speed up repeated runs
     if test_mode:
         existing_results = list(target_dir.glob("*.csv"))
         if existing_results:
             print(f"## Test mode: Using existing drift detection results ##")
             return existing_results
-        else:
-            # In test mode, if no results exist, skip drift characterization
-            # and return empty list (will be handled by caller)
-            print(
-                f"## Test mode: No existing results found, skipping drift characterization ##"
-            )
-            return []
+        # Fall through when no existing results are found so that
+        # drift characterization is still executed in test mode.
+        print(
+            "## Test mode: No existing results found, "
+            "running full drift characterization ##"
+        )
 
     print(f"## Running concept drift characterization ##")
     local_dataset_path = (PROJECT_ROOT / dataset_info["path"]).resolve()
@@ -537,7 +536,8 @@ if __name__ == "__main__":
         "--test",
         action="store_true",
         help="Run a lightweight test using the TEST_BPIC12 dataset. "
-        "Skips drift characterization, uses minimal config, limits traces.",
+        "Prefers existing drift detection results when available, "
+        "uses minimal config, limits traces.",
     )
     args = parser.parse_args()
 
