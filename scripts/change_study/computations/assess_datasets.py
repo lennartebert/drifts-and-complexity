@@ -492,7 +492,21 @@ def main(
 
     # only keep datasets in data_dictionary that are in the datasets
     if datasets is not None:
+        available_keys = set(data_dictionary.keys())
+        requested_keys = set(datasets)
+        missing_keys = requested_keys - available_keys
+
+        if missing_keys:
+            print(
+                f"WARNING: The following requested dataset(s) were not found in the data dictionary: {sorted(missing_keys)}"
+            )
+            print(f"Available datasets are: {sorted(available_keys)}")
+
         data_dictionary = {k: v for k, v in data_dictionary.items() if k in datasets}
+
+        if not data_dictionary:
+            print("ERROR: No matching datasets found after filtering. Exiting.")
+            return
 
     for dataset_key, dataset_info in data_dictionary.items():
         main_per_dataset(
