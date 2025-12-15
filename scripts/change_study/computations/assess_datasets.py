@@ -1,22 +1,28 @@
 import argparse
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+from typing import Any
+
+# Set matplotlib to use non-interactive backend before importing plotting modules
+import matplotlib
+
+matplotlib.use("Agg")  # Use non-interactive backend
 
 import pandas as pd
+
+# Ensure project root is on sys.path so local imports work when run from anywhere
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils import constants, helpers
 
 # Local configuration path
 WINDOW_CONFIG_FILE_PATH = Path(__file__).parent.parent / "window_config.yml"
-from pm4py.algo.discovery.dfg import algorithm as dfg_discovery
-from pm4py.algo.filtering.log.variants import variants_filter
-from pm4py.statistics.attributes.log import get as attributes_get
 
-# pm4py extractors for building abundances per species
-from pm4py.util import xes_constants as xes
-
-# NEW: assessor import (singular)
+# Assessor imports
 from utils.complexity.assessors import (
     assess_complexity_via_change_point_split,
     assess_complexity_via_fixed_sized_windows,
@@ -28,14 +34,62 @@ from utils.plotting.complexity import (
     plot_complexity_via_fixed_sized_windows,
     plot_delta_measures,
 )
-from utils.plotting.coverage_curves import plot_coverage_curves_for_cp_windows
-from utils.windowing.helpers import split_log_into_windows_by_change_points
 from utils.windowing.loader import load_window_config
 
 # ------------------- UTILS -------------------
 
 
-def clean_folder_except_gitkeep(folder: Path, delete: bool = False):
+def get_adapter_names(test_mode: bool) -> list[str]:
+    """Get adapter names based on test mode.
+
+    Parameters
+    ----------
+    test_mode
+        If True, returns only vidgof_sample for speed. Otherwise returns both local and vidgof_sample.
+
+    Returns
+    -------
+    list[str]
+        List of adapter names to use.
+    """
+    return ["vidgof_sample"] if test_mode else ["local", "vidgof_sample"]
+
+
+def run_with_error_handling(operation_name: str, func, *args, **kwargs):
+    """Run a function with standardized error handling.
+
+    Parameters
+    ----------
+    operation_name
+        Human-readable name of the operation (e.g., "complexity computation").
+    func
+        Function to execute.
+    *args, **kwargs
+        Arguments to pass to the function.
+
+    Returns
+    -------
+    Any
+        Return value of the function.
+
+    Raises
+    ------
+    Exception
+        Re-raises any exception that occurs, after printing error message and traceback.
+    """
+    try:
+        result = func(*args, **kwargs)
+        print(f"  {operation_name} complete.")
+        return result
+    except Exception as e:
+        print(f"  ERROR during {operation_name}: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise
+
+
+def clean_folder_except_gitkeep(folder: Path, delete: bool = False) -> None:
     if not folder.exists():
         return
 
@@ -59,9 +113,71 @@ def clean_folder_except_gitkeep(folder: Path, delete: bool = False):
 # ------------------- MAIN ORCHESTRATION -------------------
 
 
-def concept_drift_characterization(dataset_key, dataset_info):
+def normalize_mode(mode: str) -> str:
+    """
+    Normalize and validate the CLI mode parameter.
+
+    Parameters
+    ----------
+    mode:
+        Raw mode argument from the CLI.
+
+    Returns
+    -------
+    str
+        Normalized mode string (hyphenated).
+
+    Raises
+    ------
+    ValueError
+        If the provided mode is not supported.
+    """
+    normalized = (mode or "all").lower().replace("_", "-")
+    allowed = {"all", "detection-only", "complexity-only"}
+    if normalized not in allowed:
+        raise ValueError(f"Invalid mode '{mode}'. Choose from: {sorted(allowed)}.")
+    return normalized
+
+
+def concept_drift_characterization(
+    dataset_key: str, dataset_info: dict[str, Any], test_mode: bool = False
+) -> list[Path]:
+    """
+    Run concept drift characterization or use existing results in test mode.
+
+    Parameters
+    ----------
+    dataset_key
+        Dataset identifier.
+    dataset_info
+        Dataset metadata dictionary.
+    test_mode
+        If True, skip drift characterization and use/create minimal test results.
+
+    Returns
+    -------
+    list[Path]
+        List of paths to drift detection result CSV files.
+    """
+    target_dir = constants.CHANGE_STUDY_RESULTS_DIR / "drift_detection" / dataset_key
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # In test mode, check for existing results first
+    if test_mode:
+        existing_results = list(target_dir.glob("*.csv"))
+        if existing_results:
+            print(f"## Test mode: Using existing drift detection results ##")
+            return existing_results
+        else:
+            # In test mode, if no results exist, skip drift characterization
+            # and return empty list (will be handled by caller)
+            print(
+                f"## Test mode: No existing results found, skipping drift characterization ##"
+            )
+            return []
+
     print(f"## Running concept drift characterization ##")
-    local_dataset_path = Path(dataset_info["path"])
+    local_dataset_path = (PROJECT_ROOT / dataset_info["path"]).resolve()
     target_dataset_filename = Path(f"{dataset_key}.xes.gz")
     drift_characterization_input_file_path = (
         constants.DRIFT_CHARACTERIZATION_TEMP_INPUT_DIR
@@ -104,10 +220,18 @@ def concept_drift_characterization(dataset_key, dataset_info):
             text=True,
             cwd=constants.DRIFT_CHARACTERIZATION_DIR,
             encoding="utf-8",
+            timeout=86400,  # 24 hours timeout for very large datasets
         )
 
         print("STDOUT:", result.stdout)
         print("STDERR:", result.stderr)
+    except subprocess.TimeoutExpired as e:
+        print(
+            f"ERROR: Drift characterization subprocess timed out after 24 hours for {dataset_key}"
+        )
+        print("STDOUT:\n", e.stdout if e.stdout else "(no output)")
+        print("STDERR:\n", e.stderr if e.stderr else "(no output)")
+        raise
     except subprocess.CalledProcessError as e:
         print("Subprocess failed!")
         print("STDOUT:\n", e.stdout)
@@ -115,9 +239,6 @@ def concept_drift_characterization(dataset_key, dataset_info):
         raise
 
     # Copy output to results folder
-    target_dir = constants.CHANGE_STUDY_RESULTS_DIR / "drift_detection" / dataset_key
-    target_dir.mkdir(parents=True, exist_ok=True)
-
     results_target_file_paths = []
     for file in drift_characterization_output_dir_path.iterdir():
         if file.is_file() and file.name != ".gitkeep":
@@ -135,26 +256,56 @@ def concept_drift_characterization(dataset_key, dataset_info):
 
 
 def concept_drift_complexity_assessment(
-    dataset_key, dataset_info, concept_drift_info_path, plot_coverage_curves: bool
-):
+    dataset_key: str,
+    dataset_info: dict[str, Any],
+    concept_drift_info_path: Path,
+    test_mode: bool = False,
+) -> None:
     """
     Orchestrator:
     - loads window approaches from YAML
     - computes complexity per approach
     - renders approach-specific plots
+
+    Parameters
+    ----------
+    dataset_key
+        Dataset identifier.
+    dataset_info
+        Dataset metadata dictionary.
+    concept_drift_info_path
+        Path to drift detection results CSV.
+    test_mode
+        If True, use simplified configuration for faster testing.
     """
     print("## Running concept drift complexity assessment ##")
 
     # Load approaches & drift info
     approaches = load_window_config(WINDOW_CONFIG_FILE_PATH)
+
+    # In test mode, use only the first change_point_windows approach
+    if test_mode:
+        approaches = [
+            apc for apc in approaches if apc["type"] == "change_point_windows"
+        ][:1]
+        print(f"## Test mode: Using only {len(approaches)} approach(es) ##")
+
     drift_df = pd.read_csv(concept_drift_info_path)
     drift_info_by_id = drift_info_to_dict(drift_df)
+    dataset_path = (PROJECT_ROOT / dataset_info["path"]).resolve()
 
-    # Used for output subfolder names
-    configuration_name = concept_drift_info_path.stem.split("_")[-1]
+    # Extract configuration name from filename (e.g., "results_DATASET_config.csv" -> "config")
+    configuration_name = concept_drift_info_path.stem.rsplit("_", 1)[-1]
 
     # Load and sort the log once
-    traces_sorted = load_xes_log(Path(dataset_info["path"]))
+    traces_sorted = load_xes_log(dataset_path)
+
+    # In test mode, limit to first 1000 traces for faster processing
+    if test_mode and len(traces_sorted) > 1000:
+        print(
+            f"## Test mode: Limiting to first 1000 traces (from {len(traces_sorted)}) ##"
+        )
+        traces_sorted = traces_sorted[:1000]
 
     for apc in approaches:
         name = apc["name"]
@@ -171,12 +322,15 @@ def concept_drift_complexity_assessment(
         )  # for window_comparison plots
 
         cfg_with_approach = f"{configuration_name}__{name}"
+        adapter_names = get_adapter_names(test_mode)
 
         if typ == "change_point_windows":
-            # --- Run both population adapters (simple + iNEXT) (+ vidgof if desired) ---
-            adapter_names = ["vidgof_sample", "population_simple", "population_inext"]
-
-            df = assess_complexity_via_change_point_split(
+            print(
+                f"  Computing complexity for approach: {name} with adapters: {adapter_names}"
+            )
+            df = run_with_error_handling(
+                "complexity computation",
+                assess_complexity_via_change_point_split,
                 traces_sorted,
                 drift_info_by_id,
                 dataset_key,
@@ -185,51 +339,21 @@ def concept_drift_complexity_assessment(
                 adapter_names,
             )
 
-            plot_complexity_via_change_point_split(
+            print(f"  Plotting...")
+            run_with_error_handling(
+                f"plotting for {name}",
+                plot_complexity_via_change_point_split,
                 dataset_key,
                 cfg_with_approach,
                 df,
                 drift_info_by_id,
                 y_log=y_log,
                 fig_format=fig_format,
-                headroom=0.2,
-                title=title,
+                headroom=headroom,
+                title=None,
             )
 
-            # --- Optionally plot coverage curves (iNEXT) ---
-            if plot_coverage_curves:
-                # Rebuild CP windows (same logic as in assessor)
-                cp_info = {k: v for k, v in drift_info_by_id.items() if k != "na"}
-                cps = (
-                    [
-                        (
-                            cp_info[i]["calc_change_index"],
-                            i,
-                            cp_info[i]["calc_change_type"],
-                        )
-                        for i in sorted(cp_info.keys())
-                    ]
-                    if cp_info
-                    else []
-                )
-                windows = split_log_into_windows_by_change_points(traces_sorted, cps)
-
-                # save next to other complexity plots
-                out_dir = (
-                    constants.CHANGE_STUDY_RESULTS_DIR
-                    / "complexity_assessment"
-                    / dataset_key
-                    / cfg_with_approach
-                    / "coverage_curves"
-                )
-                plot_coverage_curves_for_cp_windows(
-                    windows, out_dir, q_orders=(0,), xlim=(0, 1.0)
-                )
-
         elif typ == "fixed_size_windows":
-            # --- Only simple population adapter here (+ vidgof if desired) ---
-            adapter_names = ["vidgof_sample", "population_simple"]
-
             window_size = int(p["window_size"])
             offset = int(p["offset"])
 
@@ -258,9 +382,6 @@ def concept_drift_complexity_assessment(
             )
 
         elif typ == "window_comparison":
-            # --- Only simple population adapter here (+ vidgof if desired) ---
-            adapter_names = ["vidgof_sample", "population_simple"]
-
             df = assess_complexity_via_window_comparison(
                 traces_sorted,
                 int(p["window_1_size"]),
@@ -291,12 +412,31 @@ def concept_drift_complexity_assessment(
 
 
 def main_per_dataset(
-    dataset_key, dataset_info, mode="all", plot_coverage_curves: bool = False
-):
+    dataset_key: str,
+    dataset_info: dict[str, Any],
+    mode: str = "all",
+    test_mode: bool = False,
+) -> None:
+    """
+    Process a single dataset.
+
+    Parameters
+    ----------
+    dataset_key
+        Dataset identifier.
+    dataset_info
+        Dataset metadata dictionary.
+    mode
+        Processing mode: 'all', 'detection-only', or 'complexity-only'.
+    test_mode
+        If True, use simplified configuration for faster testing.
+    """
     print(f"### Processing dataset: {dataset_key} ###")
-    if mode == "all" or mode == "detection_only":
+    normalized_mode = normalize_mode(mode)
+
+    if normalized_mode in {"all", "detection-only"}:
         concept_drift_info_paths = concept_drift_characterization(
-            dataset_key, dataset_info
+            dataset_key, dataset_info, test_mode=test_mode
         )
     else:
         # search for all csvs in input folder
@@ -304,28 +444,63 @@ def main_per_dataset(
             constants.CHANGE_STUDY_RESULTS_DIR / "drift_detection" / dataset_key
         )
         concept_drift_info_paths = list(input_folder.glob("*.csv"))
+        if not concept_drift_info_paths:
+            print(
+                f"WARNING: No drift detection results found for {dataset_key} in {input_folder}"
+            )
+            print(f"  Skipping complexity assessment for this dataset.")
+            return
 
-    if mode == "all" or mode == "complexity_only":
+    if normalized_mode in {"all", "complexity-only"}:
         for concept_drift_info_path in concept_drift_info_paths:
             concept_drift_complexity_assessment(
                 dataset_key,
                 dataset_info,
                 concept_drift_info_path,
-                plot_coverage_curves=plot_coverage_curves,
+                test_mode=test_mode,
             )
 
 
-def main(datasets=None, mode="all", plot_coverage_curves: bool = False):
-    print(f"#### Starting drift complexity analysis ####")
+def main(
+    datasets: list[str] | None = None,
+    mode: str = "all",
+    test_mode: bool = False,
+) -> None:
+    """
+    Main entry point for drift complexity analysis.
 
-    data_dictionary = helpers.load_data_dictionary(constants.get_data_dictionary_path())
+    Parameters
+    ----------
+    datasets
+        List of dataset keys to process. If None, processes all datasets.
+    mode
+        Processing mode: 'all', 'detection-only', or 'complexity-only'.
+    test_mode
+        If True, use simplified configuration for faster testing.
+    """
+    print(f"#### Starting drift complexity analysis ####")
+    if test_mode:
+        print("#### TEST MODE: Using simplified configuration ####")
+
+    normalized_mode = normalize_mode(mode)
+
+    data_dictionary = helpers.load_data_dictionary(
+        constants.get_data_dictionary_path(),
+        get_real=True,
+        get_synthetic=True,
+    )
 
     # only keep datasets in data_dictionary that are in the datasets
     if datasets is not None:
         data_dictionary = {k: v for k, v in data_dictionary.items() if k in datasets}
 
     for dataset_key, dataset_info in data_dictionary.items():
-        main_per_dataset(dataset_key, dataset_info, mode, plot_coverage_curves)
+        main_per_dataset(
+            dataset_key,
+            dataset_info,
+            normalized_mode,
+            test_mode=test_mode,
+        )
 
 
 if __name__ == "__main__":
@@ -344,16 +519,18 @@ if __name__ == "__main__":
         default="all",
         help="Choose from 'all', 'detection-only', 'complexity-only'",
     )
-    # NEW: plot coverage curves for change-point windows
     parser.add_argument(
-        "--plot-coverage-curves",
+        "--test",
         action="store_true",
-        help="If set, saves iNEXT coverage curves for change-point windows.",
+        help="Run a lightweight test using the TEST_BPIC12 dataset. "
+        "Skips drift characterization, uses minimal config, limits traces.",
     )
     args = parser.parse_args()
 
+    selected_datasets = ["TEST_BPIC12"] if args.test else args.datasets
+
     main(
-        datasets=args.datasets,
+        datasets=selected_datasets,
         mode=args.mode,
-        plot_coverage_curves=args.plot_coverage_curves,
+        test_mode=args.test,
     )

@@ -87,8 +87,29 @@ def run_metric_adapters(
         Dictionary mapping window_id to flattened results.
     """
     per_adapter = []
-    for adapter in get_adapters(adapter_names):
-        per_adapter.append((adapter.name, adapter.compute_many(windows)))
+    # Convert to list for get_adapters
+    adapter_names_list = list(adapter_names)
+    for adapter in get_adapters(adapter_names_list):
+        # Get results from adapter (returns Dict[window_id, Tuple[MeasureStore, info]])
+        adapter_results = adapter.compute_measures_for_windows(windows)
+        # Convert MeasureStore to dict of values for each window
+        converted_results: Dict[str, Tuple[Dict[str, Any], Dict[str, Any]]] = {}
+        for w in windows:
+            # Window.id is a string, use it directly
+            window_id = w.id
+            # Get result from adapter (should be keyed by window.id)
+            if window_id in adapter_results:
+                store, info = adapter_results[window_id]
+            else:
+                # Fallback: create empty result
+                from utils.complexity.measures.measure_store import MeasureStore
+
+                store, info = MeasureStore(), {}
+            # Convert MeasureStore to dict of metric name -> value
+            metrics_dict = store.to_visible_dict() if store else {}
+            # Use window.id as key (already a string)
+            converted_results[window_id] = (metrics_dict, info)
+        per_adapter.append((adapter.name, converted_results))
     return _flatten_adapter_results(
         windows,
         per_adapter,
