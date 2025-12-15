@@ -166,7 +166,10 @@ def concept_drift_characterization(
     if test_mode:
         existing_results = list(target_dir.glob("*.csv"))
         if existing_results:
-            print(f"## Test mode: Using existing drift detection results ##")
+            print(
+                "## Test mode: Found existing drift detection results; "
+                "skipping new drift characterization run ##"
+            )
             return existing_results
         # Fall through when no existing results are found so that
         # drift characterization is still executed in test mode.
