@@ -22,8 +22,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Change to project root
 cd "$PROJECT_ROOT"
 
-# Create log directory if it doesn't exist
-mkdir -p .slurm/logs/${SLURM_ARRAY_JOB_ID}
+# Note: SLURM will automatically create the log directories specified in --output and --error
+# No need to create them manually
 
 # Activate conda environment
 source /usr/local/anaconda3-2024.06/etc/profile.d/conda.sh
