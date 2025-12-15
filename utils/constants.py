@@ -9,7 +9,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 # configs
+DEFAULT_DATA_DICTIONARY_FILE_PATH = ROOT / "data" / "default_data_dictionary.json"
 DATA_DICTIONARY_FILE_PATH = ROOT / "data" / "data_dictionary.json"
+
+
+def get_data_dictionary_path() -> Path:
+    """
+    Get the path to the data dictionary file.
+
+    Checks for data_dictionary.json first (user's custom configuration),
+    then falls back to default_data_dictionary.json (shipped with repository).
+
+    Returns:
+        Path to the data dictionary file to use.
+    """
+    if DATA_DICTIONARY_FILE_PATH.exists():
+        return DATA_DICTIONARY_FILE_PATH
+    return DEFAULT_DATA_DICTIONARY_FILE_PATH
+
 
 # drift characterization
 DRIFT_CHARACTERIZATION_DIR = ROOT / "plugins" / "drift_characterization"
@@ -22,16 +39,18 @@ DRIFT_CHARACTERIZATION_SCRIPT = Path(
 # results
 RESULTS_DIR = ROOT / "results"
 DRIFT_CHARACTERIZATION_RESULTS_DIR = RESULTS_DIR / "drift_detection"
-COMPLEXITY_RESULTS_DIR = RESULTS_DIR / "complexity_assessment"
-COMPLEXITY_PLOTS_DIR = COMPLEXITY_RESULTS_DIR
-COMBINED_RESULTS_DIR = RESULTS_DIR / "combined_results"
-COMBINED_RESULTS_TABLE_DIR = COMBINED_RESULTS_DIR / "tables"
-COMBINED_RESULTS_BOXPLOT_DIR = COMBINED_RESULTS_DIR / "boxplots"
 CORRELATION_RESULTS_DIR = RESULTS_DIR / "correlations"
 
 # study-specific results
 BIAS_STUDY_RESULTS_DIR = RESULTS_DIR / "bias_study"
 CHANGE_STUDY_RESULTS_DIR = RESULTS_DIR / "change_study"
+
+# change_study results (moved under change_study directory)
+COMPLEXITY_RESULTS_DIR = CHANGE_STUDY_RESULTS_DIR / "complexity_assessment"
+COMPLEXITY_PLOTS_DIR = COMPLEXITY_RESULTS_DIR
+COMBINED_RESULTS_DIR = CHANGE_STUDY_RESULTS_DIR / "combined_results"
+COMBINED_RESULTS_TABLE_DIR = COMBINED_RESULTS_DIR / "tables"
+COMBINED_RESULTS_BOXPLOT_DIR = COMBINED_RESULTS_DIR / "boxplots"
 
 ### CONSTANT CONFIGURATIONS
 DEFAULT_CHANGE_POINT_PARAMETER_SETTING = "processGraphsPDefaultWDefault"

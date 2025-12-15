@@ -1,7 +1,13 @@
 import argparse
 import os
+import sys
 from pathlib import Path
 from typing import Dict
+
+# Ensure project root is on sys.path so local imports work when run from anywhere
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -109,6 +115,10 @@ def get_drift_info_summary_table(drift_info_by_dataset):
     drift_info_summary_df = pd.DataFrame.from_dict(
         drift_info_summary_dict, orient="index"
     )
+
+    # Handle empty DataFrame (no change points detected)
+    if drift_info_summary_df.empty:
+        return drift_info_summary_df
 
     # add total row
     total_row = {
@@ -223,6 +233,23 @@ def format_number(x, include_plus=False):
 
 
 def save_aggregated_table(results_df, cp_parameter_setting):
+    # Handle empty DataFrame (no change points detected)
+    if results_df.empty or "change_type" not in results_df.columns:
+        # Create empty summary DataFrame with expected structure
+        summary_df = pd.DataFrame(columns=["mean", "min", "max", "std", "count"])
+        summary_df = summary_df.set_index(
+            pd.MultiIndex.from_tuples([], names=["change_type", "measure"])
+        )
+        output_dir = (
+            constants.CHANGE_STUDY_RESULTS_DIR
+            / "combined_results"
+            / "tables"
+            / cp_parameter_setting
+        )
+        output_dir.mkdir(parents=True, exist_ok=True)
+        summary_df.to_csv(output_dir / "complexity_delta_aggregated.csv")
+        return summary_df
+
     results_df_clean = results_df.dropna()
     change_types = results_df_clean["change_type"].unique()
 
@@ -332,7 +359,7 @@ def save_boxplots(results_df, cp_parameter_setting):
 def compute_and_save_correlation_analysis(
     complexity_per_window_df_dict: Dict[str, pd.DataFrame],
     cp_parameter_setting: str,
-    out_dir: str = "results/combined_results/correlation_anlaysis",
+    out_dir: str | Path | None = None,
 ) -> pd.DataFrame:
     """
     Compute ONE Pearson correlation per measure across ALL datasets combined.
@@ -340,7 +367,14 @@ def compute_and_save_correlation_analysis(
     save a scatter plot of n_traces vs. trace_length_avg by dataset as PNG.
     """
     # create out path
-    os.makedirs(out_dir, exist_ok=True)
+    if out_dir is None:
+        out_dir = (
+            constants.CHANGE_STUDY_RESULTS_DIR
+            / "combined_results"
+            / "correlation_analysis"
+        )
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Combine all datasets ---
     dfs = []
@@ -368,10 +402,7 @@ def compute_and_save_correlation_analysis(
                 "direction",
             ]
         )
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(
-            out_dir, f"{cp_parameter_setting}_correlation_analysis.csv"
-        )
+        out_path = out_dir / f"{cp_parameter_setting}_correlation_analysis.csv"
         result_df.to_csv(out_path, index=False)
         return result_df
 
@@ -472,14 +503,12 @@ def compute_and_save_correlation_analysis(
             plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
             plt.tight_layout()
             plt.savefig(
-                os.path.join(
-                    out_dir, f"{cp_parameter_setting}_trace_length_avg_scatter.png"
-                ),
+                out_dir / f"{cp_parameter_setting}_trace_length_avg_scatter.png",
                 dpi=600,
             )
 
     result_df = pd.DataFrame(rows).sort_values(["measure"]).reset_index(drop=True)
-    out_path = os.path.join(out_dir, f"{cp_parameter_setting}_correlation_analysis.csv")
+    out_path = out_dir / f"{cp_parameter_setting}_correlation_analysis.csv"
     result_df.to_csv(out_path, index=False)
     return result_df
 
@@ -491,7 +520,7 @@ def main(
 ):
     print("#### Starting to combine drift analysis results ####")
     if datasets is None:
-        # Get all folder names (1st level child) under folder results/complexity_assessment
+        # Get all folder names (1st level child) under change_study/complexity_assessment
         datasets = [
             d.name
             for d in (
@@ -525,17 +554,26 @@ def main(
     drift_info_summary_table_df.to_csv(output_dir / "drift_info_summary.csv")
 
     results_df = compute_complexity_deltas(window_dict, drift_info_by_dataset)
-    save_boxplots(results_df, complexity_window_string)
 
-    aggregated_table = save_aggregated_table(results_df, complexity_window_string)
-    print(aggregated_table)
-    simple_aggregated_table = save_simple_aggregated_table(
-        aggregated_table, complexity_window_string
-    )
-    print(simple_aggregated_table)
+    if not results_df.empty:
+        save_boxplots(results_df, complexity_window_string)
+        aggregated_table = save_aggregated_table(results_df, complexity_window_string)
+        print(aggregated_table)
+        simple_aggregated_table = save_simple_aggregated_table(
+            aggregated_table, complexity_window_string
+        )
+        print(simple_aggregated_table)
+    else:
+        print("No change points detected - skipping delta calculations and boxplots")
+        # Still create empty aggregated table for consistency
+        aggregated_table = save_aggregated_table(results_df, complexity_window_string)
 
     correlation_analysis = compute_and_save_correlation_analysis(
-        window_dict, complexity_window_string
+        window_dict,
+        complexity_window_string,
+        out_dir=constants.CHANGE_STUDY_RESULTS_DIR
+        / "combined_results"
+        / "correlation_analysis",
     )
     print(correlation_analysis)
 

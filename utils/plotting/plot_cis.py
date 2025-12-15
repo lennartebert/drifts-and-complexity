@@ -114,15 +114,6 @@ def plot_sample_cis(
     def _y_formatter(value: float, _pos: int) -> str:
         s = f"{value:.3g}"
         return s
-        # if "e" not in s:
-        #     return s
-        # coeff, exp = s.split("e")
-        # try:
-        #     exp_int = int(exp)
-        # except ValueError:
-        #     return s
-        # # Use standard Python scientific notation, e.g. '1.5e5'
-        # return f"{coeff}e{exp_int}"
 
     for row_idx in range(n_rows):
         for col_idx in range(n_cols):

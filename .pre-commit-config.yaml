@@ -3,38 +3,38 @@ repos:
     rev: v4.4.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^data/
+        exclude: ^(data/|results/)
       - id: end-of-file-fixer
-        exclude: ^data/
+        exclude: ^(data/|results/)
       - id: check-yaml
-        exclude: ^data/
+        exclude: ^(data/|results/)
       - id: check-added-large-files
-        exclude: ^data/
+        exclude: ^(data/|results/)
       - id: check-merge-conflict
-        exclude: ^data/
+        exclude: ^(data/|results/)
       - id: debug-statements
-        exclude: ^data/
+        exclude: ^(data/|results/)
 
   - repo: https://github.com/psf/black
     rev: 25.9.0
     hooks:
       - id: black
         language_version: python3.10
-        exclude: ^(plugins/|data/)
+        exclude: ^(plugins/|data/|results/)
 
   - repo: https://github.com/pycqa/isort
     rev: 6.0.1
     hooks:
       - id: isort
         args: ["--profile", "black", "--line-length=88"]
-        exclude: ^(plugins/|data/)
+        exclude: ^(plugins/|data/|results/)
 
   - repo: https://github.com/pycqa/flake8
     rev: 7.3.0
     hooks:
       - id: flake8
         args: [--max-line-length=88, --extend-ignore=E203, --exit-zero]
-        exclude: ^(plugins/|data/)
+        exclude: ^(plugins/|data/|results/)
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.18.2
@@ -44,5 +44,5 @@ repos:
         # Keep hook lightweight and consistent with CI (ignore missing imports handled in pyproject.toml).
         args: [--ignore-missing-imports]
         files: ^utils/
-        exclude: ^(plugins/|data/)
+        exclude: ^(plugins/|data/|results/)
         stages: [manual]

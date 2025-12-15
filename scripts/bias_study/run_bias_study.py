@@ -331,7 +331,7 @@ def compute_results(
     if include_metrics is None:
         include_metrics = SORTED_METRICS
     data_dictionary = helpers.load_data_dictionary(
-        constants.DATA_DICTIONARY_FILE_PATH, get_real=True, get_synthetic=True
+        constants.get_data_dictionary_path(), get_real=True, get_synthetic=True
     )
     data_dictionary = {
         log: info for log, info in data_dictionary.items() if log in list_of_logs

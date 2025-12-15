@@ -1,0 +1,33 @@
+\begin{table}[H]
+\centering
+\tiny
+\caption{Summarized master means — Synthetic (Base)}
+\label{tab:summarized_master_means_synthetic_base}
+\begin{tabular}{l p{100pt} c c c c c c}
+\toprule
+Dimension & Measure & Spearman $\rho$ & Spearman $p$ & RelCI (50) & RelCI (250) & RelCI (500) & Plateau Reached \\
+\midrule
+Length & \# Events & 0.9950 & <0.001 & 0.1205 & 0.0552 & 0.0380 & 0 / 4 \\
+ & \# Traces & 1.0000 & <0.001 & 0.0000 & 0.0000 & 0.0000 & 0 / 4 \\
+Size & \# Distinct Activities & 0.0398 & 0.011 & 0.0000 & 0.0000 & 0.0000 & 4 / 4 (avg. 50) \\
+ & \# Distinct Traces & 0.6067 & <0.001 & 0.4701 & 0.3499 & 0.3089 & 3 / 4 \\
+ & \# Distinct Directly-Follows Relations & 0.3120 & <0.001 & 0.1061 & 0.0695 & 0.0624 & 4 / 4 (avg. 175) \\
+ & Min. Trace Length & -0.0349 & 0.017 & 0.0000 & 0.0000 & 0.0000 & 4 / 4 (avg. 50) \\
+ & Avg. Trace Length & 0.0021 & 0.355 & 0.1205 & 0.0552 & 0.0380 & 4 / 4 (avg. 50) \\
+ & Max. Trace Length & 0.4816 & <0.001 & 0.2098 & 0.2000 & 0.1524 & 4 / 4 (avg. 200) \\
+Variation & \% Distinct Traces & -0.9753 & <0.001 & 0.4701 & 0.3499 & 0.3089 & 0 / 4 \\
+ & Avg. Distinct Activities per Trace & -0.0141 & 0.344 & 0.0958 & 0.0438 & 0.0309 & 4 / 4 (avg. 50) \\
+ & Structure & -0.3028 & <0.001 & 0.0186 & 0.0170 & 0.0165 & 4 / 4 (avg. 50) \\
+ & Estimated \# Acyclic Paths & 0.3120 & <0.001 & 0.4821 & 0.2935 & 0.2392 & 4 / 4 (avg. 262.5) \\
+ & \# Ties in Paths to Goal & 0.5988 & <0.001 & 0.5698 & 0.3910 & 0.3787 & 3 / 4 \\
+ & Lempel-Ziv Complexity & 0.9940 & <0.001 & 0.1215 & 0.0947 & 0.0754 & 0 / 4 \\
+Distance & Avg. Affinity & 0.0492 & 0.337 & 0.1676 & 0.0728 & 0.0514 & 4 / 4 (avg. 50) \\
+ & Deviation from Random & 0.0914 & 0.089 & 0.0118 & 0.0050 & 0.0033 & 4 / 4 (avg. 50) \\
+ & Avg. Edit Distance & 0.0030 & 0.577 & 0.4520 & 0.1962 & 0.1423 & 4 / 4 (avg. 50) \\
+Graph Entropy & Sequence Entropy & 0.9137 & <0.001 & 0.9535 & 0.7867 & 0.6932 & 0 / 4 \\
+ & Normalized Sequence Entropy & -0.3420 & <0.001 & 0.9546 & 0.7773 & 0.6916 & 3 / 4 \\
+ & Variant Entropy & 0.5690 & <0.001 & 0.8819 & 0.6076 & 0.5698 & 2 / 4 \\
+ & Normalized Variant Entropy & 0.5574 & <0.001 & 0.3499 & 0.1951 & 0.1704 & 4 / 4 (avg. 350) \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,117 @@
+\begin{table}[H]
+\centering
+\tiny
+\caption{Summarized master table — Synthetic (Base)}
+\label{tab:summarized_master_full_synthetic_base}
+\begin{tabular}{l p{100pt} l c c c c c c}
+\toprule
+Dimension & Measure & Log & Spearman $\rho$ & Spearman $p$ & RelCI (50) & RelCI (250) & RelCI (500) & Plateau Reached \\
+\midrule
+Length & \multirow[t]{5}{100pt}{\makecell[l]{\# Events}} & CLAIM\_S & 0.9950 & <0.001 & 0.1811 & 0.0856 & 0.0633 & N \\
+ &  & CREDIT\_S & 0.9950 & <0.001 & 0.0464 & 0.0185 & 0.0117 & N \\
+ &  & LOAN\_S & 0.9950 & <0.001 & 0.1320 & 0.0621 & 0.0400 & N \\
+ &  & O2C\_S & 0.9950 & <0.001 & 0.1223 & 0.0544 & 0.0373 & N \\
+\textit{} & \textit{} & \textit{} & \textit{0.9950} & \textit{<0.001} & \textit{0.1205} & \textit{0.0552} & \textit{0.0380} & \textit{0 / 4} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{\# Traces}} & CLAIM\_S & 1.0000 & <0.001 & 0.0000 & 0.0000 & 0.0000 & N \\
+ &  & CREDIT\_S & 1.0000 & <0.001 & 0.0000 & 0.0000 & 0.0000 & N \\
+ &  & LOAN\_S & 1.0000 & <0.001 & 0.0000 & 0.0000 & 0.0000 & N \\
+ &  & O2C\_S & 1.0000 & <0.001 & 0.0000 & 0.0000 & 0.0000 & N \\
+\textit{} & \textit{} & \textit{} & \textit{1.0000} & \textit{<0.001} & \textit{0.0000} & \textit{0.0000} & \textit{0.0000} & \textit{0 / 4} \\
+Size & \multirow[t]{5}{100pt}{\makecell[l]{\# Distinct Activities}} & CLAIM\_S & 0.0313 & 0.027 & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+ &  & CREDIT\_S &  &  & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+ &  & LOAN\_S & 0.0496 & <0.001 & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+ &  & O2C\_S & 0.0384 & 0.007 & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{0.0398} & \textit{0.011} & \textit{0.0000} & \textit{0.0000} & \textit{0.0000} & \textit{4 / 4 (avg. 50)} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{\# Distinct Traces}} & CLAIM\_S & 0.3050 & <0.001 & 0.2139 & 0.0000 & 0.1985 & Y (150) \\
+ &  & CREDIT\_S & 0.7157 & <0.001 & 0.5396 & 0.5168 & 0.4578 & Y (450) \\
+ &  & LOAN\_S & 0.9036 & <0.001 & 0.5745 & 0.3993 & 0.2862 & N \\
+ &  & O2C\_S & 0.5024 & <0.001 & 0.5525 & 0.4836 & 0.2930 & Y (450) \\
+\textit{} & \textit{} & \textit{} & \textit{0.6067} & \textit{<0.001} & \textit{0.4701} & \textit{0.3499} & \textit{0.3089} & \textit{3 / 4} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{\# Distinct Directly-Follows\\Relations}} & CLAIM\_S & 0.3188 & <0.001 & 0.1498 & 0.0000 & 0.0000 & Y (100) \\
+ &  & CREDIT\_S & 0.2794 & <0.001 & 0.1421 & 0.2084 & 0.2038 & Y (350) \\
+ &  & LOAN\_S & 0.5637 & <0.001 & 0.0967 & 0.0697 & 0.0458 & Y (200) \\
+ &  & O2C\_S & 0.0859 & <0.001 & 0.0358 & 0.0000 & 0.0000 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{0.3120} & \textit{<0.001} & \textit{0.1061} & \textit{0.0695} & \textit{0.0624} & \textit{4 / 4 (avg. 175)} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Min. Trace Length}} & CLAIM\_S & -0.0313 & 0.027 & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+ &  & CREDIT\_S &  &  & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+ &  & LOAN\_S &  &  & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+ &  & O2C\_S & -0.0384 & 0.007 & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{-0.0349} & \textit{0.017} & \textit{0.0000} & \textit{0.0000} & \textit{0.0000} & \textit{4 / 4 (avg. 50)} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Avg. Trace Length}} & CLAIM\_S & -0.0139 & 0.327 & 0.1811 & 0.0856 & 0.0633 & Y (50) \\
+ &  & CREDIT\_S & 0.0433 & 0.002 & 0.0464 & 0.0185 & 0.0117 & Y (50) \\
+ &  & LOAN\_S & -0.0013 & 0.926 & 0.1320 & 0.0621 & 0.0400 & Y (50) \\
+ &  & O2C\_S & -0.0196 & 0.165 & 0.1223 & 0.0544 & 0.0373 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{0.0021} & \textit{0.355} & \textit{0.1205} & \textit{0.0552} & \textit{0.0380} & \textit{4 / 4 (avg. 50)} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Max. Trace Length}} & CLAIM\_S &  &  & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+ &  & CREDIT\_S & 0.4705 & <0.001 & 0.3565 & 0.4219 & 0.3024 & Y (350) \\
+ &  & LOAN\_S & 0.4928 & <0.001 & 0.4828 & 0.3782 & 0.3072 & Y (350) \\
+ &  & O2C\_S &  &  & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{0.4816} & \textit{<0.001} & \textit{0.2098} & \textit{0.2000} & \textit{0.1524} & \textit{4 / 4 (avg. 200)} \\
+Variation & \multirow[t]{5}{100pt}{\makecell[l]{\% Distinct Traces}} & CLAIM\_S & -0.9967 & <0.001 & 0.2139 & 0.0000 & 0.1985 & N \\
+ &  & CREDIT\_S & -0.9661 & <0.001 & 0.5396 & 0.5168 & 0.4578 & N \\
+ &  & LOAN\_S & -0.9705 & <0.001 & 0.5745 & 0.3993 & 0.2862 & N \\
+ &  & O2C\_S & -0.9679 & <0.001 & 0.5525 & 0.4836 & 0.2930 & N \\
+\textit{} & \textit{} & \textit{} & \textit{-0.9753} & \textit{<0.001} & \textit{0.4701} & \textit{0.3499} & \textit{0.3089} & \textit{0 / 4} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Avg. Distinct Activities\\per Trace}} & CLAIM\_S & -0.0139 & 0.327 & 0.1566 & 0.0741 & 0.0547 & Y (50) \\
+ &  & CREDIT\_S &  &  & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+ &  & LOAN\_S & -0.0086 & 0.541 & 0.1174 & 0.0524 & 0.0357 & Y (50) \\
+ &  & O2C\_S & -0.0196 & 0.165 & 0.1093 & 0.0486 & 0.0333 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{-0.0141} & \textit{0.344} & \textit{0.0958} & \textit{0.0438} & \textit{0.0309} & \textit{4 / 4 (avg. 50)} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Structure}} & CLAIM\_S & -0.3188 & <0.001 & 0.0242 & 0.0000 & 0.0000 & Y (50) \\
+ &  & CREDIT\_S & -0.2794 & <0.001 & 0.0401 & 0.0605 & 0.0609 & Y (50) \\
+ &  & LOAN\_S & -0.5614 & <0.001 & 0.0100 & 0.0075 & 0.0050 & Y (50) \\
+ &  & O2C\_S & -0.0516 & <0.001 & 0.0000 & 0.0000 & 0.0000 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{-0.3028} & \textit{<0.001} & \textit{0.0186} & \textit{0.0170} & \textit{0.0165} & \textit{4 / 4 (avg. 50)} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Estimated \# Acyclic\\Paths}} & CLAIM\_S & 0.3188 & <0.001 & 0.4923 & 0.0000 & 0.0000 & Y (150) \\
+ &  & CREDIT\_S & 0.2794 & <0.001 & 0.4377 & 0.6768 & 0.6328 & Y (450) \\
+ &  & LOAN\_S & 0.5637 & <0.001 & 0.8294 & 0.4970 & 0.3239 & Y (400) \\
+ &  & O2C\_S & 0.0859 & <0.001 & 0.1692 & 0.0000 & 0.0000 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{0.3120} & \textit{<0.001} & \textit{0.4821} & \textit{0.2935} & \textit{0.2392} & \textit{4 / 4 (avg. 262.5)} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{\# Ties in\\Paths to Goal}} & CLAIM\_S & 0.3050 & <0.001 & 0.3395 & 0.0000 & 0.3026 & Y (150) \\
+ &  & CREDIT\_S & 0.6858 & <0.001 & 0.6775 & 0.6318 & 0.5639 & Y (450) \\
+ &  & LOAN\_S & 0.9020 & <0.001 & 0.6277 & 0.3864 & 0.3217 & N \\
+ &  & O2C\_S & 0.5022 & <0.001 & 0.6345 & 0.5456 & 0.3268 & Y (450) \\
+\textit{} & \textit{} & \textit{} & \textit{0.5988} & \textit{<0.001} & \textit{0.5698} & \textit{0.3910} & \textit{0.3787} & \textit{3 / 4} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Lempel-Ziv Complexity}} & CLAIM\_S & 0.9950 & <0.001 & 0.0500 & 0.0594 & 0.0460 & N \\
+ &  & CREDIT\_S & 0.9910 & <0.001 & 0.2020 & 0.1887 & 0.1529 & N \\
+ &  & LOAN\_S & 0.9948 & <0.001 & 0.1581 & 0.0803 & 0.0658 & N \\
+ &  & O2C\_S & 0.9950 & <0.001 & 0.0760 & 0.0503 & 0.0369 & N \\
+\textit{} & \textit{} & \textit{} & \textit{0.9940} & \textit{<0.001} & \textit{0.1215} & \textit{0.0947} & \textit{0.0754} & \textit{0 / 4} \\
+Distance & \multirow[t]{5}{100pt}{\makecell[l]{Avg. Affinity}} & CLAIM\_S & 0.0095 & 0.502 & 0.2542 & 0.1195 & 0.0890 & Y (50) \\
+ &  & CREDIT\_S & 0.1045 & <0.001 & 0.0278 & 0.0133 & 0.0090 & Y (50) \\
+ &  & LOAN\_S & 0.0801 & <0.001 & 0.1165 & 0.0395 & 0.0271 & Y (50) \\
+ &  & O2C\_S & 0.0028 & 0.845 & 0.2719 & 0.1187 & 0.0806 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{0.0492} & \textit{0.337} & \textit{0.1676} & \textit{0.0728} & \textit{0.0514} & \textit{4 / 4 (avg. 50)} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Deviation from Random}} & CLAIM\_S & 0.1527 & <0.001 & 0.0087 & 0.0034 & 0.0018 & Y (50) \\
+ &  & CREDIT\_S & 0.0131 & 0.354 & 0.0151 & 0.0061 & 0.0042 & Y (50) \\
+ &  & LOAN\_S & 0.1073 & <0.001 & 0.0116 & 0.0052 & 0.0035 & Y (50) \\
+ &  & O2C\_S & 0.0925 & <0.001 & 0.0119 & 0.0052 & 0.0036 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{0.0914} & \textit{0.089} & \textit{0.0118} & \textit{0.0050} & \textit{0.0033} & \textit{4 / 4 (avg. 50)} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Avg. Edit Distance}} & CLAIM\_S & -0.0068 & 0.629 & 0.4069 & 0.1839 & 0.1509 & Y (50) \\
+ &  & CREDIT\_S & 0.0129 & 0.361 & 0.4768 & 0.1926 & 0.1311 & Y (50) \\
+ &  & LOAN\_S & -0.0035 & 0.807 & 0.3123 & 0.1157 & 0.0854 & Y (50) \\
+ &  & O2C\_S & 0.0093 & 0.512 & 0.6122 & 0.2927 & 0.2018 & Y (50) \\
+\textit{} & \textit{} & \textit{} & \textit{0.0030} & \textit{0.577} & \textit{0.4520} & \textit{0.1962} & \textit{0.1423} & \textit{4 / 4 (avg. 50)} \\
+Graph Entropy & \multirow[t]{5}{100pt}{\makecell[l]{Sequence Entropy}} & CLAIM\_S & 0.7333 & <0.001 & 1.8349 & 1.6680 & 1.4533 & N \\
+ &  & CREDIT\_S & 0.9693 & <0.001 & 0.6939 & 0.5641 & 0.5472 & N \\
+ &  & LOAN\_S & 0.9861 & <0.001 & 0.5520 & 0.3403 & 0.2983 & N \\
+ &  & O2C\_S & 0.9660 & <0.001 & 0.7333 & 0.5746 & 0.4738 & N \\
+\textit{} & \textit{} & \textit{} & \textit{0.9137} & \textit{<0.001} & \textit{0.9535} & \textit{0.7867} & \textit{0.6932} & \textit{0 / 4} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Normalized Sequence Entropy}} & CLAIM\_S & -0.1397 & <0.001 & 1.9246 & 1.6585 & 1.4596 & N \\
+ &  & CREDIT\_S & -0.4031 & <0.001 & 0.6585 & 0.5641 & 0.5462 & Y (350) \\
+ &  & LOAN\_S & -0.4442 & <0.001 & 0.4948 & 0.3208 & 0.2849 & Y (350) \\
+ &  & O2C\_S & -0.3809 & <0.001 & 0.7405 & 0.5658 & 0.4755 & Y (350) \\
+\textit{} & \textit{} & \textit{} & \textit{-0.3420} & \textit{<0.001} & \textit{0.9546} & \textit{0.7773} & \textit{0.6916} & \textit{3 / 4} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Variant Entropy}} & CLAIM\_S & 0.2243 & <0.001 & 1.0218 & 0.4187 & 0.6153 & Y (350) \\
+ &  & CREDIT\_S & 0.6753 & <0.001 & 0.9349 & 0.9001 & 0.7662 & Y (450) \\
+ &  & LOAN\_S & 0.8868 & <0.001 & 0.8187 & 0.4518 & 0.3900 & N \\
+ &  & O2C\_S & 0.4897 & <0.001 & 0.7524 & 0.6601 & 0.5077 & N \\
+\textit{} & \textit{} & \textit{} & \textit{0.5690} & \textit{<0.001} & \textit{0.8819} & \textit{0.6076} & \textit{0.5698} & \textit{2 / 4} \\
+ & \multirow[t]{5}{100pt}{\makecell[l]{Normalized Variant Entropy}} & CLAIM\_S & 0.1601 & <0.001 & 0.7149 & 0.3692 & 0.3640 & Y (350) \\
+ &  & CREDIT\_S & 0.7094 & <0.001 & 0.2327 & 0.1355 & 0.1172 & Y (350) \\
+ &  & LOAN\_S & 0.8600 & <0.001 & 0.1757 & 0.0871 & 0.0638 & Y (350) \\
+ &  & O2C\_S & 0.5000 & <0.001 & 0.2763 & 0.1885 & 0.1367 & Y (350) \\
+\textit{} & \textit{} & \textit{} & \textit{0.5574} & \textit{<0.001} & \textit{0.3499} & \textit{0.1951} & \textit{0.1704} & \textit{4 / 4 (avg. 350)} \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -29,7 +29,7 @@ Optionally restrict to measures:
 References:
 - Steiger, J. H. (1980). Tests for comparing elements of a correlation matrix. Psychological Bulletin, 87, 245–251.
 - Counsell, A. & Cribbie, R. A. (2015). Equivalence tests for comparing correlation and regression coefficients.
-  (t-formula for Williams’ test with df = n-3; |R| term = 1 - r12^2 - r13^2 - r23^2 + 2 r12 r13 r23)
+  (t-formula for Williams' test with df = n-3; |R| term = 1 - r12^2 - r13^2 - r23^2 + 2 r12 r13 r23)
 """
 
 import argparse
