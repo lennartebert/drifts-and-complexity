@@ -14,11 +14,11 @@
 source /usr/local/anaconda3-2024.06/etc/profile.d/conda.sh
 conda activate drifts-and-complexity
 
-# Get project root (assuming script is in .slurm/ subdirectory)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$PROJECT_ROOT"
-
 logs=(ACCRE BPIC12 BPIC13_cp BPIC13_i BPIC14 BPIC15_1 BPIC15_2 BPIC15_3 BPIC15_4 BPIC15_5 BPIC17 BPIC18 BPIC19 BPIC20_dd BPIC20_id BPIC20_ptc BPIC20_rfp BPIC20_tpd CALL ITHD MOBIS RTFMP SEPSIS)
 
-python "$PROJECT_ROOT/scripts/change_study/computations/assess_datasets.py" --datasets ${logs[$SLURM_ARRAY_TASK_ID]}
+CURRENT_LOG=${logs[$SLURM_ARRAY_TASK_ID]}
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting assessment for log: ${CURRENT_LOG} (Array task ID: ${SLURM_ARRAY_TASK_ID})"
+
+python -m scripts.change_study.computations.assess_datasets --datasets ${CURRENT_LOG}
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Completed assessment for log: ${CURRENT_LOG} (Array task ID: ${SLURM_ARRAY_TASK_ID})"
