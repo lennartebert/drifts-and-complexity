@@ -30,4 +30,4 @@ logs=(ACCRE BPIC12 BPIC13_cp BPIC13_i BPIC14 BPIC15_1 BPIC15_2 BPIC15_3 BPIC15_4
 LOG_LABEL=${logs[$SLURM_ARRAY_TASK_ID]}
 
 echo "Processing log: $LOG_LABEL"
-python assess_datasets.py --datasets "$LOG_LABEL" --plot-coverage-curves
+python assess_datasets.py --datasets "$LOG_LABEL"
