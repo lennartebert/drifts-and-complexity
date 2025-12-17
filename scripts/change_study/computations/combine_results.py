@@ -62,11 +62,24 @@ def load_drift_info(
             / dataset
             / f"results_{dataset}_{cp_parameter_setting}.csv"
         )
-        drift_info = pd.read_csv(path)
-        # drift info may be empty for some datasets
-        if drift_info.empty or drift_info["calc_change_id"].eq("na").all():
-            drift_info_by_dataset[dataset] = {}
+        # Initialize with empty dict - will be populated if valid change points exist
+        drift_info_by_dataset[dataset] = {}
+
+        # Check if file exists
+        if not path.exists():
             continue
+
+        drift_info = pd.read_csv(path)
+        # drift info may be empty for some datasets, or all change_ids may be "na"
+        if drift_info.empty:
+            continue
+
+        # Check if all change_ids are "na" (no valid change points)
+        if "calc_change_id" in drift_info.columns:
+            if drift_info["calc_change_id"].eq("na").all():
+                continue
+
+        # If we get here, there are valid change points
         drift_info["calc_change_id"] = drift_info["calc_change_id"].astype("Int64")
         drift_info_by_dataset[dataset] = drift_info.set_index("calc_change_id").to_dict(
             orient="index"
