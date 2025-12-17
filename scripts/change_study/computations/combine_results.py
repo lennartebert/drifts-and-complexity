@@ -141,6 +141,9 @@ def get_drift_info_summary_table(drift_info_by_dataset):
     if drift_info_summary_df.empty:
         return drift_info_summary_df
 
+    # Sort datasets alphabetically by index (dataset names)
+    drift_info_summary_df = drift_info_summary_df.sort_index()
+
     # add total row
     total_row = {
         "# Total Changes": drift_info_summary_df["# Total Changes"].sum(),
