@@ -521,12 +521,13 @@ def main(
     print("#### Starting to combine drift analysis results ####")
     if datasets is None:
         # Get all folder names (1st level child) under change_study/complexity_assessment
+        # Exclude TEST_BPIC12 by default
         datasets = [
             d.name
             for d in (
                 constants.CHANGE_STUDY_RESULTS_DIR / "complexity_assessment"
             ).iterdir()
-            if d.is_dir()
+            if d.is_dir() and d.name != "TEST_BPIC12"
         ]
 
     complexity_window_string = f"{cp_parameter_setting}__{complexity_window_setting}"
