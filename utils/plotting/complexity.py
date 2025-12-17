@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use("Agg")  # Non-interactive backend for headless operation
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 plt.ioff()  # Turn off interactive mode to prevent hangs
 
@@ -147,6 +148,83 @@ def plot_complexity_via_fixed_sized_windows(
     print(f"    Completed plotting all measures")
 
 
+def plot_combined_complexity(
+    dataset_key: str,
+    configuration_name: str,
+    cp_flat_data: Any,
+    fixed_flat_data: Any,
+    drift_info_by_id: Optional[Dict[str, Dict[str, Any]]] = None,
+    *,
+    y_log: bool = False,
+    fig_format: str = "png",
+    headroom: float = 0.20,
+    title: Optional[str] = None,
+    show_legend: bool = True,
+) -> None:
+    """Plot both change-point segments and fixed-window lines on the same figure.
+
+    Generates TWO plots per measure:
+    - "_time": Combined plot over time
+    - "_traces": Combined plot over trace index
+
+    Change-point segments are shown in blue solid lines, fixed-window line in green dashed line.
+
+    Args:
+        show_legend: If True, display a legend identifying the two line types (default: True).
+    """
+    cp_df = _prepare_df(cp_flat_data)
+    fixed_df = _prepare_df(fixed_flat_data)
+
+    _require_columns(cp_df, ["size"])  # N labels for change-point segments
+
+    measure_columns = _get_measure_columns(cp_df)
+    # Ensure both dataframes have the same measures
+    fixed_measure_columns = _get_measure_columns(fixed_df)
+    measure_columns = [m for m in measure_columns if m in fixed_measure_columns]
+
+    for mcol in measure_columns:
+        # Combined plot over time
+        try:
+            _plot_combined_single_time(
+                dataset_key=dataset_key,
+                configuration_name=configuration_name,
+                cp_df=cp_df,
+                fixed_df=fixed_df,
+                measure_column=mcol,
+                drift_info_by_id=drift_info_by_id,
+                y_log=y_log,
+                fig_format=fig_format,
+                headroom=headroom,
+                title=title,
+            )
+        except Exception as e:
+            print(
+                f"    [WARNING] Failed to generate combined _time plot for {mcol}: {e}"
+            )
+
+        # Combined plot over traces
+        try:
+            _plot_combined_single_traces(
+                dataset_key=dataset_key,
+                configuration_name=configuration_name,
+                cp_df=cp_df,
+                fixed_df=fixed_df,
+                measure_column=mcol,
+                drift_info_by_id=drift_info_by_id,
+                y_log=y_log,
+                fig_format=fig_format,
+                headroom=headroom,
+                title=title,
+                show_legend=show_legend,
+            )
+        except Exception as e:
+            print(
+                f"    [WARNING] Failed to generate combined _traces plot for {mcol}: {e}"
+            )
+
+    print(f"    Completed plotting all combined measures")
+
+
 def plot_delta_measures(
     dataset_key: str,
     configuration_name: str,
@@ -216,24 +294,41 @@ def _plot_single_cp_segments(
     fig_format: str,
     headroom: float,
     title: Optional[str],
-) -> None:
-    """Render one figure of horizontal segments for a change-point windowing result."""
+    ax: Optional[Any] = None,
+) -> Any:
+    """Render one figure of horizontal segments for a change-point windowing result.
+
+    Args:
+        ax: Optional matplotlib axes. If None, creates a new figure. If provided, plots on existing axes.
+
+    Returns:
+        The axes object used for plotting.
+    """
     assert fig_format in {"png", "pdf"}
     mname = measure_column.removeprefix("measure_")
 
-    fig, ax = plt.subplots(figsize=(12, 5))
-    if title:
-        fig.suptitle(title, y=0.99)
-    # Pretty y-label (replace underscores with spaces)
-    ax.set_ylabel(_format_measure_label(mname))
+    # Create figure if ax not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 5))
+        if title:
+            fig.suptitle(title, y=0.99)
+        # Pretty y-label (replace underscores with spaces)
+        ax.set_ylabel(_format_measure_label(mname))
+        created_figure = True
+    else:
+        created_figure = False
+        # Only set ylabel if not already set (for combined plots)
+        if not ax.get_ylabel():
+            ax.set_ylabel(_format_measure_label(mname))
 
     # Format x-axis as dates to help matplotlib on Windows
     # Don't set formatter here - do it after all plotting is done
 
     y_series = pd.to_numeric(df[measure_column], errors="coerce").dropna()
     if y_series.empty:
-        plt.close(fig)
-        return
+        if created_figure:
+            plt.close(fig)
+        return ax
 
     y_min, y_max = float(y_series.min()), float(y_series.max())
     y_span = y_max - y_min
@@ -286,13 +381,19 @@ def _plot_single_cp_segments(
         ax.text(mid, y_pos, f"N={n}", fontsize=7, ha="center", va="bottom")
 
     _apply_y_scale_and_headroom(ax, y_series, y_log=y_log, headroom=headroom)
-    _draw_start_end_and_cps(
-        ax, df["start_moment"].min(), df["end_moment"].max(), drift_info_by_id
-    )
+    # Only draw change points if we created the figure (for combined plots, draw once at the end)
+    if created_figure:
+        _draw_start_end_and_cps(
+            ax, df["start_moment"].min(), df["end_moment"].max(), drift_info_by_id
+        )
 
-    _finalize_and_save(
-        ax, dataset_key, configuration_name, f"{mname}_time.{fig_format}"
-    )
+    # Only save if we created the figure
+    if created_figure:
+        _finalize_and_save(
+            ax, dataset_key, configuration_name, f"{mname}_time.{fig_format}"
+        )
+
+    return ax
 
 
 def _plot_single_cp_segments_traces(
@@ -377,6 +478,7 @@ def _plot_single_cp_segments_traces(
             [seg_start_idx, seg_end_idx],
             [val, val],
             color="blue",
+            linestyle="-",  # Solid line for change-point segments
             linewidth=1.5,
         )
         # N label
@@ -413,11 +515,22 @@ def _plot_single_fixed_line(
     fig_format: str,
     headroom: float,
     title: Optional[str],
-) -> None:
+    ax: Optional[Any] = None,
+    line_color: str = "blue",
+    linestyle: str = "-",
+) -> Any:
     """Render one figure of a LINE chart for fixed-size windows.
 
     Uses the window CENTER time (midpoint) as the x-position and connects the values with a
-    blue line; draws a point at every center. This represents a moving average centered at w/2.
+    line; draws a point at every center. This represents a moving average centered at w/2.
+
+    Args:
+        ax: Optional matplotlib axes. If None, creates a new figure. If provided, plots on existing axes.
+        line_color: Color for the line (default "blue", use "green" or "orange" for combined plots).
+        linestyle: Line style (default "-" solid, use "--" dashed for combined plots for color-blind accessibility).
+
+    Returns:
+        The axes object used for plotting.
     """
     assert fig_format in {"png", "pdf"}
     mname = measure_column.removeprefix("measure_")
@@ -438,42 +551,58 @@ def _plot_single_fixed_line(
     # Sort by center_moment to ensure monotonic x for line plot
     d = df[cols_needed].sort_values("center_moment").copy()
 
-    fig, ax = plt.subplots(figsize=(12, 5))
-    if title:
-        fig.suptitle(title, y=0.99)
+    # Create figure if ax not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 5))
+        if title:
+            fig.suptitle(title, y=0.99)
+        created_figure = True
+    else:
+        created_figure = False
 
     y_series = pd.to_numeric(d[measure_column], errors="coerce").dropna()
     if y_series.empty:
-        plt.close(fig)
-        return
+        if created_figure:
+            plt.close(fig)
+        return ax
 
     # line + points
     ax.plot(
         d["center_moment"],
         d[measure_column],
-        color="blue",
+        color=line_color,
+        linestyle=linestyle,
         linewidth=1.5,
         marker="o",
         markersize=2,
     )
-    # Pretty y-label for fixed-size charts
-    ax.set_ylabel(_format_measure_label(mname))
+    # Pretty y-label for fixed-size charts (only if we created the figure)
+    if created_figure:
+        ax.set_ylabel(_format_measure_label(mname))
+    elif not ax.get_ylabel():
+        ax.set_ylabel(_format_measure_label(mname))
 
     _apply_y_scale_and_headroom(ax, y_series, y_log=y_log, headroom=headroom)
     # Use start_moment and end_moment for axis limits and change point drawing
-    if "end_moment" in df.columns:
-        _draw_start_end_and_cps(
-            ax, df["start_moment"].min(), df["end_moment"].max(), drift_info_by_id
-        )
-    else:
-        # Fallback if end_moment not available
-        _draw_start_end_and_cps(
-            ax, d["start_moment"].min(), d["center_moment"].max(), drift_info_by_id
+    # Only draw change points if we created the figure (for combined plots, draw once at the end)
+    if created_figure:
+        if "end_moment" in df.columns:
+            _draw_start_end_and_cps(
+                ax, df["start_moment"].min(), df["end_moment"].max(), drift_info_by_id
+            )
+        else:
+            # Fallback if end_moment not available
+            _draw_start_end_and_cps(
+                ax, d["start_moment"].min(), d["center_moment"].max(), drift_info_by_id
+            )
+
+    # Only save if we created the figure
+    if created_figure:
+        _finalize_and_save(
+            ax, dataset_key, configuration_name, f"{mname}_time.{fig_format}"
         )
 
-    _finalize_and_save(
-        ax, dataset_key, configuration_name, f"{mname}_time.{fig_format}"
-    )
+    return ax
 
 
 def _plot_single_fixed_line_traces(
@@ -550,6 +679,284 @@ def _plot_single_fixed_line_traces(
 
     _finalize_and_save(
         ax, dataset_key, configuration_name, f"{mname}_traces.{fig_format}"
+    )
+
+
+def _plot_combined_single_time(
+    dataset_key: str,
+    configuration_name: str,
+    cp_df: pd.DataFrame,
+    fixed_df: pd.DataFrame,
+    measure_column: str,
+    drift_info_by_id: Optional[Dict[str, Dict[str, Any]]],
+    *,
+    y_log: bool,
+    fig_format: str,
+    headroom: float,
+    title: Optional[str],
+    show_legend: bool = True,
+) -> None:
+    """Render combined plot: change-point segments + fixed-window line over time."""
+    assert fig_format in {"png", "pdf"}
+    mname = measure_column.removeprefix("measure_")
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 5))
+    if title:
+        fig.suptitle(title, y=0.99)
+    ax.set_ylabel(_format_measure_label(mname))
+
+    # Get combined y-series for scaling
+    cp_y_series = pd.to_numeric(cp_df[measure_column], errors="coerce").dropna()
+    fixed_y_series = pd.to_numeric(fixed_df[measure_column], errors="coerce").dropna()
+    combined_y_series = pd.concat([cp_y_series, fixed_y_series]).dropna()
+
+    if combined_y_series.empty:
+        plt.close(fig)
+        return
+
+    # Plot change-point segments first (blue)
+    # Pass drift_info so segments can be extended to change points, but change point lines won't be drawn (created_figure=False)
+    _plot_single_cp_segments(
+        dataset_key=dataset_key,
+        configuration_name=configuration_name,
+        df=cp_df,
+        measure_column=measure_column,
+        drift_info_by_id=drift_info_by_id,  # Needed for segment extension
+        y_log=y_log,
+        fig_format=fig_format,
+        headroom=headroom,
+        title=None,  # Already set
+        ax=ax,
+    )
+
+    # Plot fixed-window line (green)
+    # Pass drift_info but change point lines won't be drawn (created_figure=False)
+    _plot_single_fixed_line(
+        dataset_key=dataset_key,
+        configuration_name=configuration_name,
+        df=fixed_df,
+        measure_column=measure_column,
+        drift_info_by_id=drift_info_by_id,  # Won't be used for drawing (created_figure=False)
+        y_log=y_log,
+        fig_format=fig_format,
+        headroom=headroom,
+        title=None,  # Already set
+        ax=ax,
+        line_color="green",
+        linestyle="--",  # Dashed line for fixed windows (color-blind accessible)
+    )
+
+    # Apply y-scale and headroom to combined data
+    _apply_y_scale_and_headroom(ax, combined_y_series, y_log=y_log, headroom=headroom)
+
+    # Draw change points once at the end
+    # Use the wider range from both dataframes
+    cp_x_min = (
+        cp_df["start_moment"].min()
+        if not cp_df.empty
+        else fixed_df["start_moment"].min()
+    )
+    cp_x_max = (
+        cp_df["end_moment"].max() if not cp_df.empty else fixed_df["end_moment"].max()
+    )
+    if "end_moment" in fixed_df.columns and not fixed_df.empty:
+        fixed_x_min = fixed_df["start_moment"].min()
+        fixed_x_max = fixed_df["end_moment"].max()
+        x_min = min(cp_x_min, fixed_x_min)
+        x_max = max(cp_x_max, fixed_x_max)
+    else:
+        x_min = cp_x_min
+        x_max = cp_x_max
+
+    _draw_start_end_and_cps(ax, x_min, x_max, drift_info_by_id)
+
+    # Add legend if requested
+    if show_legend:
+        legend_elements = [
+            Line2D(
+                [0],
+                [0],
+                color="blue",
+                linestyle="-",
+                linewidth=1.5,
+                label="Change-point windows",
+            ),
+            Line2D(
+                [0],
+                [0],
+                color="green",
+                linestyle="--",
+                linewidth=1.5,
+                marker="o",
+                markersize=4,
+                label="Fixed-size windows",
+            ),
+        ]
+        ax.legend(handles=legend_elements, loc="best", fontsize=9)
+
+    # Save combined plot
+    _finalize_and_save(
+        ax, dataset_key, configuration_name, f"{mname}_combined_time.{fig_format}"
+    )
+
+
+def _plot_combined_single_traces(
+    dataset_key: str,
+    configuration_name: str,
+    cp_df: pd.DataFrame,
+    fixed_df: pd.DataFrame,
+    measure_column: str,
+    drift_info_by_id: Optional[Dict[str, Dict[str, Any]]],
+    *,
+    y_log: bool,
+    fig_format: str,
+    headroom: float,
+    title: Optional[str],
+    show_legend: bool = True,
+) -> None:
+    """Render combined plot: change-point segments + fixed-window line over trace index."""
+    assert fig_format in {"png", "pdf"}
+    mname = measure_column.removeprefix("measure_")
+
+    # Check required columns
+    if "first_index" not in cp_df.columns or "last_index" not in cp_df.columns:
+        print(
+            f"    [WARNING] Missing first_index/last_index columns in CP data for {mname}, skipping combined _traces plot"
+        )
+        return
+    if "first_index" not in fixed_df.columns or "last_index" not in fixed_df.columns:
+        print(
+            f"    [WARNING] Missing first_index/last_index columns in fixed data for {mname}, skipping combined _traces plot"
+        )
+        return
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 5))
+    if title:
+        fig.suptitle(title, y=0.99)
+    ax.set_ylabel(_format_measure_label(mname))
+    ax.set_xlabel("Trace Index")
+
+    # Get combined y-series for scaling
+    cp_y_series = pd.to_numeric(cp_df[measure_column], errors="coerce").dropna()
+    fixed_y_series = pd.to_numeric(fixed_df[measure_column], errors="coerce").dropna()
+    combined_y_series = pd.concat([cp_y_series, fixed_y_series]).dropna()
+
+    if combined_y_series.empty:
+        plt.close(fig)
+        return
+
+    # Plot change-point segments first (blue) - need to refactor this function too
+    # For now, let's manually plot the segments
+    y_min, y_max = float(combined_y_series.min()), float(combined_y_series.max())
+    y_span = y_max - y_min
+
+    # Build change point ID to trace index map
+    cp_id_to_trace_idx = {}
+    if drift_info_by_id:
+        for cid, info in drift_info_by_id.items():
+            if cid != "na" and cid is not None:
+                cp_moment = pd.to_datetime(info["calc_change_moment"])
+                cp_trace_idx = _convert_cp_moment_to_trace_index(
+                    cp_moment,
+                    cp_df,
+                    int(cp_df["first_index"].min()),
+                    int(cp_df["last_index"].max()),
+                )
+                if cp_trace_idx is not None:
+                    cp_id_to_trace_idx[int(cid)] = cp_trace_idx
+
+    # Draw CP segments
+    for _, row in cp_df.iterrows():
+        val = row.get(measure_column)
+        if pd.isna(val):
+            continue
+
+        seg_start_idx = (
+            int(row["first_index"]) if pd.notna(row.get("first_index")) else 0
+        )
+        seg_end_idx = (
+            int(row["last_index"]) if pd.notna(row.get("last_index")) else seg_start_idx
+        )
+
+        if "end_change_point" in row and pd.notna(row["end_change_point"]):
+            end_cp_id = int(row["end_change_point"])
+            if end_cp_id in cp_id_to_trace_idx:
+                seg_end_idx = cp_id_to_trace_idx[end_cp_id]
+
+        if "start_change_point" in row and pd.notna(row["start_change_point"]):
+            start_cp_id = int(row["start_change_point"])
+            if start_cp_id in cp_id_to_trace_idx:
+                seg_start_idx = cp_id_to_trace_idx[start_cp_id]
+
+        ax.plot(
+            [seg_start_idx, seg_end_idx],
+            [val, val],
+            color="blue",
+            linestyle="-",
+            linewidth=1.5,
+        )
+
+        # N label
+        n = int(row["size"])
+        mid_idx = seg_start_idx + (seg_end_idx - seg_start_idx) / 2
+        if y_log and val and val > 0:
+            y_pos = float(val) * 1.005
+        else:
+            y_pos = float(val) + 0.002 * (y_span if y_span != 0 else 1.0)
+        ax.text(mid_idx, y_pos, f"N={n}", fontsize=7, ha="center", va="bottom")
+
+    # Plot fixed-window line (green)
+    fixed_df = fixed_df.copy()
+    fixed_df["center_index"] = (fixed_df["first_index"] + fixed_df["last_index"]) // 2
+    d = fixed_df[["center_index", measure_column]].sort_values("center_index").copy()
+
+    ax.plot(
+        d["center_index"],
+        d[measure_column],
+        color="green",
+        linestyle="--",  # Dashed line for fixed windows (color-blind accessible)
+        linewidth=1.5,
+        marker="o",
+        markersize=2,
+    )
+
+    # Apply y-scale and headroom
+    _apply_y_scale_and_headroom(ax, combined_y_series, y_log=y_log, headroom=headroom)
+
+    # Draw change points
+    x_start = min(int(cp_df["first_index"].min()), int(fixed_df["first_index"].min()))
+    x_end = max(int(cp_df["last_index"].max()), int(fixed_df["last_index"].max()))
+    _draw_start_end_and_cps_traces(ax, x_start, x_end, drift_info_by_id, cp_df)
+
+    # Add legend if requested
+    if show_legend:
+        legend_elements = [
+            Line2D(
+                [0],
+                [0],
+                color="blue",
+                linestyle="-",
+                linewidth=1.5,
+                label="Change-point windows",
+            ),
+            Line2D(
+                [0],
+                [0],
+                color="green",
+                linestyle="--",
+                linewidth=1.5,
+                marker="o",
+                markersize=4,
+                label="Fixed-size windows",
+            ),
+        ]
+        ax.legend(handles=legend_elements, loc="best", fontsize=9)
+
+    # Save combined plot
+    _finalize_and_save(
+        ax, dataset_key, configuration_name, f"{mname}_combined_traces.{fig_format}"
     )
 
 

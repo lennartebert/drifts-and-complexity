@@ -30,6 +30,7 @@ from utils.complexity.assessors import (
 )
 from utils.drift_io import drift_info_to_dict, load_xes_log
 from utils.plotting.complexity import (
+    plot_combined_complexity,
     plot_complexity_via_change_point_split,
     plot_complexity_via_fixed_sized_windows,
     plot_delta_measures,
@@ -368,7 +369,7 @@ def concept_drift_complexity_assessment(
             print(
                 f"  Computing complexity for approach: {name} with adapters: {adapter_names}"
             )
-            df = run_with_error_handling(
+            fixed_df = run_with_error_handling(
                 "complexity computation",
                 assess_complexity_via_fixed_sized_windows,
                 traces_sorted,
@@ -381,21 +382,60 @@ def concept_drift_complexity_assessment(
                 drift_info_by_id=drift_info_by_id,
             )
 
-            print(f"  Plotting...")
-            run_with_error_handling(
-                f"plotting for {name}",
-                plot_complexity_via_fixed_sized_windows,
-                dataset_key,
-                cfg_with_approach,
-                df,
-                drift_info_by_id,
-                window_size=window_size,
-                offset=offset,
-                y_log=y_log,
-                fig_format=fig_format,
-                headroom=headroom,
-                title=None,
+            # For combined plots, also compute change-point windows data
+            # Use the first change_point_windows approach if available, otherwise use default
+            cp_approach = next(
+                (apc for apc in approaches if apc["type"] == "change_point_windows"),
+                None,
             )
+
+            if cp_approach:
+                cp_name = cp_approach["name"]
+                print(
+                    f"  Computing change-point complexity for combined plot with adapters: {adapter_names}"
+                )
+                cp_df = run_with_error_handling(
+                    "complexity computation (change-point for combined plot)",
+                    assess_complexity_via_change_point_split,
+                    traces_sorted,
+                    drift_info_by_id,
+                    dataset_key,
+                    configuration_name,
+                    cp_name,
+                    adapter_names,
+                )
+
+                print(f"  Plotting combined (change-point + fixed-window)...")
+                run_with_error_handling(
+                    f"combined plotting for {name}",
+                    plot_combined_complexity,
+                    dataset_key,
+                    cfg_with_approach,
+                    cp_df,
+                    fixed_df,
+                    drift_info_by_id,
+                    y_log=y_log,
+                    fig_format=fig_format,
+                    headroom=headroom,
+                    title=None,
+                )
+            else:
+                # Fallback: plot fixed windows only if no change-point approach available
+                print(f"  Plotting...")
+                run_with_error_handling(
+                    f"plotting for {name}",
+                    plot_complexity_via_fixed_sized_windows,
+                    dataset_key,
+                    cfg_with_approach,
+                    fixed_df,
+                    drift_info_by_id,
+                    window_size=window_size,
+                    offset=offset,
+                    y_log=y_log,
+                    fig_format=fig_format,
+                    headroom=headroom,
+                    title=None,
+                )
 
         elif typ == "window_comparison":
             df = assess_complexity_via_window_comparison(
