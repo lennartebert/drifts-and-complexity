@@ -78,11 +78,19 @@ def get_drift_info_summary_table(drift_info_by_dataset):
     drift_info_summary_dict = {}
 
     for dataset, drift_info_dict in drift_info_by_dataset.items():
-        if drift_info_dict == {}:
-            continue
         result = {}
         sudden_changes = []
         gradual_changes = []
+
+        # Handle datasets with no drifts found
+        if drift_info_dict == {}:
+            result["# Total Changes"] = 0
+            result["# Sudden Changes"] = 0
+            result["Sudden Change Points"] = ""
+            result["# Gradual Changes"] = 0
+            result["Gradual Change Points"] = ""
+            drift_info_summary_dict[dataset] = result
+            continue
 
         # iterate over dict items in order of keys (already sorted)
         items = list(drift_info_dict.items())
