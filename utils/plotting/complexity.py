@@ -416,18 +416,27 @@ def _plot_single_fixed_line(
 ) -> None:
     """Render one figure of a LINE chart for fixed-size windows.
 
-    Uses the window END time as the x-position and connects the values with a
-    blue line; draws a point at every end.
+    Uses the window CENTER time (midpoint) as the x-position and connects the values with a
+    blue line; draws a point at every center. This represents a moving average centered at w/2.
     """
     assert fig_format in {"png", "pdf"}
     mname = measure_column.removeprefix("measure_")
 
-    # Sort by end_moment to ensure monotonic x for line plot
-    d = (
-        df[["end_moment", "start_moment", measure_column]]
-        .sort_values("end_moment")
-        .copy()
-    )
+    # Use center_moment if available, otherwise calculate it or fall back to end_moment
+    if "center_moment" in df.columns:
+        x_col = "center_moment"
+        cols_needed = ["center_moment", "start_moment", measure_column]
+    else:
+        # Fallback: calculate center_moment as midpoint between start and end
+        x_col = "center_moment"
+        df = df.copy()
+        df["center_moment"] = (
+            df["start_moment"] + (df["end_moment"] - df["start_moment"]) / 2
+        )
+        cols_needed = ["center_moment", "start_moment", measure_column]
+
+    # Sort by center_moment to ensure monotonic x for line plot
+    d = df[cols_needed].sort_values("center_moment").copy()
 
     fig, ax = plt.subplots(figsize=(12, 5))
     if title:
@@ -440,7 +449,7 @@ def _plot_single_fixed_line(
 
     # line + points
     ax.plot(
-        d["end_moment"],
+        d["center_moment"],
         d[measure_column],
         color="blue",
         linewidth=1.5,
@@ -451,9 +460,16 @@ def _plot_single_fixed_line(
     ax.set_ylabel(_format_measure_label(mname))
 
     _apply_y_scale_and_headroom(ax, y_series, y_log=y_log, headroom=headroom)
-    _draw_start_end_and_cps(
-        ax, d["start_moment"].min(), d["end_moment"].max(), drift_info_by_id
-    )
+    # Use start_moment and end_moment for axis limits and change point drawing
+    if "end_moment" in df.columns:
+        _draw_start_end_and_cps(
+            ax, df["start_moment"].min(), df["end_moment"].max(), drift_info_by_id
+        )
+    else:
+        # Fallback if end_moment not available
+        _draw_start_end_and_cps(
+            ax, d["start_moment"].min(), d["center_moment"].max(), drift_info_by_id
+        )
 
     _finalize_and_save(
         ax, dataset_key, configuration_name, f"{mname}_time.{fig_format}"
@@ -474,8 +490,8 @@ def _plot_single_fixed_line_traces(
 ) -> None:
     """Render one figure of a LINE chart for fixed-size windows vs trace index.
 
-    Uses the window last_index as the x-position and connects the values with a
-    blue line; draws a point at every last_index.
+    Uses the window CENTER index (midpoint) as the x-position and connects the values with a
+    blue line; draws a point at every center. This represents a moving average centered at w/2.
     """
     assert fig_format in {"png", "pdf"}
     mname = measure_column.removeprefix("measure_")
@@ -487,14 +503,17 @@ def _plot_single_fixed_line_traces(
         )
         return
 
-    # Sort by last_index to ensure monotonic x for line plot
+    # Calculate center_index as midpoint: (first_index + last_index) // 2
+    df = df.copy()
+    df["center_index"] = (df["first_index"] + df["last_index"]) // 2
+
     # Include start_moment and end_moment for change point conversion
-    cols_needed = ["last_index", "first_index", measure_column]
+    cols_needed = ["center_index", "first_index", "last_index", measure_column]
     if "start_moment" in df.columns:
         cols_needed.append("start_moment")
     if "end_moment" in df.columns:
         cols_needed.append("end_moment")
-    d = df[cols_needed].sort_values("last_index").copy()
+    d = df[cols_needed].sort_values("center_index").copy()
 
     fig, ax = plt.subplots(figsize=(12, 5))
     if title:
@@ -507,7 +526,7 @@ def _plot_single_fixed_line_traces(
 
     # line + points
     ax.plot(
-        d["last_index"],
+        d["center_index"],
         d[measure_column],
         color="blue",
         linewidth=1.5,
@@ -521,11 +540,13 @@ def _plot_single_fixed_line_traces(
     _apply_y_scale_and_headroom(ax, y_series, y_log=y_log, headroom=headroom)
 
     # Draw change points using trace indices instead of time
-    x_start = int(d["first_index"].min()) if "first_index" in d.columns else 0
-    x_end = int(d["last_index"].max()) if "last_index" in d.columns else x_start
+    # Use original first_index and last_index for axis limits
+    x_start = int(df["first_index"].min()) if "first_index" in df.columns else 0
+    x_end = int(df["last_index"].max()) if "last_index" in df.columns else x_start
 
     # Convert change point moments to trace indices
-    _draw_start_end_and_cps_traces(ax, x_start, x_end, drift_info_by_id, d)
+    # Pass original df with start_moment/end_moment for conversion
+    _draw_start_end_and_cps_traces(ax, x_start, x_end, drift_info_by_id, df)
 
     _finalize_and_save(
         ax, dataset_key, configuration_name, f"{mname}_traces.{fig_format}"
@@ -612,6 +633,10 @@ def _prepare_df(flat_data: Any) -> pd.DataFrame:
     df["start_moment"] = pd.to_datetime(df["start_moment"], utc=True)  # required
     df["end_moment"] = pd.to_datetime(df["end_moment"], utc=True)  # required
 
+    # Convert center_moment if present (for fixed-size windows)
+    if "center_moment" in df.columns:
+        df["center_moment"] = pd.to_datetime(df["center_moment"], utc=True)
+
     # Convert timezone-aware to naive datetime for matplotlib compatibility
     if df["start_moment"].dtype.name.startswith("datetime64"):
         if (
@@ -625,6 +650,14 @@ def _prepare_df(flat_data: Any) -> pd.DataFrame:
             and df["end_moment"].iloc[0].tz is not None
         ):
             df["end_moment"] = df["end_moment"].dt.tz_localize(None)
+    if "center_moment" in df.columns and df["center_moment"].dtype.name.startswith(
+        "datetime64"
+    ):
+        if (
+            hasattr(df["center_moment"].iloc[0], "tz")
+            and df["center_moment"].iloc[0].tz is not None
+        ):
+            df["center_moment"] = df["center_moment"].dt.tz_localize(None)
 
     return df
 

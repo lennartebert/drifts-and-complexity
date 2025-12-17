@@ -24,6 +24,7 @@ class Window:
         last_index: Index of last trace in original log.
         start_moment: Start timestamp of the window.
         end_moment: End timestamp of the window.
+        center_moment: Center/midpoint timestamp of the window (for fixed-size windows, represents the moving average position).
         start_change_point: Index of start change point.
         start_change_point_type: Type of start change point.
         end_change_point: Index of end change point.
@@ -38,6 +39,7 @@ class Window:
     last_index: Optional[int] = None
     start_moment: Optional[datetime] = None
     end_moment: Optional[datetime] = None
+    center_moment: Optional[datetime] = None
     start_change_point: Optional[int] = None
     start_change_point_type: Optional[str] = None
     end_change_point: Optional[int] = None

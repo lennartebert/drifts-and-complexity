@@ -50,6 +50,16 @@ def _make_window(
     if i0 < 0 or i1 >= n or i0 > i1:
         raise ValueError("Window creation parameters do not fit.")
     sub = log[i0 : i1 + 1]
+    # Calculate center moment as the timestamp of the trace at the midpoint
+    # For a window from i0 to i1 (inclusive), the midpoint index is (i0 + i1) // 2
+    # This represents w/2, e.g., for w=100 starting at 0, center is at trace 50
+    center_idx = (i0 + i1) // 2
+    center_moment = (
+        _trace_start_time(sub[center_idx - i0])
+        if sub and 0 <= (center_idx - i0) < len(sub)
+        else None
+    )
+
     return Window(
         id=wid,
         first_index=i0,
@@ -57,6 +67,7 @@ def _make_window(
         size=len(sub),
         start_moment=_trace_start_time(sub[0]) if sub else None,
         end_moment=_trace_start_time(sub[-1]) if sub else None,
+        center_moment=center_moment,
         traces=sub,
         start_change_point=scp,
         start_change_point_type=scpt,
