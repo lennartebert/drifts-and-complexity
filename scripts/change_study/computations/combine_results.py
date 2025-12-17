@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import pearsonr
+from scipy.stats import spearmanr
 
 from utils import constants
 
@@ -386,7 +386,7 @@ def compute_and_save_correlation_analysis(
     out_dir: str | Path | None = None,
 ) -> pd.DataFrame:
     """
-    Compute ONE Pearson correlation per measure across ALL datasets combined.
+    Compute ONE Spearman correlation per measure across ALL datasets combined.
     Output has one row per measure. If measure_trace_length_avg is present,
     save a scatter plot of n_traces vs. trace_length_avg by dataset as PNG.
     """
@@ -417,7 +417,7 @@ def compute_and_save_correlation_analysis(
                 "column",
                 "n_rows_used",
                 "n_datasets_used",
-                "pearson_r",
+                "spearman_r",
                 "p_value_two_sided",
                 "significant_0.10",
                 "significant_0.05",
@@ -461,11 +461,11 @@ def compute_and_save_correlation_analysis(
         n_rows_used = int(len(pair))
         n_datasets_used = int(pair["dataset"].nunique()) if n_rows_used > 0 else 0
 
-        # Guards for pearsonr
+        # Guards for spearmanr
         if n_rows_used < 2 or pair["x"].nunique() < 2 or pair["y"].nunique() < 2:
             r, p = np.nan, np.nan
         else:
-            r, p = pearsonr(
+            r, p = spearmanr(
                 pair["x"].to_numpy(dtype=float), pair["y"].to_numpy(dtype=float)
             )
 
