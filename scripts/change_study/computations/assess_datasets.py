@@ -285,12 +285,18 @@ def concept_drift_complexity_assessment(
     # Load approaches & drift info
     approaches = load_window_config(WINDOW_CONFIG_FILE_PATH)
 
-    # In test mode, use only the first change_point_windows approach
+    # In test mode, use the first change_point_windows and first fixed_size_windows approach
     if test_mode:
-        approaches = [
+        cp_approaches = [
             apc for apc in approaches if apc["type"] == "change_point_windows"
         ][:1]
-        print(f"## Test mode: Using only {len(approaches)} approach(es) ##")
+        fixed_approaches = [
+            apc for apc in approaches if apc["type"] == "fixed_size_windows"
+        ][:1]
+        approaches = cp_approaches + fixed_approaches
+        print(
+            f"## Test mode: Using {len(approaches)} approach(es) (1 change_point_windows, 1 fixed_size_windows) ##"
+        )
 
     drift_df = pd.read_csv(concept_drift_info_path)
     drift_info_by_id = drift_info_to_dict(drift_df)
@@ -359,18 +365,26 @@ def concept_drift_complexity_assessment(
             window_size = int(p["window_size"])
             offset = int(p["offset"])
 
-            df = assess_complexity_via_fixed_sized_windows(
+            print(
+                f"  Computing complexity for approach: {name} with adapters: {adapter_names}"
+            )
+            df = run_with_error_handling(
+                "complexity computation",
+                assess_complexity_via_fixed_sized_windows,
                 traces_sorted,
                 window_size,
                 offset,
                 dataset_key,
                 configuration_name,
                 name,
-                adapter_names=adapter_names,
+                adapter_names,
                 drift_info_by_id=drift_info_by_id,
             )
 
-            plot_complexity_via_fixed_sized_windows(
+            print(f"  Plotting...")
+            run_with_error_handling(
+                f"plotting for {name}",
+                plot_complexity_via_fixed_sized_windows,
                 dataset_key,
                 cfg_with_approach,
                 df,
@@ -380,7 +394,7 @@ def concept_drift_complexity_assessment(
                 y_log=y_log,
                 fig_format=fig_format,
                 headroom=headroom,
-                title=title,
+                title=None,
             )
 
         elif typ == "window_comparison":
@@ -405,7 +419,7 @@ def concept_drift_complexity_assessment(
                 y_log=y_log,
                 fig_format=fig_format,
                 headroom=headroom,
-                title=title,
+                title=None,
             )
         else:
             raise ValueError(f"Unknown approach type: {typ}")

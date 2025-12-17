@@ -34,14 +34,14 @@ def plot_complexity_via_change_point_split(
     """Plot complexity for *change-point windows* as HORIZONTAL segments.
 
     By default, generates TWO plots per measure:
-    - "_over_time": Plot over time (using start_moment/end_moment)
+    - "_time": Plot over time (using start_moment/end_moment)
     - "_traces": Plot over trace index (using first_index/last_index)
 
     - Draw one horizontal blue segment per window.
     - Write N (from 'size') above each segment.
     - Start/End vertical lines are grey; change-points are red dashed.
     - Add extra headroom at the top; optional log scale (if values > 0).
-    - Saves two figures per `measure_*` column (over_time and traces).
+    - Saves two figures per `measure_*` column (_time and _traces).
     """
     df = _prepare_df(flat_data)
     _require_columns(df, ["size"])  # N labels
@@ -62,7 +62,7 @@ def plot_complexity_via_change_point_split(
                 title=title,  # No default title
             )
         except Exception as e:
-            print(f"    [WARNING] Failed to generate _over_time plot for {mcol}: {e}")
+            print(f"    [WARNING] Failed to generate _time plot for {mcol}: {e}")
 
         # Plot over traces (trace index) - always generate this plot
         try:
@@ -96,35 +96,55 @@ def plot_complexity_via_fixed_sized_windows(
     headroom: float = 0.12,
     title: Optional[str] = None,
 ) -> None:
-    """Plot complexity for *fixed-size windows* as a LINE chart.
+    """Plot complexity for *fixed-size windows* as LINE charts.
+
+    By default, generates TWO plots per measure:
+    - "_time": Plot over time (using end_moment)
+    - "_traces": Plot over trace index (using last_index)
 
     - Use the END of each window as the x-position (always draw a point there).
     - Connect those points with a blue line.
     - Do NOT write N labels to avoid clutter.
     - Start/End vertical lines are grey; change-points are red dashed.
-    - Header defaults to: "Fixed-size windows (size=…, offset=…)" if provided.
+    - No title by default (title parameter can be provided if needed).
     """
     df = _prepare_df(flat_data)
 
-    default_title = title or (
-        f"Fixed-size windows (size={window_size}, offset={offset})"
-        if window_size is not None and offset is not None
-        else "Fixed-size windows"
-    )
-
     measure_columns = _get_measure_columns(df)
     for mcol in measure_columns:
-        _plot_single_fixed_line(
-            dataset_key=dataset_key,
-            configuration_name=configuration_name,
-            df=df,
-            measure_column=mcol,
-            drift_info_by_id=drift_info_by_id,
-            y_log=y_log,
-            fig_format=fig_format,
-            headroom=headroom,
-            title=default_title,
-        )
+        # Plot over time - always generate this plot
+        try:
+            _plot_single_fixed_line(
+                dataset_key=dataset_key,
+                configuration_name=configuration_name,
+                df=df,
+                measure_column=mcol,
+                drift_info_by_id=drift_info_by_id,
+                y_log=y_log,
+                fig_format=fig_format,
+                headroom=headroom,
+                title=title,
+            )
+        except Exception as e:
+            print(f"    [WARNING] Failed to generate _time plot for {mcol}: {e}")
+
+        # Plot over traces (trace index) - always generate this plot
+        try:
+            _plot_single_fixed_line_traces(
+                dataset_key=dataset_key,
+                configuration_name=configuration_name,
+                df=df,
+                measure_column=mcol,
+                drift_info_by_id=drift_info_by_id,
+                y_log=y_log,
+                fig_format=fig_format,
+                headroom=headroom,
+                title=title,
+            )
+        except Exception as e:
+            print(f"    [WARNING] Failed to generate _traces plot for {mcol}: {e}")
+
+    print(f"    Completed plotting all measures")
 
 
 def plot_delta_measures(
@@ -176,7 +196,7 @@ def plot_delta_measures(
             y_log=y_log,
             fig_format=fig_format,
             headroom=headroom,
-            title=title or "Window comparison (Δ)",
+            title=title,
         )
 
 
@@ -218,20 +238,47 @@ def _plot_single_cp_segments(
     y_min, y_max = float(y_series.min()), float(y_series.max())
     y_span = y_max - y_min
 
+    # Build a map of change point ID to change point moment for extending segments
+    cp_id_to_moment = {}
+    if drift_info_by_id:
+        for cid, info in drift_info_by_id.items():
+            if cid != "na" and cid is not None:
+                cp_moment = pd.to_datetime(info["calc_change_moment"])
+                if hasattr(cp_moment, "tz") and cp_moment.tz is not None:
+                    cp_moment = cp_moment.tz_localize(None)
+                cp_id_to_moment[int(cid)] = cp_moment
+
     # draw segments + N labels (from traces_in_window)
     for _, row in df.iterrows():
         val = row.get(measure_column)
         if pd.isna(val):
             continue
+
+        # Determine segment endpoints
+        seg_start = row["start_moment"]
+        seg_end = row["end_moment"]
+
+        # If window ends at a change point, extend segment to the change point moment
+        if "end_change_point" in row and pd.notna(row["end_change_point"]):
+            end_cp_id = int(row["end_change_point"])
+            if end_cp_id in cp_id_to_moment:
+                seg_end = cp_id_to_moment[end_cp_id]
+
+        # If window starts at a change point, use the change point moment as start
+        if "start_change_point" in row and pd.notna(row["start_change_point"]):
+            start_cp_id = int(row["start_change_point"])
+            if start_cp_id in cp_id_to_moment:
+                seg_start = cp_id_to_moment[start_cp_id]
+
         ax.plot(
-            [row["start_moment"], row["end_moment"]],
+            [seg_start, seg_end],
             [val, val],
             color="blue",
             linewidth=1.5,
         )
         # N label
         n = int(row["size"])  # guaranteed by caller
-        mid = row["start_moment"] + (row["end_moment"] - row["start_moment"]) / 2
+        mid = seg_start + (seg_end - seg_start) / 2
         if y_log and val and val > 0:
             y_pos = float(val) * 1.005
         else:
@@ -244,7 +291,7 @@ def _plot_single_cp_segments(
     )
 
     _finalize_and_save(
-        ax, dataset_key, configuration_name, f"{mname}_over_time.{fig_format}"
+        ax, dataset_key, configuration_name, f"{mname}_time.{fig_format}"
     )
 
 
@@ -266,6 +313,9 @@ def _plot_single_cp_segments_traces(
 
     # Require first_index and last_index columns for trace-based plotting
     if "first_index" not in df.columns or "last_index" not in df.columns:
+        print(
+            f"    [WARNING] Missing first_index/last_index columns for {mname}, skipping _traces plot"
+        )
         return
 
     fig, ax = plt.subplots(figsize=(12, 5))
@@ -283,26 +333,55 @@ def _plot_single_cp_segments_traces(
     y_min, y_max = float(y_series.min()), float(y_series.max())
     y_span = y_max - y_min
 
+    # Build a map of change point ID to change point trace index for extending segments
+    cp_id_to_trace_idx = {}
+    if drift_info_by_id:
+        for cid, info in drift_info_by_id.items():
+            if cid != "na" and cid is not None:
+                cp_moment = pd.to_datetime(info["calc_change_moment"])
+                cp_trace_idx = _convert_cp_moment_to_trace_index(
+                    cp_moment,
+                    df,
+                    int(df["first_index"].min()),
+                    int(df["last_index"].max()),
+                )
+                if cp_trace_idx is not None:
+                    cp_id_to_trace_idx[int(cid)] = cp_trace_idx
+
     # draw segments + N labels using trace indices
     for _, row in df.iterrows():
         val = row.get(measure_column)
         if pd.isna(val):
             continue
 
-        first_idx = int(row["first_index"]) if pd.notna(row.get("first_index")) else 0
-        last_idx = (
-            int(row["last_index"]) if pd.notna(row.get("last_index")) else first_idx
+        seg_start_idx = (
+            int(row["first_index"]) if pd.notna(row.get("first_index")) else 0
+        )
+        seg_end_idx = (
+            int(row["last_index"]) if pd.notna(row.get("last_index")) else seg_start_idx
         )
 
+        # If window ends at a change point, extend segment to the change point trace index
+        if "end_change_point" in row and pd.notna(row["end_change_point"]):
+            end_cp_id = int(row["end_change_point"])
+            if end_cp_id in cp_id_to_trace_idx:
+                seg_end_idx = cp_id_to_trace_idx[end_cp_id]
+
+        # If window starts at a change point, use the change point trace index as start
+        if "start_change_point" in row and pd.notna(row["start_change_point"]):
+            start_cp_id = int(row["start_change_point"])
+            if start_cp_id in cp_id_to_trace_idx:
+                seg_start_idx = cp_id_to_trace_idx[start_cp_id]
+
         ax.plot(
-            [first_idx, last_idx],
+            [seg_start_idx, seg_end_idx],
             [val, val],
             color="blue",
             linewidth=1.5,
         )
         # N label
         n = int(row["size"])  # guaranteed by caller
-        mid_idx = first_idx + (last_idx - first_idx) / 2
+        mid_idx = seg_start_idx + (seg_end_idx - seg_start_idx) / 2
         if y_log and val and val > 0:
             y_pos = float(val) * 1.005
         else:
@@ -366,7 +445,7 @@ def _plot_single_fixed_line(
         color="blue",
         linewidth=1.5,
         marker="o",
-        markersize=3,
+        markersize=2,
     )
     # Pretty y-label for fixed-size charts
     ax.set_ylabel(_format_measure_label(mname))
@@ -377,7 +456,79 @@ def _plot_single_fixed_line(
     )
 
     _finalize_and_save(
-        ax, dataset_key, configuration_name, f"{mname}_over_time.{fig_format}"
+        ax, dataset_key, configuration_name, f"{mname}_time.{fig_format}"
+    )
+
+
+def _plot_single_fixed_line_traces(
+    dataset_key: str,
+    configuration_name: str,
+    df: pd.DataFrame,
+    measure_column: str,
+    drift_info_by_id: Optional[Dict[str, Dict[str, Any]]],
+    *,
+    y_log: bool,
+    fig_format: str,
+    headroom: float,
+    title: Optional[str],
+) -> None:
+    """Render one figure of a LINE chart for fixed-size windows vs trace index.
+
+    Uses the window last_index as the x-position and connects the values with a
+    blue line; draws a point at every last_index.
+    """
+    assert fig_format in {"png", "pdf"}
+    mname = measure_column.removeprefix("measure_")
+
+    # Require first_index and last_index columns for trace-based plotting
+    if "first_index" not in df.columns or "last_index" not in df.columns:
+        print(
+            f"    [WARNING] Missing first_index/last_index columns for {mname}, skipping _traces plot"
+        )
+        return
+
+    # Sort by last_index to ensure monotonic x for line plot
+    # Include start_moment and end_moment for change point conversion
+    cols_needed = ["last_index", "first_index", measure_column]
+    if "start_moment" in df.columns:
+        cols_needed.append("start_moment")
+    if "end_moment" in df.columns:
+        cols_needed.append("end_moment")
+    d = df[cols_needed].sort_values("last_index").copy()
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    if title:
+        fig.suptitle(title, y=0.99)
+
+    y_series = pd.to_numeric(d[measure_column], errors="coerce").dropna()
+    if y_series.empty:
+        plt.close(fig)
+        return
+
+    # line + points
+    ax.plot(
+        d["last_index"],
+        d[measure_column],
+        color="blue",
+        linewidth=1.5,
+        marker="o",
+        markersize=2,
+    )
+    # Pretty y-label for fixed-size charts
+    ax.set_ylabel(_format_measure_label(mname))
+    ax.set_xlabel("Trace Index")
+
+    _apply_y_scale_and_headroom(ax, y_series, y_log=y_log, headroom=headroom)
+
+    # Draw change points using trace indices instead of time
+    x_start = int(d["first_index"].min()) if "first_index" in d.columns else 0
+    x_end = int(d["last_index"].max()) if "last_index" in d.columns else x_start
+
+    # Convert change point moments to trace indices
+    _draw_start_end_and_cps_traces(ax, x_start, x_end, drift_info_by_id, d)
+
+    _finalize_and_save(
+        ax, dataset_key, configuration_name, f"{mname}_traces.{fig_format}"
     )
 
 
@@ -438,7 +589,7 @@ def _plot_single_delta_line(
     )
 
     _finalize_and_save(
-        ax, dataset_key, configuration_name, f"delta_{dname}_over_time.{fig_format}"
+        ax, dataset_key, configuration_name, f"delta_{dname}_time.{fig_format}"
     )
 
 
@@ -523,13 +674,98 @@ def _apply_y_scale_and_headroom(
     ax.set_ylim(bottom=bottom, top=top)
 
 
+def _convert_cp_moment_to_trace_index(
+    cp_moment: pd.Timestamp, df: pd.DataFrame, x_start: int, x_end: int
+) -> Optional[int]:
+    """Convert a change point moment to a trace index by finding the corresponding window."""
+    if "start_moment" not in df.columns or "end_moment" not in df.columns:
+        return None
+
+    # Convert to naive datetime if timezone-aware
+    if hasattr(cp_moment, "tz") and cp_moment.tz is not None:
+        cp_moment = cp_moment.tz_localize(None)
+
+    # Find window where start_moment <= cp_moment <= end_moment
+    for _, row in df.iterrows():
+        start_m = pd.to_datetime(row["start_moment"])
+        end_m = pd.to_datetime(row["end_moment"])
+        # Ensure both are naive for comparison
+        if hasattr(start_m, "tz") and start_m.tz is not None:
+            start_m = start_m.tz_localize(None)
+        if hasattr(end_m, "tz") and end_m.tz is not None:
+            end_m = end_m.tz_localize(None)
+        if start_m <= cp_moment <= end_m:
+            # Use the first_index of this window as the trace index
+            if "first_index" in row and pd.notna(row["first_index"]):
+                return int(row["first_index"])
+
+    # If not found, try to interpolate based on time position
+    if len(df) > 0:
+        df_sorted = df.sort_values("start_moment")
+        first_start = pd.to_datetime(df_sorted["start_moment"].iloc[0])
+        last_end = pd.to_datetime(df_sorted["end_moment"].iloc[-1])
+        if hasattr(first_start, "tz") and first_start.tz is not None:
+            first_start = first_start.tz_localize(None)
+        if hasattr(last_end, "tz") and last_end.tz is not None:
+            last_end = last_end.tz_localize(None)
+
+        if cp_moment < first_start:
+            return (
+                int(df_sorted["first_index"].iloc[0])
+                if "first_index" in df_sorted.columns
+                else x_start
+            )
+        elif cp_moment > last_end:
+            return (
+                int(df_sorted["last_index"].iloc[-1])
+                if "last_index" in df_sorted.columns
+                else x_end
+            )
+        else:
+            # Interpolate between windows
+            for i in range(len(df_sorted) - 1):
+                w1_end = pd.to_datetime(df_sorted["end_moment"].iloc[i])
+                w2_start = pd.to_datetime(df_sorted["start_moment"].iloc[i + 1])
+                if hasattr(w1_end, "tz") and w1_end.tz is not None:
+                    w1_end = w1_end.tz_localize(None)
+                if hasattr(w2_start, "tz") and w2_start.tz is not None:
+                    w2_start = w2_start.tz_localize(None)
+                if w1_end <= cp_moment <= w2_start:
+                    # Interpolate between the two windows
+                    w1_last_idx = (
+                        int(df_sorted["last_index"].iloc[i])
+                        if "last_index" in df_sorted.columns
+                        else x_start
+                    )
+                    w2_first_idx = (
+                        int(df_sorted["first_index"].iloc[i + 1])
+                        if "first_index" in df_sorted.columns
+                        else x_end
+                    )
+                    # Use midpoint
+                    return (w1_last_idx + w2_first_idx) // 2
+
+    return None
+
+
 def _draw_start_end_and_cps(
     ax: plt.Axes,
-    x_start: pd.Timestamp,
-    x_end: pd.Timestamp,
+    x_start: pd.Timestamp | int,
+    x_end: pd.Timestamp | int,
     drift_info_by_id: Optional[Dict[str, Dict[str, Any]]],
+    df_for_trace_conversion: Optional[pd.DataFrame] = None,
+    use_trace_indices: bool = False,
 ) -> None:
-    """Draw start/end grey dashed lines and optional CPs as red dashed lines."""
+    """Draw start/end grey dashed lines and optional CPs as red dashed lines.
+
+    Args:
+        ax: Matplotlib axes
+        x_start: Start x-coordinate (timestamp or int)
+        x_end: End x-coordinate (timestamp or int)
+        drift_info_by_id: Dictionary of drift information
+        df_for_trace_conversion: DataFrame to use for converting change point moments to trace indices (if use_trace_indices=True)
+        use_trace_indices: If True, convert change point moments to trace indices using df_for_trace_conversion
+    """
     label_map = {
         "sudden": "Sudden",
         "gradual_start": "Gradual start",
@@ -539,101 +775,11 @@ def _draw_start_end_and_cps(
     }
 
     # Convert to naive timestamps if timezone-aware (matplotlib can have issues with tz-aware on Windows)
-    if hasattr(x_start, "tz") and x_start.tz is not None:
-        x_start = x_start.tz_localize(None)
-    if hasattr(x_end, "tz") and x_end.tz is not None:
-        x_end = x_end.tz_localize(None)
-
-    # Set x-axis limits first to help matplotlib with date formatting
-    try:
-        ax.set_xlim(left=x_start, right=x_end)
-    except Exception as e:
-        print(f"        [WARNING] Error setting xlim: {e}")
-
-    # Use plot() instead of axvline() as workaround for potential matplotlib date axis issue
-    ylim = ax.get_ylim()
-
-    try:
-        ax.plot([x_start, x_start], ylim, color="grey", linestyle="--", linewidth=1)
-    except Exception as e:
-        print(f"        [ERROR] Error drawing start line: {e}")
-        import traceback
-
-        traceback.print_exc()
-        raise
-    try:
-        ax.plot([x_end, x_end], ylim, color="grey", linestyle="--", linewidth=1)
-    except Exception as e:
-        print(f"        [ERROR] Error drawing end line: {e}")
-        import traceback
-
-        traceback.print_exc()
-        raise
-
-    ylim_top = ax.get_ylim()[1]
-    ylim_bottom = ax.get_ylim()[0]
-    # Add extra space above ylim_top for rotated labels (rotation=45 needs more vertical space)
-    label_space = (ylim_top - ylim_bottom) * 0.15  # 15% extra space for labels
-    ax.text(
-        x_start,
-        ylim_top,
-        label_map["start"],
-        fontsize=8,
-        ha="left",
-        va="bottom",
-        rotation=45,
-    )
-    ax.text(
-        x_end,
-        ylim_top,
-        label_map["end"],
-        fontsize=8,
-        ha="left",
-        va="bottom",
-        rotation=45,
-    )
-
-    # change-points (red)
-    if drift_info_by_id:
-        for cid, info in drift_info_by_id.items():
-            if cid == "na":
-                continue
-            cp_x = pd.to_datetime(info["calc_change_moment"])
-            cp_lab = label_map.get(
-                info.get("calc_change_type"), info.get("calc_change_type", "cp")
-            )
-            ax.axvline(x=cp_x, color="red", linestyle="--", alpha=0.5)
-            # Place change point label higher to account for rotation
-            label_y = ylim_top + label_space
-            ax.text(
-                cp_x, label_y, cp_lab, fontsize=8, ha="left", va="bottom", rotation=45
-            )
-
-    # common axes decorations
-    ax.set_xlabel("Time")
-
-    # Don't set explicit date formatter - let matplotlib auto-format to avoid hangs on Windows
-    # Explicit formatters can cause hangs with date axes on Windows
-    for lbl in ax.get_xticklabels():
-        lbl.set_rotation(45)
-    ax.grid(True)
-
-
-def _draw_start_end_and_cps_traces(
-    ax: plt.Axes,
-    x_start: int,
-    x_end: int,
-    drift_info_by_id: Optional[Dict[str, Dict[str, Any]]],
-    df: pd.DataFrame,
-) -> None:
-    """Draw start/end grey dashed lines and optional CPs as red dashed lines using trace indices."""
-    label_map = {
-        "sudden": "Sudden",
-        "gradual_start": "Gradual start",
-        "gradual_end": "Gradual end",
-        "start": "Start",
-        "end": "End",
-    }
+    if not use_trace_indices:
+        if hasattr(x_start, "tz") and x_start.tz is not None:
+            x_start = x_start.tz_localize(None)
+        if hasattr(x_end, "tz") and x_end.tz is not None:
+            x_end = x_end.tz_localize(None)
 
     # Set x-axis limits
     try:
@@ -662,9 +808,7 @@ def _draw_start_end_and_cps_traces(
         raise
 
     ylim_top = ax.get_ylim()[1]
-    ylim_bottom = ax.get_ylim()[0]
-    # Add extra space above ylim_top for rotated labels
-    label_space = (ylim_top - ylim_bottom) * 0.15  # 15% extra space for labels
+    # Align all labels at the same y-position (ylim_top)
     ax.text(
         x_start,
         ylim_top,
@@ -684,95 +828,50 @@ def _draw_start_end_and_cps_traces(
         rotation=45,
     )
 
-    # change-points (red) - convert change point moments to trace indices
+    # change-points (red)
     if drift_info_by_id:
         for cid, info in drift_info_by_id.items():
             if cid == "na":
                 continue
-            cp_moment = pd.to_datetime(info["calc_change_moment"])
-            # Convert to naive datetime if timezone-aware (to match DataFrame timestamps)
-            if hasattr(cp_moment, "tz") and cp_moment.tz is not None:
-                cp_moment = cp_moment.tz_localize(None)
             cp_lab = label_map.get(
                 info.get("calc_change_type"), info.get("calc_change_type", "cp")
             )
 
-            # Convert change point moment to trace index
-            # Find the window that contains this change point moment
-            cp_trace_idx = None
-            if "start_moment" in df.columns and "end_moment" in df.columns:
-                # Find window where start_moment <= cp_moment <= end_moment
-                for _, row in df.iterrows():
-                    start_m = pd.to_datetime(row["start_moment"])
-                    end_m = pd.to_datetime(row["end_moment"])
-                    # Ensure both are naive for comparison
-                    if hasattr(start_m, "tz") and start_m.tz is not None:
-                        start_m = start_m.tz_localize(None)
-                    if hasattr(end_m, "tz") and end_m.tz is not None:
-                        end_m = end_m.tz_localize(None)
-                    if start_m <= cp_moment <= end_m:
-                        # Use the first_index of this window as the trace index
-                        if "first_index" in row and pd.notna(row["first_index"]):
-                            cp_trace_idx = int(row["first_index"])
-                            break
-
-                # If not found, try to interpolate based on time position
-                if cp_trace_idx is None:
-                    # Find the closest window boundaries
-                    if len(df) > 0:
-                        df_sorted = df.sort_values("start_moment")
-                        first_start = pd.to_datetime(df_sorted["start_moment"].iloc[0])
-                        last_end = pd.to_datetime(df_sorted["end_moment"].iloc[-1])
-
-                        if cp_moment < first_start:
-                            cp_trace_idx = (
-                                int(df_sorted["first_index"].iloc[0])
-                                if "first_index" in df_sorted.columns
-                                else x_start
-                            )
-                        elif cp_moment > last_end:
-                            cp_trace_idx = (
-                                int(df_sorted["last_index"].iloc[-1])
-                                if "last_index" in df_sorted.columns
-                                else x_end
-                            )
-                        else:
-                            # Interpolate between windows
-                            for i in range(len(df_sorted) - 1):
-                                w1_end = pd.to_datetime(df_sorted["end_moment"].iloc[i])
-                                w2_start = pd.to_datetime(
-                                    df_sorted["start_moment"].iloc[i + 1]
-                                )
-                                if w1_end <= cp_moment <= w2_start:
-                                    # Interpolate between the two windows
-                                    w1_last_idx = (
-                                        int(df_sorted["last_index"].iloc[i])
-                                        if "last_index" in df_sorted.columns
-                                        else x_start
-                                    )
-                                    w2_first_idx = (
-                                        int(df_sorted["first_index"].iloc[i + 1])
-                                        if "first_index" in df_sorted.columns
-                                        else x_end
-                                    )
-                                    # Use midpoint or weighted average
-                                    cp_trace_idx = (w1_last_idx + w2_first_idx) // 2
-                                    break
-
-            if cp_trace_idx is not None:
-                ax.plot(
-                    [cp_trace_idx, cp_trace_idx],
-                    ylim,
-                    color="red",
-                    linestyle="--",
-                    alpha=0.5,
-                    linewidth=1,
+            if use_trace_indices and df_for_trace_conversion is not None:
+                # Convert change point moment to trace index
+                cp_moment = pd.to_datetime(info["calc_change_moment"])
+                cp_x = _convert_cp_moment_to_trace_index(
+                    cp_moment, df_for_trace_conversion, int(x_start), int(x_end)
                 )
-                # Place change point label higher to account for rotation
-                label_y = ylim_top + label_space
+                if cp_x is not None:
+                    ax.plot(
+                        [cp_x, cp_x],
+                        ylim,
+                        color="red",
+                        linestyle="--",
+                        alpha=0.5,
+                        linewidth=1,
+                    )
+                    # Align change point label with start/end labels
+                    ax.text(
+                        cp_x,
+                        ylim_top,
+                        cp_lab,
+                        fontsize=8,
+                        ha="left",
+                        va="bottom",
+                        rotation=45,
+                    )
+            else:
+                # Use change point moment directly
+                cp_x = pd.to_datetime(info["calc_change_moment"])
+                if hasattr(cp_x, "tz") and cp_x.tz is not None:
+                    cp_x = cp_x.tz_localize(None)
+                ax.axvline(x=cp_x, color="red", linestyle="--", alpha=0.5)
+                # Align change point label with start/end labels
                 ax.text(
-                    cp_trace_idx,
-                    label_y,
+                    cp_x,
+                    ylim_top,
                     cp_lab,
                     fontsize=8,
                     ha="left",
@@ -781,11 +880,37 @@ def _draw_start_end_and_cps_traces(
                 )
 
     # common axes decorations
-    ax.set_xlabel("Trace Index")  # Already set by caller, but ensure it's set
+    if use_trace_indices:
+        ax.set_xlabel("Trace Index")
+    else:
+        ax.set_xlabel("Time")
+        # Don't set explicit date formatter - let matplotlib auto-format to avoid hangs on Windows
 
     for lbl in ax.get_xticklabels():
         lbl.set_rotation(45)
     ax.grid(True)
+
+
+def _draw_start_end_and_cps_traces(
+    ax: plt.Axes,
+    x_start: int,
+    x_end: int,
+    drift_info_by_id: Optional[Dict[str, Dict[str, Any]]],
+    df: pd.DataFrame,
+) -> None:
+    """Draw start/end grey dashed lines and optional CPs as red dashed lines using trace indices.
+
+    This is a convenience wrapper that calls the unified _draw_start_end_and_cps function
+    with use_trace_indices=True.
+    """
+    _draw_start_end_and_cps(
+        ax,
+        x_start,
+        x_end,
+        drift_info_by_id,
+        df_for_trace_conversion=df,
+        use_trace_indices=True,
+    )
 
 
 def _finalize_and_save(
@@ -798,7 +923,9 @@ def _finalize_and_save(
         # very light inference; main callers set ylabel explicitly though
         try:
             stem = Path(filename).stem
-            ax.set_ylabel(stem.replace("_over_time", "").replace("delta_", "Δ "))
+            ax.set_ylabel(
+                stem.replace("_time", "").replace("_traces", "").replace("delta_", "Δ ")
+            )
         except Exception:
             pass
 
@@ -885,6 +1012,13 @@ def _finalize_and_save(
                     facecolor="white",
                     bbox_inches="tight",
                 )
+        except PermissionError as e:
+            # File is likely open in a viewer - just warn and continue
+            print(
+                f"        [WARNING] Could not save {fmt} file (file may be open): {out_path.name}"
+            )
+            # Continue to try saving the other format even if one fails
+            continue
         except Exception as e:
             print(f"        [ERROR] Error saving figure as {fmt}: {e}")
             import traceback
