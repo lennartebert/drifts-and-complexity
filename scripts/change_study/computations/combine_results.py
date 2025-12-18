@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import spearmanr
 
 from utils import constants
 
@@ -44,7 +43,6 @@ def load_complexity_per_window_dict(datasets, complexity_window_string):
         df["dataset"] = dataset
         df["start_change_point"] = df["start_change_point"].astype("Int64")
         df["end_change_point"] = df["end_change_point"].astype("Int64")
-        df["n_traces"] = df["last_index"] - df["first_index"]
         df["id"] = df["id"].astype(int)
         complexity_per_window_df_dict[dataset] = df
     return complexity_per_window_df_dict
@@ -183,10 +181,12 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
             ), f"window_after_change is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
 
             if change_type == "sudden":
-                deltas = (
-                    window_after_change_point[measure_columns]
-                    - window_before_change_point[measure_columns]
-                ).to_dict()
+                # Compute relative differences: (after - before) / before
+                before_vals = window_before_change_point[measure_columns]
+                after_vals = window_after_change_point[measure_columns]
+                # Replace zeros in before_vals with NaN to avoid division by zero
+                before_vals_safe = before_vals.replace(0, np.nan)
+                deltas = ((after_vals - before_vals) / before_vals_safe).to_dict()
                 results.append(
                     {
                         "change_type": "Sudden (before to after)",
@@ -195,10 +195,11 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
                 )
 
             elif change_type == "gradual_start":
-                deltas = (
-                    window_after_change_point[measure_columns]
-                    - window_before_change_point[measure_columns]
-                ).to_dict()
+                # Compute relative differences: (after - before) / before
+                before_vals = window_before_change_point[measure_columns]
+                after_vals = window_after_change_point[measure_columns]
+                before_vals_safe = before_vals.replace(0, np.nan)
+                deltas = ((after_vals - before_vals) / before_vals_safe).to_dict()
                 results.append(
                     {
                         "change_type": "Gradual (before to during)",
@@ -213,10 +214,9 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
                 assert (
                     not window_after_gradual_end.empty
                 ), f"window_after_gradual_end is empty for dataset {dataset}, change_id {change_id}, change_type {change_type}"
-                deltas = (
-                    window_after_gradual_end[measure_columns]
-                    - window_before_change_point[measure_columns]
-                ).to_dict()
+                after_end_vals = window_after_gradual_end[measure_columns]
+                before_vals_safe = before_vals.replace(0, np.nan)
+                deltas = ((after_end_vals - before_vals) / before_vals_safe).to_dict()
                 results.append(
                     {
                         "change_type": "Gradual (before to after)",
@@ -225,10 +225,11 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
                 )
 
             elif change_type == "gradual_end":
-                deltas = (
-                    window_after_change_point[measure_columns]
-                    - window_before_change_point[measure_columns]
-                ).to_dict()
+                # Compute relative differences: (after - before) / before
+                before_vals = window_before_change_point[measure_columns]
+                after_vals = window_after_change_point[measure_columns]
+                before_vals_safe = before_vals.replace(0, np.nan)
+                deltas = ((after_vals - before_vals) / before_vals_safe).to_dict()
                 results.append(
                     {
                         "change_type": "Gradual (during to after)",
@@ -380,163 +381,6 @@ def save_boxplots(results_df, cp_parameter_setting):
         plt.close()
 
 
-def compute_and_save_correlation_analysis(
-    complexity_per_window_df_dict: Dict[str, pd.DataFrame],
-    cp_parameter_setting: str,
-    out_dir: str | Path | None = None,
-) -> pd.DataFrame:
-    """
-    Compute ONE Spearman correlation per measure across ALL datasets combined.
-    Output has one row per measure. If measure_trace_length_avg is present,
-    save a scatter plot of n_traces vs. trace_length_avg by dataset as PNG.
-    """
-    # create out path
-    if out_dir is None:
-        out_dir = (
-            constants.CHANGE_STUDY_RESULTS_DIR
-            / "combined_results"
-            / "correlation_analysis"
-        )
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # --- Combine all datasets ---
-    dfs = []
-    for dataset_name, df in complexity_per_window_df_dict.items():
-        if df is None or df.empty:
-            continue
-        df = df.copy()
-        if "dataset" not in df.columns:
-            df["dataset"] = dataset_name
-        dfs.append(df)
-
-    if not dfs:
-        result_df = pd.DataFrame(
-            columns=[
-                "measure",
-                "column",
-                "n_rows_used",
-                "n_datasets_used",
-                "spearman_r",
-                "p_value_two_sided",
-                "significant_0.10",
-                "significant_0.05",
-                "significant_0.01",
-                "significant_0.001",
-                "direction",
-            ]
-        )
-        out_path = out_dir / f"{cp_parameter_setting}_correlation_analysis.csv"
-        result_df.to_csv(out_path, index=False)
-        return result_df
-
-    combined = pd.concat(dfs, ignore_index=True, sort=False)
-
-    if "n_traces" not in combined.columns:
-        raise KeyError("Expected column 'n_traces' missing in combined data.")
-    if "dataset" not in combined.columns:
-        combined["dataset"] = "unknown"
-
-    measure_cols = [
-        c for c in combined.columns if isinstance(c, str) and c.startswith("measure_")
-    ]
-    n_traces_all = pd.to_numeric(combined["n_traces"], errors="coerce")
-
-    rows = []
-    for col in measure_cols:
-        measure_vals = pd.to_numeric(combined[col], errors="coerce")
-
-        pair = (
-            pd.DataFrame(
-                {
-                    "x": measure_vals,
-                    "y": n_traces_all,
-                    "dataset": combined["dataset"],
-                }
-            )
-            .replace([pd.NA, pd.NaT, np.inf, -np.inf], np.nan)
-            .dropna(subset=["x", "y"])
-        )
-
-        n_rows_used = int(len(pair))
-        n_datasets_used = int(pair["dataset"].nunique()) if n_rows_used > 0 else 0
-
-        # Guards for spearmanr
-        if n_rows_used < 2 or pair["x"].nunique() < 2 or pair["y"].nunique() < 2:
-            r, p = np.nan, np.nan
-        else:
-            r, p = spearmanr(
-                pair["x"].to_numpy(dtype=float), pair["y"].to_numpy(dtype=float)
-            )
-
-        measure_name = col[len("measure_") :]
-        sig_10 = (p <= 0.10) if np.isfinite(p) else False
-        sig_05 = (p <= 0.05) if np.isfinite(p) else False
-        sig_01 = (p <= 0.01) if np.isfinite(p) else False
-        sig_001 = (p <= 0.001) if np.isfinite(p) else False
-
-        direction = (
-            "positive"
-            if np.isfinite(r) and r > 0
-            else "negative" if np.isfinite(r) and r < 0 else "zero/undefined"
-        )
-
-        rows.append(
-            {
-                "measure": measure_name,
-                "column": col,
-                "n_rows_used": n_rows_used,
-                "n_datasets_used": n_datasets_used,
-                "pearson_r": r,
-                "p_value_two_sided": p,
-                "significant_0.10": sig_10,
-                "significant_0.05": sig_05,
-                "significant_0.01": sig_01,
-                "significant_0.001": sig_001,
-                "direction": direction,
-            }
-        )
-
-        # --- Plot for trace_length_avg ---
-        if col == "measure_Trace length avg" and n_rows_used > 0:
-            plt.figure(figsize=(8, 6))
-            sns.scatterplot(
-                data=pair,
-                x="y",
-                y="x",
-                hue="dataset",
-                alpha=0.7,
-                edgecolor="black",
-                linewidth=0.5,
-                s=10,
-            )
-
-            # Overall regression line
-            sns.regplot(
-                data=pair,
-                x="y",
-                y="x",
-                scatter=False,
-                color="black",
-                line_kws={"linestyle": "--", "label": "Overall trend"},
-            )
-
-            plt.xlabel("Number of Traces (n_traces)")
-            plt.ylabel("Average Trace Length (trace_length_avg)")
-            plt.title("n_traces vs. trace_length_avg by Dataset")
-            plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
-            plt.tight_layout()
-            plt.savefig(
-                out_dir / f"{cp_parameter_setting}_trace_length_avg_scatter.png",
-                dpi=600,
-            )
-
-    result_df = pd.DataFrame(rows).sort_values(["measure"]).reset_index(drop=True)
-    out_path = out_dir / f"{cp_parameter_setting}_correlation_analysis.csv"
-    result_df.to_csv(out_path, index=False)
-    return result_df
-
-
 def main(
     datasets=None,
     cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING,
@@ -592,15 +436,6 @@ def main(
         print("No change points detected - skipping delta calculations and boxplots")
         # Still create empty aggregated table for consistency
         aggregated_table = save_aggregated_table(results_df, complexity_window_string)
-
-    correlation_analysis = compute_and_save_correlation_analysis(
-        window_dict,
-        complexity_window_string,
-        out_dir=constants.CHANGE_STUDY_RESULTS_DIR
-        / "combined_results"
-        / "correlation_analysis",
-    )
-    print(correlation_analysis)
 
 
 if __name__ == "__main__":

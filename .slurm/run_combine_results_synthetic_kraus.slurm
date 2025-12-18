@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=combine_results
+#SBATCH --job-name=combine_results_synthetic_kraus
 #SBATCH --output=.slurm/logs/%A/log_%A.out
 #SBATCH --error=.slurm/logs/%A/log_%A.err
 #SBATCH --cpus-per-task=16
@@ -23,10 +23,10 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Python version: $(python --version 2
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Working directory: $(pwd)"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: SLURM_CPUS_PER_TASK: ${SLURM_CPUS_PER_TASK}"
 
-# Define the same dataset list as in run_assess_datasets.slurm
-logs=(ACCRE BPIC12 BPIC13_cp BPIC13_i BPIC14 BPIC15_1 BPIC15_2 BPIC15_3 BPIC15_4 BPIC15_5 BPIC17 BPIC18 BPIC19 BPIC20_dd BPIC20_id BPIC20_ptc BPIC20_rfp BPIC20_tpd CALL ITHD MOBIS RTFMP SEPSIS)
+# Define the same dataset list as in run_assess_datasets_synthetic_kraus.slurm
+logs=(KA25_1_0_S KA25_1_20_S KA25_1_40_S KA25_2_0_S KA25_2_20_S KA25_2_40_S KA25_3_0_S KA25_3_20_S KA25_3_40_S KA25_4_0_S KA25_4_20_S KA25_4_40_S KA25_5_0_S KA25_5_20_S KA25_5_40_S KA25_6_0_S KA25_6_20_S KA25_6_40_S KA25_7_0_S KA25_7_20_S KA25_7_40_S KA25_8_0_S KA25_8_20_S KA25_8_40_S KA25_9_0_S KA25_9_20_S KA25_9_40_S KA25_10_0_S KA25_10_20_S KA25_10_40_S KA25_11_0_S KA25_11_20_S KA25_11_40_S KA25_12_0_S KA25_12_20_S KA25_12_40_S KA25_13_0_S KA25_13_20_S KA25_13_40_S KA25_14_0_S KA25_14_20_S KA25_14_40_S KA25_15_0_S KA25_15_20_S KA25_15_40_S KA25_16_0_S KA25_16_20_S KA25_16_40_S KA25_17_0_S KA25_17_20_S KA25_17_40_S KA25_18_0_S KA25_18_20_S KA25_18_40_S KA25_19_0_S KA25_19_20_S KA25_19_40_S KA25_20_0_S KA25_20_20_S KA25_20_40_S)
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting to combine results from all datasets (${#logs[@]} datasets)"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting to combine results from all Kraus synthetic datasets (${#logs[@]} datasets)"
 
 # Test if the module can be imported
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Testing Python module import..."
