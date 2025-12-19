@@ -134,10 +134,63 @@ def normalize_mode(mode: str) -> str:
         If the provided mode is not supported.
     """
     normalized = (mode or "all").lower().replace("_", "-")
-    allowed = {"all", "detection-only", "complexity-only"}
+    allowed = {"all", "detection-only", "complexity-only", "ground-truth"}
     if normalized not in allowed:
         raise ValueError(f"Invalid mode '{mode}'. Choose from: {sorted(allowed)}.")
     return normalized
+
+
+def copy_ground_truth_to_results(
+    dataset_key: str, dataset_info: dict[str, Any]
+) -> list[Path]:
+    """
+    Copy ground truth file from data dictionary to results directory.
+
+    Parameters
+    ----------
+    dataset_key
+        Dataset identifier.
+    dataset_info
+        Dataset metadata dictionary.
+
+    Returns
+    -------
+    list[Path]
+        List containing the path to the copied ground truth CSV file.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ground_truth path is not found in dataset_info or the file doesn't exist.
+    """
+    target_dir = constants.CHANGE_STUDY_RESULTS_DIR / "drift_detection" / dataset_key
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check if ground_truth path exists in dataset_info
+    ground_truth_path_str = dataset_info.get("ground_truth")
+    if not ground_truth_path_str:
+        raise FileNotFoundError(
+            f"No 'ground_truth' path found in data dictionary for dataset '{dataset_key}'"
+        )
+
+    # Resolve the ground truth file path
+    ground_truth_source_path = (PROJECT_ROOT / ground_truth_path_str).resolve()
+    if not ground_truth_source_path.exists():
+        raise FileNotFoundError(
+            f"Ground truth file not found: {ground_truth_source_path}"
+        )
+
+    # Copy to results directory, keeping the original filename
+    target_file_path = target_dir / ground_truth_source_path.name
+    shutil.copy(ground_truth_source_path, target_file_path)
+
+    print(
+        f"## Copied ground truth file to results ##\n"
+        f"  Source: {ground_truth_source_path}\n"
+        f"  Target: {target_file_path}"
+    )
+
+    return [target_file_path]
 
 
 def concept_drift_characterization(
@@ -483,14 +536,24 @@ def main_per_dataset(
     dataset_info
         Dataset metadata dictionary.
     mode
-        Processing mode: 'all', 'detection-only', or 'complexity-only'.
+        Processing mode: 'all', 'detection-only', 'complexity-only', or 'ground-truth'.
     test_mode
         If True, use simplified configuration for faster testing.
     """
     print(f"### Processing dataset: {dataset_key} ###")
     normalized_mode = normalize_mode(mode)
 
-    if normalized_mode in {"all", "detection-only"}:
+    if normalized_mode == "ground-truth":
+        # In ground truth mode, copy the ground truth file instead of running drift detection
+        try:
+            concept_drift_info_paths = copy_ground_truth_to_results(
+                dataset_key, dataset_info
+            )
+        except FileNotFoundError as e:
+            print(f"ERROR: {e}")
+            print(f"  Skipping dataset {dataset_key}.")
+            return
+    elif normalized_mode in {"all", "detection-only"}:
         concept_drift_info_paths = concept_drift_characterization(
             dataset_key, dataset_info, test_mode=test_mode
         )
@@ -530,7 +593,7 @@ def main(
     datasets
         List of dataset keys to process. If None, processes all datasets.
     mode
-        Processing mode: 'all', 'detection-only', or 'complexity-only'.
+        Processing mode: 'all', 'detection-only', 'complexity-only', or 'ground-truth'.
     test_mode
         If True, use simplified configuration for faster testing.
     """
@@ -587,7 +650,7 @@ if __name__ == "__main__":
         "--mode",
         type=str,
         default="all",
-        help="Choose from 'all', 'detection-only', 'complexity-only'",
+        help="Choose from 'all', 'detection-only', 'complexity-only', 'ground-truth'",
     )
     parser.add_argument(
         "--test",
