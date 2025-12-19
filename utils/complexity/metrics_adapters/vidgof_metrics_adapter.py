@@ -81,6 +81,35 @@ class VidgofMetricsAdapter(MetricsAdapter):
         window: Window, metrics_to_compute: List[str]
     ) -> List[Measure]:
         traces = window.traces
+
+        # Validate that events have required fields before calling generate_log
+        # Note: trace.attributes['concept:name'] is optional - generate_log will use trace index as fallback
+        from pm4py.util import xes_constants as xes
+
+        concept_name_key = xes.DEFAULT_NAME_KEY
+
+        for trace_idx, trace in enumerate(traces):
+            # Check events (trace attributes are optional - generate_log handles missing concept:name in attributes)
+            for event_idx, event in enumerate(trace):
+                if concept_name_key not in event:
+                    case_id = trace.attributes.get(
+                        concept_name_key, f"trace_{trace_idx}"
+                    )
+                    raise ValueError(
+                        f"Event {event_idx} in trace {trace_idx} (window {window.id}, case_id: {case_id}) "
+                        f"is missing '{concept_name_key}'. "
+                        f"Available event keys: {list(event.keys())}"
+                    )
+                if "time:timestamp" not in event:
+                    case_id = trace.attributes.get(
+                        concept_name_key, f"trace_{trace_idx}"
+                    )
+                    raise ValueError(
+                        f"Event {event_idx} in trace {trace_idx} (window {window.id}, case_id: {case_id}) "
+                        f"is missing 'time:timestamp'. "
+                        f"Available event keys: {list(event.keys())}"
+                    )
+
         log = generate_log(traces, verbose=False)
         pa = build_graph(log, verbose=False, accepting=False)
 
