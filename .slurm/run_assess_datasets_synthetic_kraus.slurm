@@ -36,8 +36,8 @@ python -c "import scripts.change_study.computations.assess_datasets; print('Modu
     exit 1
 }
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script with ground-truth mode..."
-python -m scripts.change_study.computations.assess_datasets --datasets ${CURRENT_LOG} --mode ground-truth
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script with ground-truth-drifts mode..."
+python -m scripts.change_study.computations.assess_datasets --datasets ${CURRENT_LOG} --mode ground-truth-drifts
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then

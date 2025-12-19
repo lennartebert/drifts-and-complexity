@@ -328,6 +328,16 @@ def convert_to_drift_detection_format(
     sorted_items = sorted(processed_dict.items(), key=lambda x: x[1]["change_id"])
 
     for key, info in sorted_items:
+        # Determine change_moment based on change_type
+        change_type = info["change_type"]
+        if change_type == "gradual_start":
+            change_moment = info.get("change_start", "")
+        elif change_type == "gradual_end":
+            change_moment = info.get("change_end", "")
+        else:
+            # For sudden drifts and other types, use change_start
+            change_moment = info.get("change_start", "")
+
         record = {
             "collection_name": "",
             "eval_noise_level": "",
@@ -338,7 +348,7 @@ def convert_to_drift_detection_format(
             "calc_process_change_id": info.get("process_change_id", ""),
             "calc_change_id": info["change_id"],
             "calc_change_index": info["change_trace_index"],
-            "calc_change_moment": info.get("change_start", ""),
+            "calc_change_moment": change_moment,
             "calc_change_type": info["change_type"],
             "calc_drift_type": info.get("drift_type", ""),
             "config_method": "",

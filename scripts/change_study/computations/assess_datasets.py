@@ -134,7 +134,7 @@ def normalize_mode(mode: str) -> str:
         If the provided mode is not supported.
     """
     normalized = (mode or "all").lower().replace("_", "-")
-    allowed = {"all", "detection-only", "complexity-only", "ground-truth"}
+    allowed = {"all", "detection-only", "complexity-only", "ground-truth-drifts"}
     if normalized not in allowed:
         raise ValueError(f"Invalid mode '{mode}'. Choose from: {sorted(allowed)}.")
     return normalized
@@ -180,8 +180,8 @@ def copy_ground_truth_to_results(
             f"Ground truth file not found: {ground_truth_source_path}"
         )
 
-    # Copy to results directory, keeping the original filename
-    target_file_path = target_dir / ground_truth_source_path.name
+    # Copy to results directory, renamed to groundtruth.csv
+    target_file_path = target_dir / "groundtruth.csv"
     shutil.copy(ground_truth_source_path, target_file_path)
 
     print(
@@ -458,6 +458,7 @@ def concept_drift_complexity_assessment(
                     adapter_names,
                 )
 
+                # Plot both combined and non-combined fixed window plots
                 print(f"  Plotting combined (change-point + fixed-window)...")
                 run_with_error_handling(
                     f"combined plotting for {name}",
@@ -467,6 +468,22 @@ def concept_drift_complexity_assessment(
                     cp_df,
                     fixed_df,
                     drift_info_by_id,
+                    y_log=y_log,
+                    fig_format=fig_format,
+                    headroom=headroom,
+                    title=None,
+                )
+
+                print(f"  Plotting non-combined fixed-window plots...")
+                run_with_error_handling(
+                    f"non-combined plotting for {name}",
+                    plot_complexity_via_fixed_sized_windows,
+                    dataset_key,
+                    cfg_with_approach,
+                    fixed_df,
+                    drift_info_by_id,
+                    window_size=window_size,
+                    offset=offset,
                     y_log=y_log,
                     fig_format=fig_format,
                     headroom=headroom,
@@ -536,15 +553,15 @@ def main_per_dataset(
     dataset_info
         Dataset metadata dictionary.
     mode
-        Processing mode: 'all', 'detection-only', 'complexity-only', or 'ground-truth'.
+        Processing mode: 'all', 'detection-only', 'complexity-only', or 'ground-truth-drifts'.
     test_mode
         If True, use simplified configuration for faster testing.
     """
     print(f"### Processing dataset: {dataset_key} ###")
     normalized_mode = normalize_mode(mode)
 
-    if normalized_mode == "ground-truth":
-        # In ground truth mode, copy the ground truth file instead of running drift detection
+    if normalized_mode == "ground-truth-drifts":
+        # In ground truth drifts mode, copy the ground truth file instead of running drift detection
         try:
             concept_drift_info_paths = copy_ground_truth_to_results(
                 dataset_key, dataset_info
@@ -570,7 +587,7 @@ def main_per_dataset(
             print(f"  Skipping complexity assessment for this dataset.")
             return
 
-    if normalized_mode in {"all", "complexity-only"}:
+    if normalized_mode in {"all", "complexity-only", "ground-truth-drifts"}:
         for concept_drift_info_path in concept_drift_info_paths:
             concept_drift_complexity_assessment(
                 dataset_key,
@@ -593,7 +610,7 @@ def main(
     datasets
         List of dataset keys to process. If None, processes all datasets.
     mode
-        Processing mode: 'all', 'detection-only', 'complexity-only', or 'ground-truth'.
+        Processing mode: 'all', 'detection-only', 'complexity-only', or 'ground-truth-drifts'.
     test_mode
         If True, use simplified configuration for faster testing.
     """
@@ -650,18 +667,23 @@ if __name__ == "__main__":
         "--mode",
         type=str,
         default="all",
-        help="Choose from 'all', 'detection-only', 'complexity-only', 'ground-truth'",
+        help="Choose from 'all', 'detection-only', 'complexity-only', 'ground-truth-drifts'",
     )
     parser.add_argument(
         "--test",
         action="store_true",
-        help="Run a lightweight test using the TEST_BPIC12 dataset. "
+        help="Run a lightweight test: limits to first 1000 traces per dataset. "
+        "If no datasets are supplied, defaults to TEST_BPIC12. "
         "Prefers existing drift detection results when available, "
-        "uses minimal config, limits traces.",
+        "uses minimal config.",
     )
     args = parser.parse_args()
 
-    selected_datasets = ["TEST_BPIC12"] if args.test else args.datasets
+    # If test mode: use supplied datasets if provided, otherwise default to TEST_BPIC12
+    # If not test mode: use supplied datasets (or None for all datasets)
+    selected_datasets = (
+        args.datasets if args.datasets else (["TEST_BPIC12"] if args.test else None)
+    )
 
     main(
         datasets=selected_datasets,

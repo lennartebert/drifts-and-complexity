@@ -8,6 +8,7 @@ matplotlib.use("Agg")  # Non-interactive backend for headless operation
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.ticker import FuncFormatter, ScalarFormatter
 
 plt.ioff()  # Turn off interactive mode to prevent hangs
 
@@ -1033,6 +1034,11 @@ def _format_measure_label(name: str) -> str:
     return str(name).replace("_", " ").strip()
 
 
+def _set_ylabel_with_padding(ax: plt.Axes, label: str) -> None:
+    """Set y-axis label with appropriate padding to prevent cutoff."""
+    ax.set_ylabel(label, labelpad=10)  # Add padding between label and axis
+
+
 def _prepare_df(flat_data: Any) -> pd.DataFrame:
     df = pd.DataFrame(flat_data).copy()
     # Convert to datetime, then convert to naive (timezone-unaware)
@@ -1079,13 +1085,40 @@ def _get_measure_columns(df: pd.DataFrame) -> List[str]:
     return [c for c in df.columns if c.startswith("measure_")]
 
 
+def _format_y_label(value: float) -> str:
+    """Format y-axis label with scientific notation for large values.
+
+    Uses standard Python notation (e.g., '1.4e10') for values >= 1e4 or <= -1e4.
+    Otherwise uses standard decimal notation.
+    """
+    abs_value = abs(value)
+    if abs_value >= 1e4 or (abs_value > 0 and abs_value < 1e-3):
+        # Use scientific notation with 2 decimal places
+        return f"{value:.2e}"
+    else:
+        # Use standard decimal notation
+        if abs_value >= 1:
+            # For integers, show as integer; otherwise show 2 decimal places
+            if abs_value == int(abs_value):
+                return f"{int(value)}"
+            else:
+                # Show up to 2 decimal places, removing trailing zeros
+                formatted = f"{value:.2f}".rstrip("0").rstrip(".")
+                return formatted
+        else:
+            # For values < 1, show 2 decimal places
+            return f"{value:.2f}"
+
+
 def _apply_y_scale_and_headroom(
     ax: plt.Axes, y_series: pd.Series, *, y_log: bool, headroom: float
 ) -> None:
-    """Apply linear/log scaling and add top headroom. Linear bottom is clamped at 0.
+    """Apply linear/log scaling and add headroom at top and bottom.
 
+    For linear scaling, automatically sets y-axis range based on data with padding.
     For log, choose a bottom slightly below the smallest positive value.
     If no positive values exist, revert to linear.
+    Also applies custom formatter for large values to use scientific notation per label.
     """
     y_series = pd.to_numeric(y_series, errors="coerce").dropna()
     if y_series.empty:
@@ -1095,16 +1128,55 @@ def _apply_y_scale_and_headroom(
     y_span = y_max - y_min
 
     if not y_log:
-        top_extra = headroom * (y_span if y_span > 0 else max(abs(y_max), 1.0))
-        ax.set_ylim(bottom=0, top=y_max + top_extra)
+        # Calculate padding for both top and bottom
+        padding = headroom * (
+            y_span if y_span > 0 else max(abs(y_max), abs(y_min), 1.0)
+        )
+        bottom = y_min - padding
+        top = y_max + padding
+        # Ensure bottom doesn't go below 0 if all values are non-negative
+        if y_min >= 0 and bottom < 0:
+            bottom = 0
+        ax.set_ylim(bottom=bottom, top=top)
+
+        # Apply custom formatter for large values to avoid scale factor notation
+        max_abs = max(abs(bottom), abs(top))
+        if max_abs >= 1e4:
+            # Use custom formatter with scientific notation per label
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: _format_y_label(x)))
+            # Disable offset notation (prevents "1e10" at top)
+            ax.yaxis.offsetText.set_visible(False)
+        else:
+            # Use default formatter for smaller values, but disable offset
+            formatter = ScalarFormatter(useOffset=False, useMathText=False)
+            ax.yaxis.set_major_formatter(formatter)
         return
 
     # log scaling
     positives = y_series[y_series > 0]
     if positives.empty:
         # cannot use log – fall back to linear
-        top_extra = headroom * (y_span if y_span > 0 else max(abs(y_max), 1.0))
-        ax.set_ylim(bottom=0, top=y_max + top_extra)
+        padding = headroom * (
+            y_span if y_span > 0 else max(abs(y_max), abs(y_min), 1.0)
+        )
+        bottom = y_min - padding
+        top = y_max + padding
+        # Ensure bottom doesn't go below 0 if all values are non-negative
+        if y_min >= 0 and bottom < 0:
+            bottom = 0
+        ax.set_ylim(bottom=bottom, top=top)
+
+        # Apply custom formatter for large values to avoid scale factor notation
+        max_abs = max(abs(bottom), abs(top))
+        if max_abs >= 1e4:
+            # Use custom formatter with scientific notation per label
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: _format_y_label(x)))
+            # Disable offset notation (prevents "1e10" at top)
+            ax.yaxis.offsetText.set_visible(False)
+        else:
+            # Use default formatter for smaller values, but disable offset
+            formatter = ScalarFormatter(useOffset=False, useMathText=False)
+            ax.yaxis.set_major_formatter(formatter)
         return
 
     min_pos = float(positives.min())
@@ -1370,17 +1442,32 @@ def _finalize_and_save(
             pass
 
     fig = ax.figure
+
+    # Ensure y-axis label has proper padding to prevent cutoff
+    ylabel = ax.get_ylabel()
+    if ylabel:
+        ax.set_ylabel(ylabel, labelpad=10)
+
+    # Set x-axis label for _time graphs and ensure it's not cut off
+    if "_time" in filename:
+        ax.set_xlabel("Time", labelpad=5)
+
     # Skip tight_layout on Windows as it can hang with date axes
     # Use adjust_subplots instead which is more reliable
     try:
         import platform
 
         if platform.system() == "Windows":
-            # Increase top margin to accommodate rotated change point labels
-            fig.subplots_adjust(left=0.1, right=0.95, top=0.88, bottom=0.15)
+            # Reduce left margin while keeping labelpad to prevent label cutoff
+            # labelpad=10 provides space between label and axis, so we can use smaller left margin
+            # Increase bottom margin for _time graphs to prevent x-axis label cutoff
+            bottom_margin = 0.20 if "_time" in filename else 0.15
+            fig.subplots_adjust(left=0.10, right=0.95, top=0.88, bottom=bottom_margin)
         else:
-            # Increase top margin for change point labels
-            fig.tight_layout(rect=[0, 0, 1, 0.88])
+            # Reduce left margin while keeping labelpad
+            # Increase bottom margin for _time graphs to prevent x-axis label cutoff
+            bottom_rect = 0.05 if "_time" in filename else 0
+            fig.tight_layout(rect=[0.04, bottom_rect, 1, 0.88], pad=2.0)
     except Exception as e:
         # Continue anyway - layout adjustment is not critical
         pass
