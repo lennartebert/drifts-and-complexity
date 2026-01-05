@@ -257,7 +257,7 @@ def format_number(x, include_plus=False):
             return f"{x:.2f}"  # fixed-point with 2 decimals
 
 
-def save_aggregated_table(results_df, cp_parameter_setting):
+def save_aggregated_table(results_df, cp_parameter_setting, results_subfolder="real"):
     # Handle empty DataFrame (no change points detected)
     if results_df.empty or "change_type" not in results_df.columns:
         # Create empty summary DataFrame with expected structure
@@ -268,6 +268,7 @@ def save_aggregated_table(results_df, cp_parameter_setting):
         output_dir = (
             constants.CHANGE_STUDY_RESULTS_DIR
             / "combined_results"
+            / results_subfolder
             / "tables"
             / cp_parameter_setting
         )
@@ -304,6 +305,7 @@ def save_aggregated_table(results_df, cp_parameter_setting):
     output_dir = (
         constants.CHANGE_STUDY_RESULTS_DIR
         / "combined_results"
+        / results_subfolder
         / "tables"
         / cp_parameter_setting
     )
@@ -312,7 +314,9 @@ def save_aggregated_table(results_df, cp_parameter_setting):
     return summary_df
 
 
-def save_simple_aggregated_table(aggregated_table_df, cp_parameter_setting):
+def save_simple_aggregated_table(
+    aggregated_table_df, cp_parameter_setting, results_subfolder="real"
+):
     # Ensure index is MultiIndex
     if not isinstance(aggregated_table_df.index, pd.MultiIndex):
         raise ValueError("Expected MultiIndex with levels (change_type, measure)")
@@ -351,6 +355,7 @@ def save_simple_aggregated_table(aggregated_table_df, cp_parameter_setting):
     final_df.to_csv(
         constants.CHANGE_STUDY_RESULTS_DIR
         / "combined_results"
+        / results_subfolder
         / "tables"
         / cp_parameter_setting
         / "complexity_delta_simple.csv"
@@ -359,7 +364,7 @@ def save_simple_aggregated_table(aggregated_table_df, cp_parameter_setting):
     return final_df
 
 
-def save_boxplots(results_df, cp_parameter_setting):
+def save_boxplots(results_df, cp_parameter_setting, results_subfolder="real"):
     measure_names = [col for col in results_df.columns if col != "change_type"]
 
     for measure in measure_names:
@@ -373,6 +378,7 @@ def save_boxplots(results_df, cp_parameter_setting):
         output_dir = (
             constants.CHANGE_STUDY_RESULTS_DIR
             / "combined_results"
+            / results_subfolder
             / "boxplots"
             / cp_parameter_setting
         )
@@ -385,6 +391,7 @@ def main(
     datasets=None,
     cp_parameter_setting=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING,
     complexity_window_setting=constants.DEFAULT_COMPLEXITY_WINDOW_SETTING,
+    results_subfolder="real",
 ):
     print("#### Starting to combine drift analysis results ####")
     if datasets is None:
@@ -416,6 +423,7 @@ def main(
     output_dir = (
         constants.CHANGE_STUDY_RESULTS_DIR
         / "combined_results"
+        / results_subfolder
         / "tables"
         / complexity_window_string
     )
@@ -425,17 +433,21 @@ def main(
     results_df = compute_complexity_deltas(window_dict, drift_info_by_dataset)
 
     if not results_df.empty:
-        save_boxplots(results_df, complexity_window_string)
-        aggregated_table = save_aggregated_table(results_df, complexity_window_string)
+        save_boxplots(results_df, complexity_window_string, results_subfolder)
+        aggregated_table = save_aggregated_table(
+            results_df, complexity_window_string, results_subfolder
+        )
         print(aggregated_table)
         simple_aggregated_table = save_simple_aggregated_table(
-            aggregated_table, complexity_window_string
+            aggregated_table, complexity_window_string, results_subfolder
         )
         print(simple_aggregated_table)
     else:
         print("No change points detected - skipping delta calculations and boxplots")
         # Still create empty aggregated table for consistency
-        aggregated_table = save_aggregated_table(results_df, complexity_window_string)
+        aggregated_table = save_aggregated_table(
+            results_df, complexity_window_string, results_subfolder
+        )
 
 
 if __name__ == "__main__":
@@ -458,6 +470,11 @@ if __name__ == "__main__":
         default=constants.DEFAULT_COMPLEXITY_WINDOW_SETTING,
         help="Name of complexity window setting (e.g., cp_default)",
     )
+    parser.add_argument(
+        "--results-subfolder",
+        default="real",
+        help="Subfolder name within 'combined_results' directory to store results (e.g., 'real', 'synthetic')",
+    )
 
     args = parser.parse_args()
 
@@ -465,4 +482,5 @@ if __name__ == "__main__":
         datasets=args.datasets,
         cp_parameter_setting=args.cp_parameter_setting,
         complexity_window_setting=args.complexity_window_setting,
+        results_subfolder=args.results_subfolder,
     )

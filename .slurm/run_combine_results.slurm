@@ -36,7 +36,7 @@ python -c "import scripts.change_study.computations.combine_results; print('Modu
 }
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script..."
-python -m scripts.change_study.computations.combine_results --datasets "${logs[@]}"
+python -m scripts.change_study.computations.combine_results --datasets "${logs[@]}" --results-subfolder real
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
