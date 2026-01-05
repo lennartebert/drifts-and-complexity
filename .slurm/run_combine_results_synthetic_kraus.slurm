@@ -35,13 +35,35 @@ python -c "import scripts.change_study.computations.combine_results; print('Modu
     exit 1
 }
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script..."
-python -m scripts.change_study.computations.combine_results --datasets "${logs[@]}" --results-subfolder synthetic_kraus
-EXIT_CODE=$?
+# Track overall exit code
+OVERALL_EXIT_CODE=0
 
+# Run for processGraphsPDefaultWDefault (default parameter setting)
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running combine_results for processGraphsPDefaultWDefault__cp_default..."
+python -m scripts.change_study.computations.combine_results --datasets "${logs[@]}" --results-subfolder synthetic_kraus --cp-parameter-setting processGraphsPDefaultWDefault
+EXIT_CODE=$?
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Completed combining results - Exit code: ${EXIT_CODE}"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Completed combining results for processGraphsPDefaultWDefault__cp_default - Exit code: ${EXIT_CODE}"
 else
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Combining results failed - Exit code: ${EXIT_CODE}"
-    exit $EXIT_CODE
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Combining results for processGraphsPDefaultWDefault__cp_default failed - Exit code: ${EXIT_CODE}"
+    OVERALL_EXIT_CODE=$EXIT_CODE
+fi
+
+# Run for groundtruth parameter setting
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running combine_results for groundtruth__cp_default..."
+python -m scripts.change_study.computations.combine_results --datasets "${logs[@]}" --results-subfolder synthetic_kraus --cp-parameter-setting groundtruth
+EXIT_CODE=$?
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Completed combining results for groundtruth__cp_default - Exit code: ${EXIT_CODE}"
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Combining results for groundtruth__cp_default failed - Exit code: ${EXIT_CODE}"
+    OVERALL_EXIT_CODE=$EXIT_CODE
+fi
+
+# Exit with the worst exit code encountered
+if [ $OVERALL_EXIT_CODE -eq 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] All combine_results runs completed successfully"
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: One or more combine_results runs failed - Exit code: ${OVERALL_EXIT_CODE}"
+    exit $OVERALL_EXIT_CODE
 fi
