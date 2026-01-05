@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy import stats
 
 from utils import constants
 
@@ -257,11 +258,67 @@ def format_number(x, include_plus=False):
             return f"{x:.2f}"  # fixed-point with 2 decimals
 
 
+def save_all_change_points(results_df, cp_parameter_setting, results_subfolder="real"):
+    """Save all individual change points with their delta values (not aggregated).
+
+    Parameters
+    ----------
+    results_df
+        DataFrame with all change points and their complexity deltas.
+    cp_parameter_setting
+        Change point parameter setting name.
+    results_subfolder
+        Subfolder name within combined_results directory.
+    """
+    output_dir = (
+        constants.CHANGE_STUDY_RESULTS_DIR
+        / "combined_results"
+        / results_subfolder
+        / "tables"
+        / cp_parameter_setting
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save the full results DataFrame
+    results_df.to_csv(output_dir / "complexity_delta_all.csv", index=False)
+    print(f"Saved all change points to: {output_dir / 'complexity_delta_all.csv'}")
+
+
 def save_aggregated_table(results_df, cp_parameter_setting, results_subfolder="real"):
+    """Save aggregated statistics including one-sample t-test results.
+
+    Parameters
+    ----------
+    results_df
+        DataFrame with all change points and their complexity deltas.
+    cp_parameter_setting
+        Change point parameter setting name.
+    results_subfolder
+        Subfolder name within combined_results directory.
+
+    Returns
+    -------
+    pd.DataFrame
+        Aggregated table with statistics and t-test results.
+    """
     # Handle empty DataFrame (no change points detected)
     if results_df.empty or "change_type" not in results_df.columns:
         # Create empty summary DataFrame with expected structure
-        summary_df = pd.DataFrame(columns=["mean", "min", "max", "std", "count"])
+        summary_df = pd.DataFrame(
+            columns=[
+                "mean",
+                "min",
+                "max",
+                "std",
+                "count",
+                "t_statistic",
+                "p_value",
+                "cohens_d",
+                "ci_lower",
+                "ci_upper",
+                "significance",
+            ]
+        )
         summary_df = summary_df.set_index(
             pd.MultiIndex.from_tuples([], names=["change_type", "measure"])
         )
@@ -281,20 +338,74 @@ def save_aggregated_table(results_df, cp_parameter_setting, results_subfolder="r
 
     measure_cols = [col for col in results_df_clean.columns if col != "change_type"]
     records = []
+    alpha = 0.05  # Significance level
+
     for measure in measure_cols:
         for change_type in change_types:
             subset = results_df_clean[results_df_clean["change_type"] == change_type][
                 measure
             ]
+
+            # Basic statistics
+            mean_val = subset.mean()
+            min_val = subset.min()
+            max_val = subset.max()
+            std_val = subset.std()
+            count_val = subset.count()
+
+            # One-sample t-test (testing if mean is significantly different from 0)
+            t_statistic = np.nan
+            p_value = np.nan
+            cohens_d = np.nan
+            ci_lower = np.nan
+            ci_upper = np.nan
+            significance = "not significant"
+
+            if count_val >= 2:  # Need at least 2 observations for t-test
+                try:
+                    # Perform one-sample t-test
+                    t_result = stats.ttest_1samp(subset, 0)
+                    t_statistic = t_result.statistic
+                    p_value = t_result.pvalue
+
+                    # Cohen's d effect size
+                    if std_val > 0:
+                        cohens_d = mean_val / std_val
+
+                    # 95% confidence interval
+                    ci = stats.t.interval(
+                        0.95, df=count_val - 1, loc=mean_val, scale=stats.sem(subset)
+                    )
+                    ci_lower = ci[0]
+                    ci_upper = ci[1]
+
+                    # Determine significance interpretation
+                    if p_value < alpha:
+                        if mean_val > 0:
+                            significance = "significant positive change"
+                        else:
+                            significance = "significant negative change"
+                    else:
+                        significance = "not significant"
+                except Exception as e:
+                    # If t-test fails, leave as NaN
+                    pass
+
             records.append(
                 {
                     "measure": measure,
                     "change_type": change_type,
-                    "mean": subset.mean(),
-                    "min": subset.min(),
-                    "max": subset.max(),
-                    "std": subset.std(),
-                    "count": subset.count(),
+                    "mean": mean_val,
+                    "min": min_val,
+                    "max": max_val,
+                    "std": std_val,
+                    "count": count_val,
+                    "t_statistic": t_statistic,
+                    "p_value": p_value,
+                    "cohens_d": cohens_d,
+                    "ci_lower": ci_lower,
+                    "ci_upper": ci_upper,
+                    "significance": significance,
                 }
             )
 
@@ -314,9 +425,23 @@ def save_aggregated_table(results_df, cp_parameter_setting, results_subfolder="r
     return summary_df
 
 
-def save_simple_aggregated_table(
-    aggregated_table_df, cp_parameter_setting, results_subfolder="real"
-):
+def save_avg_table(aggregated_table_df, cp_parameter_setting, results_subfolder="real"):
+    """Save average table with mean and std (same format as old complexity_delta_simple).
+
+    Parameters
+    ----------
+    aggregated_table_df
+        Aggregated table DataFrame with MultiIndex (change_type, measure).
+    cp_parameter_setting
+        Change point parameter setting name.
+    results_subfolder
+        Subfolder name within combined_results directory.
+
+    Returns
+    -------
+    pd.DataFrame
+        Average table with mean (std) format.
+    """
     # Ensure index is MultiIndex
     if not isinstance(aggregated_table_df.index, pd.MultiIndex):
         raise ValueError("Expected MultiIndex with levels (change_type, measure)")
@@ -358,7 +483,74 @@ def save_simple_aggregated_table(
         / results_subfolder
         / "tables"
         / cp_parameter_setting
-        / "complexity_delta_simple.csv"
+        / "complexity_delta_avg.csv"
+    )
+
+    return final_df
+
+
+def save_ttest_table(
+    aggregated_table_df, cp_parameter_setting, results_subfolder="real"
+):
+    """Save t-test significance table with interpretation.
+
+    Parameters
+    ----------
+    aggregated_table_df
+        Aggregated table DataFrame with MultiIndex (change_type, measure).
+    cp_parameter_setting
+        Change point parameter setting name.
+    results_subfolder
+        Subfolder name within combined_results directory.
+
+    Returns
+    -------
+    pd.DataFrame
+        T-test table with significance interpretation.
+    """
+    # Ensure index is MultiIndex
+    if not isinstance(aggregated_table_df.index, pd.MultiIndex):
+        raise ValueError("Expected MultiIndex with levels (change_type, measure)")
+
+    # Prepare output structure
+    rows = []
+    measures = aggregated_table_df.index.get_level_values("measure").unique()
+
+    for change_type in drift_type_order:
+        row = {"Change Type": change_type}
+
+        if change_type in aggregated_table_df.index.get_level_values("change_type"):
+            subset = aggregated_table_df.loc[change_type]
+            row["Instances"] = (
+                int(subset["count"].iloc[0]) if "count" in subset.columns else None
+            )
+
+            for measure in measures:
+                if measure in subset.index:
+                    # Get significance interpretation from aggregated table
+                    significance = subset.loc[measure].get(
+                        "significance", "not significant"
+                    )
+                    row[measure] = significance
+                else:
+                    row[measure] = ""
+        else:
+            row["Instances"] = 0
+            for measure in measures:
+                row[measure] = ""
+
+        rows.append(row)
+
+    # Create DataFrame and save
+    final_df = pd.DataFrame(rows)
+    final_df.set_index("Change Type", inplace=True)
+    final_df.to_csv(
+        constants.CHANGE_STUDY_RESULTS_DIR
+        / "combined_results"
+        / results_subfolder
+        / "tables"
+        / cp_parameter_setting
+        / "complexity_delta_ttest.csv"
     )
 
     return final_df
@@ -432,16 +624,33 @@ def main(
 
     results_df = compute_complexity_deltas(window_dict, drift_info_by_dataset)
 
+    # Save all individual change points (not aggregated)
+    save_all_change_points(results_df, complexity_window_string, results_subfolder)
+
     if not results_df.empty:
+        # Create boxplots for normality checking
         save_boxplots(results_df, complexity_window_string, results_subfolder)
+
+        # Save aggregated table with t-test statistics
         aggregated_table = save_aggregated_table(
             results_df, complexity_window_string, results_subfolder
         )
+        print("\nAggregated table with t-test statistics:")
         print(aggregated_table)
-        simple_aggregated_table = save_simple_aggregated_table(
+
+        # Save average table (mean and std)
+        avg_table = save_avg_table(
             aggregated_table, complexity_window_string, results_subfolder
         )
-        print(simple_aggregated_table)
+        print("\nAverage table (mean (std)):")
+        print(avg_table)
+
+        # Save t-test significance table
+        ttest_table = save_ttest_table(
+            aggregated_table, complexity_window_string, results_subfolder
+        )
+        print("\nT-test significance table:")
+        print(ttest_table)
     else:
         print("No change points detected - skipping delta calculations and boxplots")
         # Still create empty aggregated table for consistency
