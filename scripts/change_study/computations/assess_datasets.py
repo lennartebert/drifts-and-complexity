@@ -180,8 +180,9 @@ def copy_ground_truth_to_results(
             f"Ground truth file not found: {ground_truth_source_path}"
         )
 
-    # Copy to results directory, renamed to groundtruth.csv
-    target_file_path = target_dir / "groundtruth.csv"
+    # Copy to results directory, renamed to results_{dataset}_groundtruth.csv
+    # This matches the naming pattern expected by combine_results.py
+    target_file_path = target_dir / f"results_{dataset_key}_groundtruth.csv"
     shutil.copy(ground_truth_source_path, target_file_path)
 
     print(
