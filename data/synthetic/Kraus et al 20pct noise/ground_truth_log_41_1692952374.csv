@@ -1,0 +1,6 @@
+collection_name,eval_noise_level,eval_complexity,log_size,log_name,calc_drift_id,calc_process_change_id,calc_change_id,calc_change_index,calc_change_moment,calc_change_type,calc_drift_type,config_method,config_constant_alpha,config_similarity,config_incremental,config_recurring,config_steps
+,,,,KA25_41_20_S,1,1,1,1249,2021-08-04 02:07:44.434657,gradual_start,recurring,,,,,,
+,,,,KA25_41_20_S,1,1,2,1950,2022-06-22 04:27:51.539353,gradual_end,recurring,,,,,,
+,,,,KA25_41_20_S,1,2,3,3066,2023-10-27 10:16:23.428344,sudden,recurring,,,,,,
+,,,,KA25_41_20_S,1,3,4,4209,2025-03-30 09:36:06.200943,gradual_start,recurring,,,,,,
+,,,,KA25_41_20_S,1,3,5,5141,2026-06-19 13:23:58.970123,gradual_end,recurring,,,,,,

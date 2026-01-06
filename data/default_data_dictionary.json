@@ -460,5 +460,1685 @@
     "type": "synthetic",
     "path": "data/synthetic/Kraus et al 40pct noise/log_9_1692952188.xes.gz",
     "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_9_1692952188.csv"
+  },
+  "KA25_100_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 100, no noise",
+    "short_name": "KA25_100_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_100_1692952649.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_100_1692952649.csv"
+  },
+  "KA25_100_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 100, 20% noise",
+    "short_name": "KA25_100_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_100_1692952649.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_100_1692952649.csv"
+  },
+  "KA25_100_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 100, 40% noise",
+    "short_name": "KA25_100_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_100_1692952649.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_100_1692952649.csv"
+  },
+  "KA25_21_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 21, no noise",
+    "short_name": "KA25_21_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_21_1692952246.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_21_1692952246.csv"
+  },
+  "KA25_21_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 21, 20% noise",
+    "short_name": "KA25_21_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_21_1692952246.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_21_1692952246.csv"
+  },
+  "KA25_21_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 21, 40% noise",
+    "short_name": "KA25_21_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_21_1692952246.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_21_1692952246.csv"
+  },
+  "KA25_22_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 22, no noise",
+    "short_name": "KA25_22_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_22_1692952248.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_22_1692952248.csv"
+  },
+  "KA25_22_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 22, 20% noise",
+    "short_name": "KA25_22_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_22_1692952248.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_22_1692952248.csv"
+  },
+  "KA25_22_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 22, 40% noise",
+    "short_name": "KA25_22_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_22_1692952248.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_22_1692952248.csv"
+  },
+  "KA25_23_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 23, no noise",
+    "short_name": "KA25_23_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_23_1692952259.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_23_1692952259.csv"
+  },
+  "KA25_23_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 23, 20% noise",
+    "short_name": "KA25_23_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_23_1692952259.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_23_1692952259.csv"
+  },
+  "KA25_23_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 23, 40% noise",
+    "short_name": "KA25_23_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_23_1692952259.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_23_1692952259.csv"
+  },
+  "KA25_24_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 24, no noise",
+    "short_name": "KA25_24_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_24_1692952266.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_24_1692952266.csv"
+  },
+  "KA25_24_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 24, 20% noise",
+    "short_name": "KA25_24_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_24_1692952266.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_24_1692952266.csv"
+  },
+  "KA25_24_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 24, 40% noise",
+    "short_name": "KA25_24_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_24_1692952266.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_24_1692952266.csv"
+  },
+  "KA25_25_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 25, no noise",
+    "short_name": "KA25_25_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_25_1692952268.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_25_1692952268.csv"
+  },
+  "KA25_25_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 25, 20% noise",
+    "short_name": "KA25_25_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_25_1692952268.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_25_1692952268.csv"
+  },
+  "KA25_25_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 25, 40% noise",
+    "short_name": "KA25_25_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_25_1692952268.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_25_1692952268.csv"
+  },
+  "KA25_26_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 26, no noise",
+    "short_name": "KA25_26_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_26_1692952272.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_26_1692952272.csv"
+  },
+  "KA25_26_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 26, 20% noise",
+    "short_name": "KA25_26_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_26_1692952272.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_26_1692952272.csv"
+  },
+  "KA25_26_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 26, 40% noise",
+    "short_name": "KA25_26_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_26_1692952272.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_26_1692952272.csv"
+  },
+  "KA25_27_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 27, no noise",
+    "short_name": "KA25_27_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_27_1692952285.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_27_1692952285.csv"
+  },
+  "KA25_27_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 27, 20% noise",
+    "short_name": "KA25_27_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_27_1692952285.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_27_1692952285.csv"
+  },
+  "KA25_27_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 27, 40% noise",
+    "short_name": "KA25_27_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_27_1692952285.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_27_1692952285.csv"
+  },
+  "KA25_28_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 28, no noise",
+    "short_name": "KA25_28_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_28_1692952287.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_28_1692952287.csv"
+  },
+  "KA25_28_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 28, 20% noise",
+    "short_name": "KA25_28_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_28_1692952287.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_28_1692952287.csv"
+  },
+  "KA25_28_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 28, 40% noise",
+    "short_name": "KA25_28_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_28_1692952287.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_28_1692952287.csv"
+  },
+  "KA25_29_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 29, no noise",
+    "short_name": "KA25_29_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_29_1692952298.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_29_1692952298.csv"
+  },
+  "KA25_29_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 29, 20% noise",
+    "short_name": "KA25_29_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_29_1692952298.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_29_1692952298.csv"
+  },
+  "KA25_29_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 29, 40% noise",
+    "short_name": "KA25_29_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_29_1692952298.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_29_1692952298.csv"
+  },
+  "KA25_30_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 30, no noise",
+    "short_name": "KA25_30_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_30_1692952304.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_30_1692952304.csv"
+  },
+  "KA25_30_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 30, 20% noise",
+    "short_name": "KA25_30_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_30_1692952304.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_30_1692952304.csv"
+  },
+  "KA25_30_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 30, 40% noise",
+    "short_name": "KA25_30_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_30_1692952304.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_30_1692952304.csv"
+  },
+  "KA25_31_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 31, no noise",
+    "short_name": "KA25_31_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_31_1692952304.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_31_1692952304.csv"
+  },
+  "KA25_31_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 31, 20% noise",
+    "short_name": "KA25_31_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_31_1692952304.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_31_1692952304.csv"
+  },
+  "KA25_31_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 31, 40% noise",
+    "short_name": "KA25_31_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_31_1692952304.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_31_1692952304.csv"
+  },
+  "KA25_32_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 32, no noise",
+    "short_name": "KA25_32_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_32_1692952308.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_32_1692952308.csv"
+  },
+  "KA25_32_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 32, 20% noise",
+    "short_name": "KA25_32_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_32_1692952308.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_32_1692952308.csv"
+  },
+  "KA25_32_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 32, 40% noise",
+    "short_name": "KA25_32_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_32_1692952308.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_32_1692952308.csv"
+  },
+  "KA25_33_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 33, no noise",
+    "short_name": "KA25_33_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_33_1692952312.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_33_1692952312.csv"
+  },
+  "KA25_33_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 33, 20% noise",
+    "short_name": "KA25_33_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_33_1692952312.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_33_1692952312.csv"
+  },
+  "KA25_33_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 33, 40% noise",
+    "short_name": "KA25_33_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_33_1692952312.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_33_1692952312.csv"
+  },
+  "KA25_34_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 34, no noise",
+    "short_name": "KA25_34_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_34_1692952321.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_34_1692952321.csv"
+  },
+  "KA25_34_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 34, 20% noise",
+    "short_name": "KA25_34_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_34_1692952321.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_34_1692952321.csv"
+  },
+  "KA25_34_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 34, 40% noise",
+    "short_name": "KA25_34_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_34_1692952321.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_34_1692952321.csv"
+  },
+  "KA25_35_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 35, no noise",
+    "short_name": "KA25_35_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_35_1692952322.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_35_1692952322.csv"
+  },
+  "KA25_35_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 35, 20% noise",
+    "short_name": "KA25_35_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_35_1692952322.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_35_1692952322.csv"
+  },
+  "KA25_35_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 35, 40% noise",
+    "short_name": "KA25_35_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_35_1692952322.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_35_1692952322.csv"
+  },
+  "KA25_36_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 36, no noise",
+    "short_name": "KA25_36_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_36_1692952355.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_36_1692952355.csv"
+  },
+  "KA25_36_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 36, 20% noise",
+    "short_name": "KA25_36_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_36_1692952355.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_36_1692952355.csv"
+  },
+  "KA25_36_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 36, 40% noise",
+    "short_name": "KA25_36_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_36_1692952355.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_36_1692952355.csv"
+  },
+  "KA25_37_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 37, no noise",
+    "short_name": "KA25_37_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_37_1692952363.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_37_1692952363.csv"
+  },
+  "KA25_37_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 37, 20% noise",
+    "short_name": "KA25_37_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_37_1692952363.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_37_1692952363.csv"
+  },
+  "KA25_37_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 37, 40% noise",
+    "short_name": "KA25_37_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_37_1692952363.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_37_1692952363.csv"
+  },
+  "KA25_38_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 38, no noise",
+    "short_name": "KA25_38_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_38_1692952364.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_38_1692952364.csv"
+  },
+  "KA25_38_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 38, 20% noise",
+    "short_name": "KA25_38_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_38_1692952364.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_38_1692952364.csv"
+  },
+  "KA25_38_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 38, 40% noise",
+    "short_name": "KA25_38_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_38_1692952364.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_38_1692952364.csv"
+  },
+  "KA25_39_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 39, no noise",
+    "short_name": "KA25_39_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_39_1692952369.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_39_1692952369.csv"
+  },
+  "KA25_39_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 39, 20% noise",
+    "short_name": "KA25_39_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_39_1692952369.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_39_1692952369.csv"
+  },
+  "KA25_39_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 39, 40% noise",
+    "short_name": "KA25_39_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_39_1692952369.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_39_1692952369.csv"
+  },
+  "KA25_40_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 40, no noise",
+    "short_name": "KA25_40_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_40_1692952371.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_40_1692952371.csv"
+  },
+  "KA25_40_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 40, 20% noise",
+    "short_name": "KA25_40_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_40_1692952371.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_40_1692952371.csv"
+  },
+  "KA25_40_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 40, 40% noise",
+    "short_name": "KA25_40_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_40_1692952371.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_40_1692952371.csv"
+  },
+  "KA25_41_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 41, no noise",
+    "short_name": "KA25_41_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_41_1692952374.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_41_1692952374.csv"
+  },
+  "KA25_41_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 41, 20% noise",
+    "short_name": "KA25_41_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_41_1692952374.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_41_1692952374.csv"
+  },
+  "KA25_41_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 41, 40% noise",
+    "short_name": "KA25_41_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_41_1692952374.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_41_1692952374.csv"
+  },
+  "KA25_42_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 42, no noise",
+    "short_name": "KA25_42_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_42_1692952376.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_42_1692952376.csv"
+  },
+  "KA25_42_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 42, 20% noise",
+    "short_name": "KA25_42_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_42_1692952376.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_42_1692952376.csv"
+  },
+  "KA25_42_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 42, 40% noise",
+    "short_name": "KA25_42_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_42_1692952376.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_42_1692952376.csv"
+  },
+  "KA25_43_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 43, no noise",
+    "short_name": "KA25_43_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_43_1692952382.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_43_1692952382.csv"
+  },
+  "KA25_43_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 43, 20% noise",
+    "short_name": "KA25_43_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_43_1692952382.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_43_1692952382.csv"
+  },
+  "KA25_43_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 43, 40% noise",
+    "short_name": "KA25_43_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_43_1692952382.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_43_1692952382.csv"
+  },
+  "KA25_44_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 44, no noise",
+    "short_name": "KA25_44_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_44_1692952384.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_44_1692952384.csv"
+  },
+  "KA25_44_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 44, 20% noise",
+    "short_name": "KA25_44_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_44_1692952384.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_44_1692952384.csv"
+  },
+  "KA25_44_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 44, 40% noise",
+    "short_name": "KA25_44_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_44_1692952384.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_44_1692952384.csv"
+  },
+  "KA25_45_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 45, no noise",
+    "short_name": "KA25_45_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_45_1692952392.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_45_1692952392.csv"
+  },
+  "KA25_45_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 45, 20% noise",
+    "short_name": "KA25_45_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_45_1692952392.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_45_1692952392.csv"
+  },
+  "KA25_45_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 45, 40% noise",
+    "short_name": "KA25_45_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_45_1692952392.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_45_1692952392.csv"
+  },
+  "KA25_46_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 46, no noise",
+    "short_name": "KA25_46_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_46_1692952395.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_46_1692952395.csv"
+  },
+  "KA25_46_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 46, 20% noise",
+    "short_name": "KA25_46_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_46_1692952395.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_46_1692952395.csv"
+  },
+  "KA25_46_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 46, 40% noise",
+    "short_name": "KA25_46_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_46_1692952395.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_46_1692952395.csv"
+  },
+  "KA25_47_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 47, no noise",
+    "short_name": "KA25_47_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_47_1692952397.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_47_1692952397.csv"
+  },
+  "KA25_47_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 47, 20% noise",
+    "short_name": "KA25_47_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_47_1692952397.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_47_1692952397.csv"
+  },
+  "KA25_47_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 47, 40% noise",
+    "short_name": "KA25_47_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_47_1692952397.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_47_1692952397.csv"
+  },
+  "KA25_48_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 48, no noise",
+    "short_name": "KA25_48_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_48_1692952401.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_48_1692952401.csv"
+  },
+  "KA25_48_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 48, 20% noise",
+    "short_name": "KA25_48_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_48_1692952401.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_48_1692952401.csv"
+  },
+  "KA25_48_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 48, 40% noise",
+    "short_name": "KA25_48_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_48_1692952401.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_48_1692952401.csv"
+  },
+  "KA25_49_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 49, no noise",
+    "short_name": "KA25_49_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_49_1692952403.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_49_1692952403.csv"
+  },
+  "KA25_49_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 49, 20% noise",
+    "short_name": "KA25_49_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_49_1692952403.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_49_1692952403.csv"
+  },
+  "KA25_49_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 49, 40% noise",
+    "short_name": "KA25_49_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_49_1692952403.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_49_1692952403.csv"
+  },
+  "KA25_50_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 50, no noise",
+    "short_name": "KA25_50_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_50_1692952409.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_50_1692952409.csv"
+  },
+  "KA25_50_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 50, 20% noise",
+    "short_name": "KA25_50_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_50_1692952409.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_50_1692952409.csv"
+  },
+  "KA25_50_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 50, 40% noise",
+    "short_name": "KA25_50_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_50_1692952409.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_50_1692952409.csv"
+  },
+  "KA25_51_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 51, no noise",
+    "short_name": "KA25_51_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_51_1692952412.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_51_1692952412.csv"
+  },
+  "KA25_51_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 51, 20% noise",
+    "short_name": "KA25_51_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_51_1692952412.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_51_1692952412.csv"
+  },
+  "KA25_51_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 51, 40% noise",
+    "short_name": "KA25_51_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_51_1692952412.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_51_1692952412.csv"
+  },
+  "KA25_52_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 52, no noise",
+    "short_name": "KA25_52_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_52_1692952415.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_52_1692952415.csv"
+  },
+  "KA25_52_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 52, 20% noise",
+    "short_name": "KA25_52_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_52_1692952415.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_52_1692952415.csv"
+  },
+  "KA25_52_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 52, 40% noise",
+    "short_name": "KA25_52_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_52_1692952415.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_52_1692952415.csv"
+  },
+  "KA25_53_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 53, no noise",
+    "short_name": "KA25_53_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_53_1692952417.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_53_1692952417.csv"
+  },
+  "KA25_53_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 53, 20% noise",
+    "short_name": "KA25_53_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_53_1692952417.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_53_1692952417.csv"
+  },
+  "KA25_53_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 53, 40% noise",
+    "short_name": "KA25_53_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_53_1692952417.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_53_1692952417.csv"
+  },
+  "KA25_54_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 54, no noise",
+    "short_name": "KA25_54_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_54_1692952418.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_54_1692952418.csv"
+  },
+  "KA25_54_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 54, 20% noise",
+    "short_name": "KA25_54_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_54_1692952418.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_54_1692952418.csv"
+  },
+  "KA25_54_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 54, 40% noise",
+    "short_name": "KA25_54_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_54_1692952418.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_54_1692952418.csv"
+  },
+  "KA25_55_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 55, no noise",
+    "short_name": "KA25_55_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_55_1692952420.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_55_1692952420.csv"
+  },
+  "KA25_55_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 55, 20% noise",
+    "short_name": "KA25_55_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_55_1692952420.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_55_1692952420.csv"
+  },
+  "KA25_55_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 55, 40% noise",
+    "short_name": "KA25_55_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_55_1692952420.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_55_1692952420.csv"
+  },
+  "KA25_56_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 56, no noise",
+    "short_name": "KA25_56_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_56_1692952426.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_56_1692952426.csv"
+  },
+  "KA25_56_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 56, 20% noise",
+    "short_name": "KA25_56_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_56_1692952426.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_56_1692952426.csv"
+  },
+  "KA25_56_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 56, 40% noise",
+    "short_name": "KA25_56_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_56_1692952426.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_56_1692952426.csv"
+  },
+  "KA25_57_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 57, no noise",
+    "short_name": "KA25_57_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_57_1692952430.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_57_1692952430.csv"
+  },
+  "KA25_57_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 57, 20% noise",
+    "short_name": "KA25_57_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_57_1692952430.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_57_1692952430.csv"
+  },
+  "KA25_57_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 57, 40% noise",
+    "short_name": "KA25_57_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_57_1692952430.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_57_1692952430.csv"
+  },
+  "KA25_58_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 58, no noise",
+    "short_name": "KA25_58_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_58_1692952437.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_58_1692952437.csv"
+  },
+  "KA25_58_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 58, 20% noise",
+    "short_name": "KA25_58_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_58_1692952437.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_58_1692952437.csv"
+  },
+  "KA25_58_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 58, 40% noise",
+    "short_name": "KA25_58_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_58_1692952437.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_58_1692952437.csv"
+  },
+  "KA25_59_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 59, no noise",
+    "short_name": "KA25_59_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_59_1692952438.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_59_1692952438.csv"
+  },
+  "KA25_59_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 59, 20% noise",
+    "short_name": "KA25_59_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_59_1692952438.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_59_1692952438.csv"
+  },
+  "KA25_59_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 59, 40% noise",
+    "short_name": "KA25_59_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_59_1692952438.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_59_1692952438.csv"
+  },
+  "KA25_60_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 60, no noise",
+    "short_name": "KA25_60_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_60_1692952441.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_60_1692952441.csv"
+  },
+  "KA25_60_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 60, 20% noise",
+    "short_name": "KA25_60_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_60_1692952441.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_60_1692952441.csv"
+  },
+  "KA25_60_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 60, 40% noise",
+    "short_name": "KA25_60_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_60_1692952441.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_60_1692952441.csv"
+  },
+  "KA25_61_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 61, no noise",
+    "short_name": "KA25_61_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_61_1692952452.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_61_1692952452.csv"
+  },
+  "KA25_61_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 61, 20% noise",
+    "short_name": "KA25_61_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_61_1692952452.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_61_1692952452.csv"
+  },
+  "KA25_61_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 61, 40% noise",
+    "short_name": "KA25_61_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_61_1692952452.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_61_1692952452.csv"
+  },
+  "KA25_62_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 62, no noise",
+    "short_name": "KA25_62_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_62_1692952457.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_62_1692952457.csv"
+  },
+  "KA25_62_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 62, 20% noise",
+    "short_name": "KA25_62_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_62_1692952457.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_62_1692952457.csv"
+  },
+  "KA25_62_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 62, 40% noise",
+    "short_name": "KA25_62_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_62_1692952457.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_62_1692952457.csv"
+  },
+  "KA25_63_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 63, no noise",
+    "short_name": "KA25_63_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_63_1692952460.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_63_1692952460.csv"
+  },
+  "KA25_63_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 63, 20% noise",
+    "short_name": "KA25_63_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_63_1692952460.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_63_1692952460.csv"
+  },
+  "KA25_63_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 63, 40% noise",
+    "short_name": "KA25_63_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_63_1692952460.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_63_1692952460.csv"
+  },
+  "KA25_64_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 64, no noise",
+    "short_name": "KA25_64_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_64_1692952462.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_64_1692952462.csv"
+  },
+  "KA25_64_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 64, 20% noise",
+    "short_name": "KA25_64_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_64_1692952462.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_64_1692952462.csv"
+  },
+  "KA25_64_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 64, 40% noise",
+    "short_name": "KA25_64_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_64_1692952462.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_64_1692952462.csv"
+  },
+  "KA25_65_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 65, no noise",
+    "short_name": "KA25_65_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_65_1692952464.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_65_1692952464.csv"
+  },
+  "KA25_65_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 65, 20% noise",
+    "short_name": "KA25_65_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_65_1692952464.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_65_1692952464.csv"
+  },
+  "KA25_65_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 65, 40% noise",
+    "short_name": "KA25_65_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_65_1692952464.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_65_1692952464.csv"
+  },
+  "KA25_66_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 66, no noise",
+    "short_name": "KA25_66_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_66_1692952466.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_66_1692952466.csv"
+  },
+  "KA25_66_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 66, 20% noise",
+    "short_name": "KA25_66_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_66_1692952466.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_66_1692952466.csv"
+  },
+  "KA25_66_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 66, 40% noise",
+    "short_name": "KA25_66_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_66_1692952466.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_66_1692952466.csv"
+  },
+  "KA25_67_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 67, no noise",
+    "short_name": "KA25_67_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_67_1692952494.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_67_1692952494.csv"
+  },
+  "KA25_67_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 67, 20% noise",
+    "short_name": "KA25_67_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_67_1692952494.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_67_1692952494.csv"
+  },
+  "KA25_67_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 67, 40% noise",
+    "short_name": "KA25_67_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_67_1692952494.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_67_1692952494.csv"
+  },
+  "KA25_68_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 68, no noise",
+    "short_name": "KA25_68_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_68_1692952500.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_68_1692952500.csv"
+  },
+  "KA25_68_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 68, 20% noise",
+    "short_name": "KA25_68_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_68_1692952500.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_68_1692952500.csv"
+  },
+  "KA25_68_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 68, 40% noise",
+    "short_name": "KA25_68_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_68_1692952500.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_68_1692952500.csv"
+  },
+  "KA25_69_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 69, no noise",
+    "short_name": "KA25_69_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_69_1692952502.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_69_1692952502.csv"
+  },
+  "KA25_69_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 69, 20% noise",
+    "short_name": "KA25_69_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_69_1692952502.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_69_1692952502.csv"
+  },
+  "KA25_69_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 69, 40% noise",
+    "short_name": "KA25_69_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_69_1692952502.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_69_1692952502.csv"
+  },
+  "KA25_70_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 70, no noise",
+    "short_name": "KA25_70_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_70_1692952508.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_70_1692952508.csv"
+  },
+  "KA25_70_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 70, 20% noise",
+    "short_name": "KA25_70_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_70_1692952508.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_70_1692952508.csv"
+  },
+  "KA25_70_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 70, 40% noise",
+    "short_name": "KA25_70_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_70_1692952508.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_70_1692952508.csv"
+  },
+  "KA25_71_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 71, no noise",
+    "short_name": "KA25_71_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_71_1692952512.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_71_1692952512.csv"
+  },
+  "KA25_71_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 71, 20% noise",
+    "short_name": "KA25_71_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_71_1692952512.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_71_1692952512.csv"
+  },
+  "KA25_71_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 71, 40% noise",
+    "short_name": "KA25_71_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_71_1692952512.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_71_1692952512.csv"
+  },
+  "KA25_72_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 72, no noise",
+    "short_name": "KA25_72_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_72_1692952515.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_72_1692952515.csv"
+  },
+  "KA25_72_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 72, 20% noise",
+    "short_name": "KA25_72_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_72_1692952515.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_72_1692952515.csv"
+  },
+  "KA25_72_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 72, 40% noise",
+    "short_name": "KA25_72_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_72_1692952515.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_72_1692952515.csv"
+  },
+  "KA25_73_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 73, no noise",
+    "short_name": "KA25_73_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_73_1692952519.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_73_1692952519.csv"
+  },
+  "KA25_73_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 73, 20% noise",
+    "short_name": "KA25_73_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_73_1692952519.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_73_1692952519.csv"
+  },
+  "KA25_73_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 73, 40% noise",
+    "short_name": "KA25_73_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_73_1692952519.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_73_1692952519.csv"
+  },
+  "KA25_74_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 74, no noise",
+    "short_name": "KA25_74_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_74_1692952521.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_74_1692952521.csv"
+  },
+  "KA25_74_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 74, 20% noise",
+    "short_name": "KA25_74_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_74_1692952521.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_74_1692952521.csv"
+  },
+  "KA25_74_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 74, 40% noise",
+    "short_name": "KA25_74_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_74_1692952521.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_74_1692952521.csv"
+  },
+  "KA25_75_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 75, no noise",
+    "short_name": "KA25_75_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_75_1692952522.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_75_1692952522.csv"
+  },
+  "KA25_75_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 75, 20% noise",
+    "short_name": "KA25_75_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_75_1692952522.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_75_1692952522.csv"
+  },
+  "KA25_75_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 75, 40% noise",
+    "short_name": "KA25_75_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_75_1692952522.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_75_1692952522.csv"
+  },
+  "KA25_76_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 76, no noise",
+    "short_name": "KA25_76_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_76_1692952523.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_76_1692952523.csv"
+  },
+  "KA25_76_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 76, 20% noise",
+    "short_name": "KA25_76_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_76_1692952523.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_76_1692952523.csv"
+  },
+  "KA25_76_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 76, 40% noise",
+    "short_name": "KA25_76_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_76_1692952523.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_76_1692952523.csv"
+  },
+  "KA25_77_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 77, no noise",
+    "short_name": "KA25_77_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_77_1692952527.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_77_1692952527.csv"
+  },
+  "KA25_77_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 77, 20% noise",
+    "short_name": "KA25_77_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_77_1692952527.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_77_1692952527.csv"
+  },
+  "KA25_77_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 77, 40% noise",
+    "short_name": "KA25_77_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_77_1692952527.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_77_1692952527.csv"
+  },
+  "KA25_78_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 78, no noise",
+    "short_name": "KA25_78_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_78_1692952551.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_78_1692952551.csv"
+  },
+  "KA25_78_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 78, 20% noise",
+    "short_name": "KA25_78_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_78_1692952551.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_78_1692952551.csv"
+  },
+  "KA25_78_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 78, 40% noise",
+    "short_name": "KA25_78_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_78_1692952551.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_78_1692952551.csv"
+  },
+  "KA25_79_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 79, no noise",
+    "short_name": "KA25_79_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_79_1692952552.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_79_1692952552.csv"
+  },
+  "KA25_79_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 79, 20% noise",
+    "short_name": "KA25_79_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_79_1692952552.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_79_1692952552.csv"
+  },
+  "KA25_79_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 79, 40% noise",
+    "short_name": "KA25_79_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_79_1692952552.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_79_1692952552.csv"
+  },
+  "KA25_80_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 80, no noise",
+    "short_name": "KA25_80_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_80_1692952554.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_80_1692952554.csv"
+  },
+  "KA25_80_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 80, 20% noise",
+    "short_name": "KA25_80_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_80_1692952554.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_80_1692952554.csv"
+  },
+  "KA25_80_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 80, 40% noise",
+    "short_name": "KA25_80_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_80_1692952554.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_80_1692952554.csv"
+  },
+  "KA25_81_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 81, no noise",
+    "short_name": "KA25_81_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_81_1692952556.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_81_1692952556.csv"
+  },
+  "KA25_81_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 81, 20% noise",
+    "short_name": "KA25_81_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_81_1692952556.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_81_1692952556.csv"
+  },
+  "KA25_81_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 81, 40% noise",
+    "short_name": "KA25_81_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_81_1692952556.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_81_1692952556.csv"
+  },
+  "KA25_82_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 82, no noise",
+    "short_name": "KA25_82_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_82_1692952560.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_82_1692952560.csv"
+  },
+  "KA25_82_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 82, 20% noise",
+    "short_name": "KA25_82_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_82_1692952560.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_82_1692952560.csv"
+  },
+  "KA25_82_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 82, 40% noise",
+    "short_name": "KA25_82_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_82_1692952560.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_82_1692952560.csv"
+  },
+  "KA25_83_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 83, no noise",
+    "short_name": "KA25_83_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_83_1692952563.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_83_1692952563.csv"
+  },
+  "KA25_83_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 83, 20% noise",
+    "short_name": "KA25_83_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_83_1692952563.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_83_1692952563.csv"
+  },
+  "KA25_83_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 83, 40% noise",
+    "short_name": "KA25_83_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_83_1692952563.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_83_1692952563.csv"
+  },
+  "KA25_84_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 84, no noise",
+    "short_name": "KA25_84_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_84_1692952573.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_84_1692952573.csv"
+  },
+  "KA25_84_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 84, 20% noise",
+    "short_name": "KA25_84_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_84_1692952573.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_84_1692952573.csv"
+  },
+  "KA25_84_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 84, 40% noise",
+    "short_name": "KA25_84_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_84_1692952573.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_84_1692952573.csv"
+  },
+  "KA25_85_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 85, no noise",
+    "short_name": "KA25_85_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_85_1692952576.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_85_1692952576.csv"
+  },
+  "KA25_85_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 85, 20% noise",
+    "short_name": "KA25_85_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_85_1692952576.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_85_1692952576.csv"
+  },
+  "KA25_85_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 85, 40% noise",
+    "short_name": "KA25_85_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_85_1692952576.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_85_1692952576.csv"
+  },
+  "KA25_86_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 86, no noise",
+    "short_name": "KA25_86_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_86_1692952579.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_86_1692952579.csv"
+  },
+  "KA25_86_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 86, 20% noise",
+    "short_name": "KA25_86_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_86_1692952579.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_86_1692952579.csv"
+  },
+  "KA25_86_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 86, 40% noise",
+    "short_name": "KA25_86_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_86_1692952579.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_86_1692952579.csv"
+  },
+  "KA25_87_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 87, no noise",
+    "short_name": "KA25_87_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_87_1692952585.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_87_1692952585.csv"
+  },
+  "KA25_87_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 87, 20% noise",
+    "short_name": "KA25_87_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_87_1692952585.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_87_1692952585.csv"
+  },
+  "KA25_87_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 87, 40% noise",
+    "short_name": "KA25_87_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_87_1692952585.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_87_1692952585.csv"
+  },
+  "KA25_88_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 88, no noise",
+    "short_name": "KA25_88_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_88_1692952587.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_88_1692952587.csv"
+  },
+  "KA25_88_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 88, 20% noise",
+    "short_name": "KA25_88_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_88_1692952587.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_88_1692952587.csv"
+  },
+  "KA25_88_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 88, 40% noise",
+    "short_name": "KA25_88_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_88_1692952587.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_88_1692952587.csv"
+  },
+  "KA25_89_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 89, no noise",
+    "short_name": "KA25_89_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_89_1692952588.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_89_1692952588.csv"
+  },
+  "KA25_89_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 89, 20% noise",
+    "short_name": "KA25_89_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_89_1692952588.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_89_1692952588.csv"
+  },
+  "KA25_89_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 89, 40% noise",
+    "short_name": "KA25_89_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_89_1692952588.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_89_1692952588.csv"
+  },
+  "KA25_90_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 90, no noise",
+    "short_name": "KA25_90_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_90_1692952603.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_90_1692952603.csv"
+  },
+  "KA25_90_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 90, 20% noise",
+    "short_name": "KA25_90_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_90_1692952603.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_90_1692952603.csv"
+  },
+  "KA25_90_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 90, 40% noise",
+    "short_name": "KA25_90_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_90_1692952603.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_90_1692952603.csv"
+  },
+  "KA25_91_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 91, no noise",
+    "short_name": "KA25_91_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_91_1692952607.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_91_1692952607.csv"
+  },
+  "KA25_91_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 91, 20% noise",
+    "short_name": "KA25_91_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_91_1692952607.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_91_1692952607.csv"
+  },
+  "KA25_91_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 91, 40% noise",
+    "short_name": "KA25_91_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_91_1692952607.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_91_1692952607.csv"
+  },
+  "KA25_92_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 92, no noise",
+    "short_name": "KA25_92_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_92_1692952610.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_92_1692952610.csv"
+  },
+  "KA25_92_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 92, 20% noise",
+    "short_name": "KA25_92_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_92_1692952610.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_92_1692952610.csv"
+  },
+  "KA25_92_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 92, 40% noise",
+    "short_name": "KA25_92_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_92_1692952610.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_92_1692952610.csv"
+  },
+  "KA25_93_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 93, no noise",
+    "short_name": "KA25_93_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_93_1692952613.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_93_1692952613.csv"
+  },
+  "KA25_93_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 93, 20% noise",
+    "short_name": "KA25_93_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_93_1692952613.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_93_1692952613.csv"
+  },
+  "KA25_93_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 93, 40% noise",
+    "short_name": "KA25_93_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_93_1692952613.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_93_1692952613.csv"
+  },
+  "KA25_94_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 94, no noise",
+    "short_name": "KA25_94_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_94_1692952615.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_94_1692952615.csv"
+  },
+  "KA25_94_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 94, 20% noise",
+    "short_name": "KA25_94_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_94_1692952615.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_94_1692952615.csv"
+  },
+  "KA25_94_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 94, 40% noise",
+    "short_name": "KA25_94_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_94_1692952615.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_94_1692952615.csv"
+  },
+  "KA25_95_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 95, no noise",
+    "short_name": "KA25_95_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_95_1692952617.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_95_1692952617.csv"
+  },
+  "KA25_95_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 95, 20% noise",
+    "short_name": "KA25_95_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_95_1692952617.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_95_1692952617.csv"
+  },
+  "KA25_95_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 95, 40% noise",
+    "short_name": "KA25_95_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_95_1692952617.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_95_1692952617.csv"
+  },
+  "KA25_96_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 96, no noise",
+    "short_name": "KA25_96_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_96_1692952629.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_96_1692952629.csv"
+  },
+  "KA25_96_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 96, 20% noise",
+    "short_name": "KA25_96_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_96_1692952629.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_96_1692952629.csv"
+  },
+  "KA25_96_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 96, 40% noise",
+    "short_name": "KA25_96_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_96_1692952629.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_96_1692952629.csv"
+  },
+  "KA25_97_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 97, no noise",
+    "short_name": "KA25_97_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_97_1692952631.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_97_1692952631.csv"
+  },
+  "KA25_97_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 97, 20% noise",
+    "short_name": "KA25_97_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_97_1692952631.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_97_1692952631.csv"
+  },
+  "KA25_97_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 97, 40% noise",
+    "short_name": "KA25_97_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_97_1692952631.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_97_1692952631.csv"
+  },
+  "KA25_98_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 98, no noise",
+    "short_name": "KA25_98_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_98_1692952636.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_98_1692952636.csv"
+  },
+  "KA25_98_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 98, 20% noise",
+    "short_name": "KA25_98_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_98_1692952636.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_98_1692952636.csv"
+  },
+  "KA25_98_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 98, 40% noise",
+    "short_name": "KA25_98_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_98_1692952636.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_98_1692952636.csv"
+  },
+  "KA25_99_0_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 99, no noise",
+    "short_name": "KA25_99_0_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al no noise/log_99_1692952644.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al no noise/ground_truth_log_99_1692952644.csv"
+  },
+  "KA25_99_20_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 99, 20% noise",
+    "short_name": "KA25_99_20_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 20pct noise/log_99_1692952644.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 20pct noise/ground_truth_log_99_1692952644.csv"
+  },
+  "KA25_99_40_S": {
+    "name": "Synthetic data by Kraus and van der Aa (2025), log 99, 40% noise",
+    "short_name": "KA25_99_40_S",
+    "type": "synthetic",
+    "path": "data/synthetic/Kraus et al 40pct noise/log_99_1692952644.xes.gz",
+    "ground_truth": "data/synthetic/Kraus et al 40pct noise/ground_truth_log_99_1692952644.csv"
   }
 }

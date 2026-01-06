@@ -6,7 +6,9 @@ to the format expected by the drift detection results CSV.
 
 import argparse
 import ast
+import gzip
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
@@ -45,6 +47,46 @@ def parse_trace_index(value: str) -> List[int]:
             raise ValueError(f"Unexpected type: {type(parsed)}")
     except (ValueError, SyntaxError) as e:
         raise ValueError(f"Failed to parse trace index '{value}': {e}")
+
+
+def ensure_xes_gz_exists(xes_file_path: Path) -> bool:
+    """Ensure XES file exists as .xes.gz, converting from .xes if needed.
+
+    Parameters
+    ----------
+    xes_file_path
+        Path to the expected .xes.gz file.
+
+    Returns
+    -------
+    bool
+        True if file exists (or was successfully converted), False otherwise.
+    """
+    if xes_file_path.exists():
+        return True
+
+    # Check if .xes version exists (without .gz)
+    if xes_file_path.suffix == ".gz":
+        xes_path_no_gz = xes_file_path.with_suffix("")
+        if xes_path_no_gz.exists():
+            print(f"Converting {xes_path_no_gz.name} to {xes_file_path.name}...")
+            try:
+                with (
+                    xes_path_no_gz.open("rb") as f_in,
+                    gzip.open(xes_file_path, "wb") as f_out,
+                ):
+                    shutil.copyfileobj(f_in, f_out)
+                # Delete original .xes file after successful compression
+                xes_path_no_gz.unlink()
+                print(f"✓ Successfully converted to {xes_file_path.name}")
+                return True
+            except Exception as e:
+                print(
+                    f"ERROR: Failed to convert {xes_path_no_gz.name} to {xes_file_path.name}: {e}"
+                )
+                return False
+
+    return False
 
 
 def normalize_log_name(log_name: str) -> str:
@@ -392,6 +434,7 @@ def main(
     drift_info_csv_path: Path,
     dataset_key: str,
     output_path: Path | None = None,
+    xes_file_name: str | None = None,
 ) -> pd.DataFrame:
     """Main function to process ground truth drift information.
 
@@ -405,6 +448,9 @@ def main(
         the drift_info.csv. The dataset key will be used as the log_name in the output CSV.
     output_path
         Optional path to save the output CSV. If None, prints to stdout.
+    xes_file_name
+        Optional XES file name. If provided, skips data dictionary lookup.
+        If None, attempts to look up from data dictionary using dataset_key.
 
     Returns
     -------
@@ -414,15 +460,16 @@ def main(
     print(f"Processing ground truth drifts for dataset: {dataset_key}")
     print(f"Reading from: {drift_info_csv_path}")
 
-    # Get XES file name from data dictionary using dataset key
-    xes_file_name = get_xes_file_name_from_dataset_key(dataset_key)
+    # Get XES file name from data dictionary using dataset key, or use provided one
     if xes_file_name is None:
-        print(
-            f"ERROR: Could not find XES file name for dataset key '{dataset_key}' in data dictionary."
-        )
-        return pd.DataFrame()
-    else:
-        print(f"Found XES file name: {xes_file_name}")
+        xes_file_name = get_xes_file_name_from_dataset_key(dataset_key)
+        if xes_file_name is None:
+            print(
+                f"ERROR: Could not find XES file name for dataset key '{dataset_key}' in data dictionary."
+            )
+            return pd.DataFrame()
+
+    print(f"Found XES file name: {xes_file_name}")
 
     # Step 1: Extract drift information from CSV (use XES file name to filter CSV)
     drift_dict = extract_drift_info_from_csv(drift_info_csv_path, xes_file_name)
@@ -558,23 +605,42 @@ def process_all_logs_from_drift_info(
     df = pd.read_csv(drift_info_csv_path)
     unique_log_names = df["log_name"].unique()
 
+    # Normalize log names to .xes.gz format
+    unique_log_names = [normalize_log_name(log) for log in unique_log_names]
+
     # Sort for consistent ordering
     unique_log_names = sorted(unique_log_names)
 
-    # Filter to only logs that exist in data dictionary
-    data_dictionary = helpers.load_data_dictionary(
-        constants.get_data_dictionary_path(),
-        get_real=True,
-        get_synthetic=True,
-    )
-    # Get all XES file names from data dictionary
+    # Filter to only logs that exist in file system (check all Kraus et al folders)
+    # This allows processing logs 21-100 even if they're not in data dictionary yet
+    # Also converts .xes to .xes.gz if needed
     valid_log_names = set()
-    for dataset_info in data_dictionary.values():
-        path = dataset_info.get("path", "")
-        if path:
-            valid_log_names.add(Path(path).name)
+    synthetic_base = PROJECT_ROOT / "data" / "synthetic"
+    kraus_folders = [
+        "Kraus et al no noise",
+        "Kraus et al 20pct noise",
+        "Kraus et al 40pct noise",
+    ]
+    for folder in kraus_folders:
+        folder_path = synthetic_base / folder
+        if folder_path.exists():
+            # Get all .xes.gz files in this folder
+            xes_gz_files = list(folder_path.glob("*.xes.gz"))
+            for xes_file in xes_gz_files:
+                valid_log_names.add(xes_file.name)
 
-    # Filter to only valid log names
+            # Check for .xes files (without .gz) and convert them
+            xes_files = list(folder_path.glob("*.xes"))
+            # Filter out files that already have .gz versions
+            xes_files = [
+                f for f in xes_files if not (f.parent / f"{f.name}.gz").exists()
+            ]
+            for xes_file in xes_files:
+                xes_gz_path = xes_file.with_suffix(xes_file.suffix + ".gz")
+                if ensure_xes_gz_exists(xes_gz_path):
+                    valid_log_names.add(xes_gz_path.name)
+
+    # Filter to only valid log names (that exist in file system)
     unique_log_names = [log for log in unique_log_names if log in valid_log_names]
 
     # Limit if specified
@@ -597,38 +663,75 @@ def process_all_logs_from_drift_info(
         # (same log file appears in multiple noise level folders)
         all_dataset_keys = get_all_dataset_keys_from_xes_file_name(log_name)
 
+        # If no dataset keys found in data dictionary, generate them from log file name
+        # Pattern: log_21_1692952246.xes.gz -> KA25_21_0_S, KA25_21_20_S, KA25_21_40_S
         if not all_dataset_keys:
-            print(
-                f"WARNING: Could not find dataset key(s) for log '{log_name}'. Skipping."
-            )
-            continue
+            # Extract log number from filename (e.g., "log_21_1692952246.xes.gz" -> 21)
+            import re
+
+            match = re.match(r"log_(\d+)_", log_name)
+            if match:
+                log_num = match.group(1)
+                all_dataset_keys = [
+                    f"KA25_{log_num}_0_S",
+                    f"KA25_{log_num}_20_S",
+                    f"KA25_{log_num}_40_S",
+                ]
+            else:
+                print(
+                    f"WARNING: Could not parse log number from '{log_name}'. Skipping."
+                )
+                continue
 
         # Process each matching dataset key
         for dataset_key in all_dataset_keys:
-            if dataset_key not in data_dictionary:
-                print(
-                    f"WARNING: Dataset key '{dataset_key}' not found in data dictionary. Skipping."
-                )
+            # Determine path based on dataset key pattern
+            # KA25_21_0_S -> "Kraus et al no noise"
+            # KA25_21_20_S -> "Kraus et al 20pct noise"
+            # KA25_21_40_S -> "Kraus et al 40pct noise"
+            if dataset_key.endswith("_0_S"):
+                folder_name = "Kraus et al no noise"
+            elif dataset_key.endswith("_20_S"):
+                folder_name = "Kraus et al 20pct noise"
+            elif dataset_key.endswith("_40_S"):
+                folder_name = "Kraus et al 40pct noise"
+            else:
+                # Fallback: try to get from data dictionary if it exists
+                if dataset_key in data_dictionary:
+                    dataset_path = data_dictionary[dataset_key].get("path", "")
+                    if dataset_path:
+                        xes_file_path = PROJECT_ROOT / dataset_path
+                        output_dir = xes_file_path.parent
+                        output_dir.mkdir(parents=True, exist_ok=True)
+                        log_name_normalized = normalize_log_name(log_name)
+                        log_name_base = log_name_normalized.replace(
+                            ".xes.gz", ""
+                        ).replace(".xes", "")
+                        output_path = output_dir / f"ground_truth_{log_name_base}.csv"
+                        print(f"\nProcessing {dataset_key} (log: {log_name})...")
+                        result_df = main(drift_info_csv_path, dataset_key, output_path)
+                        if not result_df.empty:
+                            dataset_to_output_path[dataset_key] = output_path
+                            print(f"✓ Generated ground truth for {dataset_key}")
+                        else:
+                            print(f"✗ No drift information found for {dataset_key}")
                 continue
 
-            dataset_path = data_dictionary[dataset_key].get("path", "")
-            if not dataset_path:
-                print(
-                    f"WARNING: No path found for dataset key '{dataset_key}'. Skipping."
-                )
-                continue
-
-            # Determine output path: data/synthetic/{folder_name}/ground_truth_{log_name}.csv
-            # Get the directory where the XES file is located
+            # Construct path based on folder name
+            dataset_path = f"data/synthetic/{folder_name}/{log_name}"
             xes_file_path = PROJECT_ROOT / dataset_path
+
+            # Ensure file exists as .xes.gz (convert from .xes if needed)
+            if not ensure_xes_gz_exists(xes_file_path):
+                print(
+                    f"WARNING: XES file not found for {dataset_key}: {xes_file_path}. Skipping."
+                )
+                continue
+
+            # Determine output path
             output_dir = xes_file_path.parent
             output_dir.mkdir(parents=True, exist_ok=True)
-
-            # Use log_name (without extensions) as part of filename
-            # log_name is like "log_1_1692952162.xes.gz", we want "ground_truth_log_1_1692952162.csv"
-            log_name_normalized = normalize_log_name(
-                log_name
-            )  # "log_1_1692952162.xes.gz"
+            log_name_normalized = normalize_log_name(log_name)
             log_name_base = log_name_normalized.replace(".xes.gz", "").replace(
                 ".xes", ""
             )
@@ -636,7 +739,9 @@ def process_all_logs_from_drift_info(
 
             # Process this log
             print(f"\nProcessing {dataset_key} (log: {log_name})...")
-            result_df = main(drift_info_csv_path, dataset_key, output_path)
+            result_df = main(
+                drift_info_csv_path, dataset_key, output_path, xes_file_name=log_name
+            )
 
             if not result_df.empty:
                 dataset_to_output_path[dataset_key] = output_path
@@ -651,6 +756,7 @@ def update_data_dictionary_with_ground_truth(
     dataset_to_output_path: Dict[str, Path],
 ) -> None:
     """Update data_dictionary.json to add ground_truth field for synthetic datasets.
+    Creates new entries if they don't exist.
 
     Parameters
     ----------
@@ -665,24 +771,76 @@ def update_data_dictionary_with_ground_truth(
 
     # Update synthetic datasets with ground_truth paths
     updated_count = 0
+    created_count = 0
     for dataset_key, output_path in dataset_to_output_path.items():
-        if dataset_key in data_dictionary:
-            # Make path relative to project root
-            relative_path = output_path.relative_to(PROJECT_ROOT)
-            # Convert to forward slashes for JSON (Windows compatibility)
-            relative_path_str = str(relative_path).replace("\\", "/")
+        # Make path relative to project root
+        relative_path = output_path.relative_to(PROJECT_ROOT)
+        # Convert to forward slashes for JSON (Windows compatibility)
+        relative_path_str = str(relative_path).replace("\\", "/")
 
+        if dataset_key in data_dictionary:
+            # Update existing entry
             data_dictionary[dataset_key]["ground_truth"] = relative_path_str
             updated_count += 1
             print(f"Updated {dataset_key} with ground_truth: {relative_path_str}")
         else:
-            print(f"WARNING: Dataset key '{dataset_key}' not found in data dictionary")
+            # Create new entry for KA25 datasets
+            if dataset_key.startswith("KA25_"):
+                # Parse dataset key: KA25_21_0_S -> log_num=21, noise=0
+                import re
+
+                match = re.match(r"KA25_(\d+)_(\d+)_S", dataset_key)
+                if match:
+                    log_num = match.group(1)
+                    noise_level = match.group(2)
+
+                    # Determine folder name and noise description
+                    if noise_level == "0":
+                        folder_name = "Kraus et al no noise"
+                        noise_desc = "no noise"
+                    elif noise_level == "20":
+                        folder_name = "Kraus et al 20pct noise"
+                        noise_desc = "20% noise"
+                    elif noise_level == "40":
+                        folder_name = "Kraus et al 40pct noise"
+                        noise_desc = "40% noise"
+                    else:
+                        folder_name = f"Kraus et al {noise_level}pct noise"
+                        noise_desc = f"{noise_level}% noise"
+
+                    # Extract log name from ground truth path
+                    # ground_truth_log_21_1692952246.csv -> log_21_1692952246.xes.gz
+                    log_name_base = relative_path_str.split("ground_truth_")[
+                        -1
+                    ].replace(".csv", "")
+                    xes_path = f"data/synthetic/{folder_name}/{log_name_base}.xes.gz"
+
+                    # Create new entry (drift type will be generic, can be updated later if needed)
+                    data_dictionary[dataset_key] = {
+                        "name": f"Synthetic data by Kraus and van der Aa (2025), log {log_num}, {noise_desc}",
+                        "short_name": dataset_key,
+                        "type": "synthetic",
+                        "path": xes_path,
+                        "ground_truth": relative_path_str,
+                    }
+                    created_count += 1
+                    print(
+                        f"Created {dataset_key} with ground_truth: {relative_path_str}"
+                    )
+                else:
+                    print(f"WARNING: Could not parse dataset key '{dataset_key}'")
+            else:
+                print(
+                    f"WARNING: Dataset key '{dataset_key}' not found in data dictionary and not a KA25 dataset"
+                )
 
     # Save updated data dictionary
     with open(data_dictionary_path, "w", encoding="utf-8") as f:
         json.dump(data_dictionary, f, indent=2, ensure_ascii=False)
 
-    print(f"\n✓ Updated {updated_count} entries in data_dictionary.json")
+    print(
+        f"\n✓ Updated {updated_count} entries and created {created_count} new entries in data_dictionary.json"
+    )
 
 
 def process_all_kraus_datasets(

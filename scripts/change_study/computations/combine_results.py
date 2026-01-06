@@ -15,7 +15,7 @@ import pandas as pd
 import seaborn as sns
 from scipy import stats
 
-from utils import constants
+from utils import constants, helpers
 
 # Define drift type order
 drift_type_order = [
@@ -191,6 +191,7 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
                 results.append(
                     {
                         "change_type": "Sudden (before to after)",
+                        "event_log": dataset,
                         **{k.replace("measure_", ""): v for k, v in deltas.items()},
                     }
                 )
@@ -204,6 +205,7 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
                 results.append(
                     {
                         "change_type": "Gradual (before to during)",
+                        "event_log": dataset,
                         **{k.replace("measure_", ""): v for k, v in deltas.items()},
                     }
                 )
@@ -221,6 +223,7 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
                 results.append(
                     {
                         "change_type": "Gradual (before to after)",
+                        "event_log": dataset,
                         **{k.replace("measure_", ""): v for k, v in deltas.items()},
                     }
                 )
@@ -234,6 +237,7 @@ def compute_complexity_deltas(window_dict, drift_info_by_dataset):
                 results.append(
                     {
                         "change_type": "Gradual (during to after)",
+                        "event_log": dataset,
                         **{k.replace("measure_", ""): v for k, v in deltas.items()},
                     }
                 )
@@ -279,8 +283,14 @@ def save_all_change_points(results_df, cp_parameter_setting, results_subfolder="
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Add a change_id (row index) and ensure event_log is present
+    results_with_ids = results_df.copy()
+    results_with_ids.insert(0, "change_id", range(1, len(results_with_ids) + 1))
+    if "event_log" not in results_with_ids.columns:
+        results_with_ids.insert(1, "event_log", "")
+
     # Save the full results DataFrame
-    results_df.to_csv(output_dir / "complexity_delta_all.csv", index=False)
+    results_with_ids.to_csv(output_dir / "complexity_delta_all.csv", index=False)
     print(f"Saved all change points to: {output_dir / 'complexity_delta_all.csv'}")
 
 
@@ -556,6 +566,40 @@ def save_ttest_table(
     return final_df
 
 
+def get_synthetic_datasets_by_noise_level(noise_level: str) -> list[str]:
+    """Get all synthetic KA25 dataset keys filtered by noise level.
+
+    Parameters
+    ----------
+    noise_level
+        Noise level to filter by: "0" (no noise), "20" (20% noise), or "40" (40% noise).
+
+    Returns
+    -------
+    list[str]
+        List of dataset keys matching the noise level (e.g., ['KA25_1_0_S', 'KA25_2_0_S', ...]).
+    """
+    data_dictionary = helpers.load_data_dictionary(
+        constants.get_data_dictionary_path(),
+        get_real=False,
+        get_synthetic=True,
+    )
+
+    # Filter to KA25 datasets with the specified noise level
+    # Pattern: KA25_{log_num}_{noise_level}_S
+    matching_datasets = []
+    for dataset_key in data_dictionary.keys():
+        if dataset_key.startswith("KA25_"):
+            # Extract noise level from dataset key (KA25_1_0_S -> "0")
+            parts = dataset_key.split("_")
+            if len(parts) >= 3:
+                dataset_noise_level = parts[2]  # e.g., "0", "20", "40"
+                if dataset_noise_level == noise_level:
+                    matching_datasets.append(dataset_key)
+
+    return sorted(matching_datasets)
+
+
 def save_boxplots(results_df, cp_parameter_setting, results_subfolder="real"):
     measure_names = [col for col in results_df.columns if col != "change_type"]
 
@@ -670,6 +714,21 @@ if __name__ == "__main__":
         help="Optional list of dataset keys to include. If not set, all datasets are used.",
     )
     parser.add_argument(
+        "--synthetic-no-noise",
+        action="store_true",
+        help="Use all synthetic datasets with no noise (equivalent to all KA25_*_0_S datasets).",
+    )
+    parser.add_argument(
+        "--synthetic-20-noise",
+        action="store_true",
+        help="Use all synthetic datasets with 20%% noise (equivalent to all KA25_*_20_S datasets).",
+    )
+    parser.add_argument(
+        "--synthetic-40-noise",
+        action="store_true",
+        help="Use all synthetic datasets with 40%% noise (equivalent to all KA25_*_40_S datasets).",
+    )
+    parser.add_argument(
         "--cp-parameter-setting",
         default=constants.DEFAULT_CHANGE_POINT_PARAMETER_SETTING,
         help="Name of change point parameter setting (e.g., processGraphsPDefaultWDefault)",
@@ -687,8 +746,29 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Determine datasets based on arguments
+    datasets = args.datasets
+
+    # If synthetic noise level flags are used, get datasets from data dictionary
+    if args.synthetic_no_noise or args.synthetic_20_noise or args.synthetic_40_noise:
+        if datasets is not None:
+            parser.error(
+                "Cannot use --datasets together with --synthetic-*-noise flags"
+            )
+
+        all_synthetic_datasets = []
+        if args.synthetic_no_noise:
+            all_synthetic_datasets.extend(get_synthetic_datasets_by_noise_level("0"))
+        if args.synthetic_20_noise:
+            all_synthetic_datasets.extend(get_synthetic_datasets_by_noise_level("20"))
+        if args.synthetic_40_noise:
+            all_synthetic_datasets.extend(get_synthetic_datasets_by_noise_level("40"))
+
+        datasets = all_synthetic_datasets
+        print(f"Selected {len(datasets)} synthetic datasets based on noise level flags")
+
     main(
-        datasets=args.datasets,
+        datasets=datasets,
         cp_parameter_setting=args.cp_parameter_setting,
         complexity_window_setting=args.complexity_window_setting,
         results_subfolder=args.results_subfolder,

@@ -1,0 +1,10 @@
+collection_name,eval_noise_level,eval_complexity,log_size,log_name,calc_drift_id,calc_process_change_id,calc_change_id,calc_change_index,calc_change_moment,calc_change_type,calc_drift_type,config_method,config_constant_alpha,config_similarity,config_incremental,config_recurring,config_steps
+,,,,KA25_60_0_S,1,1,1,1176,2021-06-25 00:10:06.718803,gradual_start,gradual,,,,,,
+,,,,KA25_60_0_S,1,1,2,1816,2022-04-12 22:14:59.136322,gradual_end,gradual,,,,,,
+,,,,KA25_60_0_S,2,1,3,2868,2023-07-14 19:38:06.931675,gradual_start,incremental,,,,,,
+,,,,KA25_60_0_S,2,1,4,3524,2024-05-11 04:24:40.010018,gradual_end,incremental,,,,,,
+,,,,KA25_60_0_S,2,2,5,5017,2026-03-21 18:51:09.582554,sudden,incremental,,,,,,
+,,,,KA25_60_0_S,2,3,6,6406,2027-12-30 10:32:51.276305,sudden,incremental,,,,,,
+,,,,KA25_60_0_S,3,1,7,7452,2029-05-07 11:20:22.120508,sudden,incremental,,,,,,
+,,,,KA25_60_0_S,3,2,8,8819,2031-01-20 23:50:47.971679,sudden,incremental,,,,,,
+,,,,KA25_60_0_S,3,3,9,10127,2032-08-25 03:45:29.112063,sudden,incremental,,,,,,

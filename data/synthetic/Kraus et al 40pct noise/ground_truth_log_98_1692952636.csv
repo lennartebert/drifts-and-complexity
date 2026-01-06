@@ -1,0 +1,10 @@
+collection_name,eval_noise_level,eval_complexity,log_size,log_name,calc_drift_id,calc_process_change_id,calc_change_id,calc_change_index,calc_change_moment,calc_change_type,calc_drift_type,config_method,config_constant_alpha,config_similarity,config_incremental,config_recurring,config_steps
+,,,,KA25_98_40_S,1,1,1,1161,2021-06-08 01:12:51.401238,gradual_start,recurring,,,,,,
+,,,,KA25_98_40_S,1,1,2,2070,2022-07-24 01:48:55.786618,gradual_end,recurring,,,,,,
+,,,,KA25_98_40_S,1,2,3,3547,2024-05-30 12:01:13.998351,sudden,recurring,,,,,,
+,,,,KA25_98_40_S,1,3,4,4627,2025-10-22 02:19:02.704180,gradual_start,recurring,,,,,,
+,,,,KA25_98_40_S,1,3,5,5403,2026-10-22 04:21:21.388940,gradual_end,recurring,,,,,,
+,,,,KA25_98_40_S,2,1,6,6514,2028-03-23 11:52:46.327025,gradual_start,gradual,,,,,,
+,,,,KA25_98_40_S,2,1,7,7405,2029-05-17 21:10:59.991060,gradual_end,gradual,,,,,,
+,,,,KA25_98_40_S,3,1,8,8737,2031-02-04 12:31:53.292469,gradual_start,gradual,,,,,,
+,,,,KA25_98_40_S,3,1,9,9638,2032-04-07 16:30:43.981708,gradual_end,gradual,,,,,,
