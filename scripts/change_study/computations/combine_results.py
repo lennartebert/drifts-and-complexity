@@ -577,7 +577,7 @@ def get_synthetic_datasets_by_noise_level(noise_level: str) -> list[str]:
     Returns
     -------
     list[str]
-        List of dataset keys matching the noise level (e.g., ['KA25_1_0_S', 'KA25_2_0_S', ...]).
+        List of dataset keys matching the noise level (e.g., ['KA25_001_00_S', 'KA25_002_00_S', ...]).
     """
     data_dictionary = helpers.load_data_dictionary(
         constants.get_data_dictionary_path(),
@@ -586,15 +586,21 @@ def get_synthetic_datasets_by_noise_level(noise_level: str) -> list[str]:
     )
 
     # Filter to KA25 datasets with the specified noise level
-    # Pattern: KA25_{log_num}_{noise_level}_S
+    # Pattern: KA25_{log_num}_{noise_level}_S (log_num is 3 digits: 001-100)
+    # Handle both "0" and "00" formats for backward compatibility
     matching_datasets = []
     for dataset_key in data_dictionary.keys():
         if dataset_key.startswith("KA25_"):
-            # Extract noise level from dataset key (KA25_1_0_S -> "0")
+            # Extract noise level from dataset key (KA25_001_00_S -> "00")
             parts = dataset_key.split("_")
             if len(parts) >= 3:
-                dataset_noise_level = parts[2]  # e.g., "0", "20", "40"
-                if dataset_noise_level == noise_level:
+                dataset_noise_level = parts[2]  # e.g., "0", "00", "20", "40"
+                # Normalize: "0" and "00" both match noise_level "0"
+                if (
+                    dataset_noise_level == noise_level
+                    or (noise_level == "0" and dataset_noise_level == "00")
+                    or (noise_level == "00" and dataset_noise_level == "0")
+                ):
                     matching_datasets.append(dataset_key)
 
     return sorted(matching_datasets)

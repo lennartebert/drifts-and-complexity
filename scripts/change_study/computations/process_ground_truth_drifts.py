@@ -617,7 +617,7 @@ def process_all_logs_from_drift_info(
     valid_log_names = set()
     synthetic_base = PROJECT_ROOT / "data" / "synthetic"
     kraus_folders = [
-        "Kraus et al no noise",
+        "Kraus et al 00pct noise",
         "Kraus et al 20pct noise",
         "Kraus et al 40pct noise",
     ]
@@ -671,11 +671,13 @@ def process_all_logs_from_drift_info(
 
             match = re.match(r"log_(\d+)_", log_name)
             if match:
-                log_num = match.group(1)
+                log_num = int(
+                    match.group(1)
+                )  # Convert to int, then format with 3 digits
                 all_dataset_keys = [
-                    f"KA25_{log_num}_0_S",
-                    f"KA25_{log_num}_20_S",
-                    f"KA25_{log_num}_40_S",
+                    f"KA25_{log_num:03d}_00_S",
+                    f"KA25_{log_num:03d}_20_S",
+                    f"KA25_{log_num:03d}_40_S",
                 ]
             else:
                 print(
@@ -686,11 +688,11 @@ def process_all_logs_from_drift_info(
         # Process each matching dataset key
         for dataset_key in all_dataset_keys:
             # Determine path based on dataset key pattern
-            # KA25_21_0_S -> "Kraus et al no noise"
+            # KA25_21_0_S or KA25_21_00_S -> "Kraus et al 00pct noise"
             # KA25_21_20_S -> "Kraus et al 20pct noise"
             # KA25_21_40_S -> "Kraus et al 40pct noise"
-            if dataset_key.endswith("_0_S"):
-                folder_name = "Kraus et al no noise"
+            if dataset_key.endswith("_0_S") or dataset_key.endswith("_00_S"):
+                folder_name = "Kraus et al 00pct noise"
             elif dataset_key.endswith("_20_S"):
                 folder_name = "Kraus et al 20pct noise"
             elif dataset_key.endswith("_40_S"):
@@ -791,22 +793,25 @@ def update_data_dictionary_with_ground_truth(
 
                 match = re.match(r"KA25_(\d+)_(\d+)_S", dataset_key)
                 if match:
-                    log_num = match.group(1)
+                    log_num_str = match.group(1)
+                    log_num = int(log_num_str)  # Convert to int for display
                     noise_level = match.group(2)
 
                     # Determine folder name and noise description
-                    if noise_level == "0":
-                        folder_name = "Kraus et al no noise"
+                    # Handle both "0" and "00" formats for backward compatibility
+                    noise_level_int = int(noise_level) if noise_level.isdigit() else 0
+                    if noise_level_int == 0:
+                        folder_name = "Kraus et al 00pct noise"
                         noise_desc = "no noise"
-                    elif noise_level == "20":
+                    elif noise_level_int == 20:
                         folder_name = "Kraus et al 20pct noise"
                         noise_desc = "20% noise"
-                    elif noise_level == "40":
+                    elif noise_level_int == 40:
                         folder_name = "Kraus et al 40pct noise"
                         noise_desc = "40% noise"
                     else:
-                        folder_name = f"Kraus et al {noise_level}pct noise"
-                        noise_desc = f"{noise_level}% noise"
+                        folder_name = f"Kraus et al {noise_level_int}pct noise"
+                        noise_desc = f"{noise_level_int}% noise"
 
                     # Extract log name from ground truth path
                     # ground_truth_log_21_1692952246.csv -> log_21_1692952246.xes.gz
@@ -816,6 +821,7 @@ def update_data_dictionary_with_ground_truth(
                     xes_path = f"data/synthetic/{folder_name}/{log_name_base}.xes.gz"
 
                     # Create new entry (drift type will be generic, can be updated later if needed)
+                    # Use int(log_num) for display to show "log 1" instead of "log 01" for readability
                     data_dictionary[dataset_key] = {
                         "name": f"Synthetic data by Kraus and van der Aa (2025), log {log_num}, {noise_desc}",
                         "short_name": dataset_key,

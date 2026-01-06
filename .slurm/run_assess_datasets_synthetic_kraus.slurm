@@ -24,10 +24,12 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Python version: $(python --version 2
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Working directory: $(pwd)"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: SLURM_CPUS_PER_TASK: ${SLURM_CPUS_PER_TASK}"
 
-# Generate all 300 datasets: 100 logs (0-99) × 3 noise levels (0, 20, 40)
+# Generate all 300 datasets: 100 logs (1-100) × 3 noise levels (0, 20, 40)
+# Format with 3-digit log numbers: KA25_001_00_S, KA25_002_00_S, ..., KA25_100_00_S
 logs=()
-for log_num in {0..99}; do
-    logs+=("KA25_${log_num}_0_S" "KA25_${log_num}_20_S" "KA25_${log_num}_40_S")
+for log_num in {1..100}; do
+    log_num_padded=$(printf "%03d" ${log_num})
+    logs+=("KA25_${log_num_padded}_00_S" "KA25_${log_num_padded}_20_S" "KA25_${log_num_padded}_40_S")
 done
 
 CURRENT_LOG=${logs[$SLURM_ARRAY_TASK_ID]}
