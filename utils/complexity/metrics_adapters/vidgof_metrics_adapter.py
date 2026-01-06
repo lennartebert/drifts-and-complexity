@@ -81,49 +81,7 @@ class VidgofMetricsAdapter(MetricsAdapter):
         window: Window, metrics_to_compute: List[str]
     ) -> List[Measure]:
         traces = window.traces
-
-        # Filter out events with missing required fields before calling generate_log
-        # This handles cases where noise in synthetic logs removes attributes
-        # Note: trace.attributes['concept:name'] is optional - generate_log will use trace index as fallback
-        from pm4py.objects.log.obj import Trace
-        from pm4py.util import xes_constants as xes
-
-        concept_name_key = xes.DEFAULT_NAME_KEY
-
-        # Filter traces to remove events with missing required attributes
-        filtered_traces = []
-        skipped_events_count = 0
-
-        for trace_idx, trace in enumerate(traces):
-            filtered_trace = Trace()
-            filtered_trace.attributes = trace.attributes.copy()
-
-            for event_idx, event in enumerate(trace):
-                # Skip events missing required attributes
-                if concept_name_key not in event or "time:timestamp" not in event:
-                    skipped_events_count += 1
-                    continue
-                filtered_trace.append(event)
-
-            # Only include traces that have at least one valid event
-            if len(filtered_trace) > 0:
-                filtered_traces.append(filtered_trace)
-
-        if skipped_events_count > 0:
-            print(
-                f"WARNING: Skipped {skipped_events_count} event(s) with missing required attributes "
-                f"('{concept_name_key}' or 'time:timestamp') in window {window.id}"
-            )
-
-        if not filtered_traces:
-            # If all events were filtered out, return empty measures
-            print(
-                f"WARNING: All events in window {window.id} were filtered out due to missing attributes. "
-                f"Returning empty measures."
-            )
-            return []
-
-        log = generate_log(filtered_traces, verbose=False)
+        log = generate_log(traces, verbose=False)
         pa = build_graph(log, verbose=False, accepting=False)
 
         measures = []
