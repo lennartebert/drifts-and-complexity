@@ -113,11 +113,16 @@ def add_concept_name_if_missing(xes_file_path: Path) -> bool:
 
     concept_name_key = xes.DEFAULT_NAME_KEY
     is_gzipped = xes_file_path.name.endswith(".gz")
-    temp_xes_path = (
-        xes_file_path.with_name(xes_file_path.stem) if is_gzipped else xes_file_path
-    )
+
+    # For .gz files, we need a temp .xes file to work with
+    if is_gzipped:
+        # Remove .gz to get base .xes name
+        temp_xes_path = xes_file_path.with_suffix("")
+    else:
+        temp_xes_path = xes_file_path
 
     try:
+        # Decompress if needed
         if is_gzipped:
             with (
                 gzip.open(xes_file_path, "rb") as gz_file,
@@ -125,6 +130,7 @@ def add_concept_name_if_missing(xes_file_path: Path) -> bool:
             ):
                 shutil.copyfileobj(gz_file, xes_file)
 
+        # Load the log
         log = xes_importer.apply(str(temp_xes_path))
 
         # Check and fix missing concept:name
@@ -144,20 +150,32 @@ def add_concept_name_if_missing(xes_file_path: Path) -> bool:
                     )
 
         if not needs_fix:
-            if temp_xes_path.exists() and temp_xes_path != xes_file_path:
+            # Clean up temp file if we created one
+            if is_gzipped and temp_xes_path.exists():
                 temp_xes_path.unlink()
             return False
 
-        # Save fixed log
+        # Save fixed log to temp .xes file
         xes_exporter.apply(log, str(temp_xes_path))
-        xes_gz_path = temp_xes_path.with_suffix(temp_xes_path.suffix + ".gz")
-        with open(temp_xes_path, "rb") as xes_f, gzip.open(xes_gz_path, "wb") as gz_f:
+
+        # Compress to .gz (always create .gz, even if original wasn't)
+        final_gz_path = temp_xes_path.with_suffix(".xes.gz")
+        with open(temp_xes_path, "rb") as xes_f, gzip.open(final_gz_path, "wb") as gz_f:
             shutil.copyfileobj(xes_f, gz_f)
 
+        # Clean up temp .xes file
         if temp_xes_path.exists():
             temp_xes_path.unlink()
-        if not is_gzipped and xes_file_path.exists():
+
+        # Replace original file with fixed version
+        if is_gzipped:
+            # Replace the original .gz file
             xes_file_path.unlink()
+            final_gz_path.rename(xes_file_path)
+        else:
+            # Original was .xes, replace it with .gz version
+            xes_file_path.unlink()
+            final_gz_path.rename(xes_file_path)
 
         print(
             f"    Fixed {fixed_count} events missing concept:name in {xes_file_path.name}"
@@ -165,8 +183,43 @@ def add_concept_name_if_missing(xes_file_path: Path) -> bool:
         return True
     except Exception as e:
         print(f"    ERROR processing {xes_file_path.name}: {e}")
-        if temp_xes_path.exists() and temp_xes_path != xes_file_path:
+        import traceback
+
+        traceback.print_exc()
+        # Clean up temp files
+        if is_gzipped and temp_xes_path.exists() and temp_xes_path != xes_file_path:
             temp_xes_path.unlink()
+        return False
+
+
+def verify_concept_name_exists(xes_file_path: Path) -> bool:
+    """Verify that all events in the file have concept:name. Returns True if all events have it."""
+    if not xes_file_path.exists():
+        return False
+
+    concept_name_key = xes.DEFAULT_NAME_KEY
+    is_gzipped = xes_file_path.name.endswith(".gz")
+
+    try:
+        if is_gzipped:
+            temp_xes_path = xes_file_path.with_suffix("")
+            with (
+                gzip.open(xes_file_path, "rb") as gz_file,
+                open(temp_xes_path, "wb") as xes_file,
+            ):
+                shutil.copyfileobj(gz_file, xes_file)
+            log = xes_importer.apply(str(temp_xes_path))
+            temp_xes_path.unlink()
+        else:
+            log = xes_importer.apply(str(xes_file_path))
+
+        # Check all events
+        for trace in log:
+            for event in trace:
+                if concept_name_key not in event:
+                    return False
+        return True
+    except Exception:
         return False
 
 
@@ -490,48 +543,94 @@ def update_data_dictionary_with_ground_truth(
 
 
 def process_all_kraus_datasets(
-    test_mode: bool = False, max_logs: int | None = None
+    test_mode: bool = False, max_logs: int | None = None, start_from_step: int = 1
 ) -> None:
-    """Process all Kraus datasets: unpack, convert, fix, and generate ground truth."""
+    """Process all Kraus datasets: unpack, convert, fix, and generate ground truth.
+
+    Parameters
+    ----------
+    test_mode
+        If True, use simplified configuration for faster testing.
+    max_logs
+        Maximum number of logs to process (None = all).
+    start_from_step
+        Step number to start from (1-4). Steps before this will be skipped.
+    """
     print("=== Importing Synthetic Data from Kraus et al. (2025) ===\n")
 
+    if start_from_step > 1:
+        print(
+            f"Starting from step {start_from_step} (skipping steps 1-{start_from_step-1})\n"
+        )
+
     # Step 1: Unpack .xes files from zip archives
-    print("Step 1: Unpacking .xes files from zip archives...")
-    unpack_zip_files()
+    if start_from_step <= 1:
+        print("Step 1: Unpacking .xes files from zip archives...")
+        unpack_zip_files()
+    else:
+        print("Step 1: Skipped (already completed)")
 
     # Step 2: Convert .xes to .xes.gz
-    print("\nStep 2: Converting .xes to .xes.gz...")
-    for _, target_folder in ZIP_MAPPINGS:
-        folder_path = SYNTHETIC_BASE_PATH / target_folder
-        if folder_path.exists():
-            convert_xes_to_xes_gz(folder_path)
+    if start_from_step <= 2:
+        print("\nStep 2: Converting .xes to .xes.gz...")
+        for _, target_folder in ZIP_MAPPINGS:
+            folder_path = SYNTHETIC_BASE_PATH / target_folder
+            if folder_path.exists():
+                convert_xes_to_xes_gz(folder_path)
+    else:
+        print("\nStep 2: Skipped (already completed)")
 
     # Step 3: Ensure concept:name exists in all .xes.gz files
-    print("\nStep 3: Ensuring concept:name exists in all .xes.gz files...")
-    for _, target_folder in ZIP_MAPPINGS:
-        folder_path = SYNTHETIC_BASE_PATH / target_folder
-        if folder_path.exists():
-            xes_gz_files = list(folder_path.glob("*.xes.gz"))
-            if xes_gz_files:
-                print(f"  Checking {len(xes_gz_files)} .gz files in {target_folder}...")
-                fixed_count = sum(
-                    1 for f in xes_gz_files if add_concept_name_if_missing(f)
-                )
-                if fixed_count > 0:
-                    print(f"    Fixed concept:name in {fixed_count} file(s)")
-                else:
-                    print(f"    All files already have concept:name")
+    if start_from_step <= 3:
+        print("\nStep 3: Ensuring concept:name exists in all .xes.gz files...")
+        for _, target_folder in ZIP_MAPPINGS:
+            folder_path = SYNTHETIC_BASE_PATH / target_folder
+            if folder_path.exists():
+                xes_gz_files = list(folder_path.glob("*.xes.gz"))
+                if xes_gz_files:
+                    print(
+                        f"  Checking {len(xes_gz_files)} .gz files in {target_folder}..."
+                    )
+                    fixed_count = 0
+                    error_count = 0
+                    for f in xes_gz_files:
+                        try:
+                            if add_concept_name_if_missing(f):
+                                fixed_count += 1
+                            # Verify the file is now correct
+                            if not verify_concept_name_exists(f):
+                                print(
+                                    f"    WARNING: {f.name} still has missing concept:name after fix attempt"
+                                )
+                                error_count += 1
+                        except Exception as e:
+                            print(f"    ERROR processing {f.name}: {e}")
+                            error_count += 1
+
+                    if error_count > 0:
+                        print(f"    WARNING: {error_count} file(s) had errors")
+                    if fixed_count > 0:
+                        print(f"    Fixed concept:name in {fixed_count} file(s)")
+                    else:
+                        print(f"    All files already have concept:name")
+    else:
+        print("\nStep 3: Skipped (already completed)")
 
     # Step 4: Process ground truth and update data dictionary
-    print("\nStep 4: Processing ground truth drifts and updating data dictionary...")
-    if not DRIFT_INFO_CSV_PATH.exists():
-        print(f"ERROR: Drift info CSV not found: {DRIFT_INFO_CSV_PATH}")
-        return
+    if start_from_step <= 4:
+        print(
+            "\nStep 4: Processing ground truth drifts and updating data dictionary..."
+        )
+        if not DRIFT_INFO_CSV_PATH.exists():
+            print(f"ERROR: Drift info CSV not found: {DRIFT_INFO_CSV_PATH}")
+            return
 
-    dataset_to_output_path = process_all_logs_from_drift_info(
-        DRIFT_INFO_CSV_PATH, max_logs=max_logs
-    )
-    update_data_dictionary_with_ground_truth(dataset_to_output_path)
+        dataset_to_output_path = process_all_logs_from_drift_info(
+            DRIFT_INFO_CSV_PATH, max_logs=max_logs
+        )
+        update_data_dictionary_with_ground_truth(dataset_to_output_path)
+    else:
+        print("\nStep 4: Skipped (already completed)")
 
     print("\n=== Import complete ===")
 
@@ -549,11 +648,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-logs", type=int, default=None, help="Maximum number of logs to process."
     )
+    parser.add_argument(
+        "--start-from-step",
+        type=int,
+        default=1,
+        choices=[1, 2, 3, 4],
+        help="Step number to start from (1=unpack, 2=convert, 3=fix concept:name, 4=ground truth). Steps before this will be skipped.",
+    )
 
     args = parser.parse_args()
 
     if args.process_all:
-        process_all_kraus_datasets(test_mode=args.test, max_logs=args.max_logs)
+        process_all_kraus_datasets(
+            test_mode=args.test,
+            max_logs=args.max_logs,
+            start_from_step=args.start_from_step,
+        )
     else:
         parser.print_help()
         print("\nUse --process-all to import all synthetic datasets.")
