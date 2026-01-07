@@ -46,9 +46,18 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script with ground-tr
 python -m scripts.change_study.computations.assess_datasets --datasets ${CURRENT_LOG} --mode ground-truth-drifts
 EXIT_CODE=$?
 
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Assessment failed for log: ${CURRENT_LOG} (Array task ID: ${SLURM_ARRAY_TASK_ID}) in ground-truth-drifts mode - Exit code: ${EXIT_CODE}"
+    exit $EXIT_CODE
+fi
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script with all mode..."
+python -m scripts.change_study.computations.assess_datasets --datasets ${CURRENT_LOG} --mode all
+EXIT_CODE=$?
+
 if [ $EXIT_CODE -eq 0 ]; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Completed assessment for log: ${CURRENT_LOG} (Array task ID: ${SLURM_ARRAY_TASK_ID}) - Exit code: ${EXIT_CODE}"
 else
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Assessment failed for log: ${CURRENT_LOG} (Array task ID: ${SLURM_ARRAY_TASK_ID}) - Exit code: ${EXIT_CODE}"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Assessment failed for log: ${CURRENT_LOG} (Array task ID: ${SLURM_ARRAY_TASK_ID}) in all mode - Exit code: ${EXIT_CODE}"
     exit $EXIT_CODE
 fi
