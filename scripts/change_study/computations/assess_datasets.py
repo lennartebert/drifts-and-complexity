@@ -317,6 +317,7 @@ def concept_drift_complexity_assessment(
     dataset_info: dict[str, Any],
     concept_drift_info_path: Path,
     test_mode: bool = False,
+    fig_format: str = "pdf",
 ) -> None:
     """
     Orchestrator:
@@ -334,6 +335,8 @@ def concept_drift_complexity_assessment(
         Path to drift detection results CSV.
     test_mode
         If True, use simplified configuration for faster testing.
+    fig_format
+        Figure format to save (e.g., 'pdf', 'png', 'jpg'). Default is 'pdf'.
     """
     print("## Running concept drift complexity assessment ##")
 
@@ -378,7 +381,7 @@ def concept_drift_complexity_assessment(
 
         # Optional plotting knobs from YAML
         y_log = bool(p.get("y_log", False))
-        fig_format = p.get("fig_format", "png")
+        # Use fig_format from function parameter (overrides YAML config)
         headroom = float(p.get("headroom", 0.10))
         point_position = p.get(
             "point_position", "end_w2"
@@ -543,6 +546,7 @@ def main_per_dataset(
     dataset_info: dict[str, Any],
     mode: str = "all",
     test_mode: bool = False,
+    fig_format: str = "pdf",
 ) -> None:
     """
     Process a single dataset.
@@ -557,6 +561,8 @@ def main_per_dataset(
         Processing mode: 'all', 'detection-only', 'complexity-only', or 'ground-truth-drifts'.
     test_mode
         If True, use simplified configuration for faster testing.
+    fig_format
+        Figure format to save (e.g., 'pdf', 'png', 'jpg'). Default is 'pdf'.
     """
     print(f"### Processing dataset: {dataset_key} ###")
     normalized_mode = normalize_mode(mode)
@@ -595,6 +601,7 @@ def main_per_dataset(
                 dataset_info,
                 concept_drift_info_path,
                 test_mode=test_mode,
+                fig_format=fig_format,
             )
 
 
@@ -602,6 +609,7 @@ def main(
     datasets: list[str] | None = None,
     mode: str = "all",
     test_mode: bool = False,
+    fig_format: str = "pdf",
 ) -> None:
     """
     Main entry point for drift complexity analysis.
@@ -614,6 +622,8 @@ def main(
         Processing mode: 'all', 'detection-only', 'complexity-only', or 'ground-truth-drifts'.
     test_mode
         If True, use simplified configuration for faster testing.
+    fig_format
+        Figure format to save (e.g., 'pdf', 'png', 'jpg'). Default is 'pdf'.
     """
     print(f"#### Starting drift complexity analysis ####")
     if test_mode:
@@ -651,6 +661,7 @@ def main(
             dataset_info,
             normalized_mode,
             test_mode=test_mode,
+            fig_format=fig_format,
         )
 
 
@@ -678,6 +689,13 @@ if __name__ == "__main__":
         "Prefers existing drift detection results when available, "
         "uses minimal config.",
     )
+    parser.add_argument(
+        "--fig-format",
+        type=str,
+        default="pdf",
+        choices=["pdf", "png", "jpg", "jpeg"],
+        help="Figure format to save graphs (default: pdf). Options: pdf, png, jpg, jpeg.",
+    )
     args = parser.parse_args()
 
     # If test mode: use supplied datasets if provided, otherwise default to TEST_BPIC12
@@ -686,8 +704,12 @@ if __name__ == "__main__":
         args.datasets if args.datasets else (["TEST_BPIC12"] if args.test else None)
     )
 
+    # Normalize jpeg to jpg for consistency
+    fig_format = "jpg" if args.fig_format == "jpeg" else args.fig_format
+
     main(
         datasets=selected_datasets,
         mode=args.mode,
         test_mode=args.test,
+        fig_format=fig_format,
     )

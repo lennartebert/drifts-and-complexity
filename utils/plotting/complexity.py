@@ -391,7 +391,11 @@ def _plot_single_cp_segments(
     # Only save if we created the figure
     if created_figure:
         _finalize_and_save(
-            ax, dataset_key, configuration_name, f"{mname}_time.{fig_format}"
+            ax,
+            dataset_key,
+            configuration_name,
+            f"{mname}_time.{fig_format}",
+            fig_format=fig_format,
         )
 
     return ax
@@ -501,7 +505,11 @@ def _plot_single_cp_segments_traces(
     _draw_start_end_and_cps_traces(ax, x_start, x_end, drift_info_by_id, df)
 
     _finalize_and_save(
-        ax, dataset_key, configuration_name, f"{mname}_traces.{fig_format}"
+        ax,
+        dataset_key,
+        configuration_name,
+        f"{mname}_traces.{fig_format}",
+        fig_format=fig_format,
     )
 
 
@@ -600,7 +608,11 @@ def _plot_single_fixed_line(
     # Only save if we created the figure
     if created_figure:
         _finalize_and_save(
-            ax, dataset_key, configuration_name, f"{mname}_time.{fig_format}"
+            ax,
+            dataset_key,
+            configuration_name,
+            f"{mname}_time.{fig_format}",
+            fig_format=fig_format,
         )
 
     return ax
@@ -679,7 +691,11 @@ def _plot_single_fixed_line_traces(
     _draw_start_end_and_cps_traces(ax, x_start, x_end, drift_info_by_id, df)
 
     _finalize_and_save(
-        ax, dataset_key, configuration_name, f"{mname}_traces.{fig_format}"
+        ax,
+        dataset_key,
+        configuration_name,
+        f"{mname}_traces.{fig_format}",
+        fig_format=fig_format,
     )
 
 
@@ -798,7 +814,11 @@ def _plot_combined_single_time(
 
     # Save combined plot
     _finalize_and_save(
-        ax, dataset_key, configuration_name, f"{mname}_combined_time.{fig_format}"
+        ax,
+        dataset_key,
+        configuration_name,
+        f"{mname}_combined_time.{fig_format}",
+        fig_format=fig_format,
     )
 
 
@@ -957,7 +977,11 @@ def _plot_combined_single_traces(
 
     # Save combined plot
     _finalize_and_save(
-        ax, dataset_key, configuration_name, f"{mname}_combined_traces.{fig_format}"
+        ax,
+        dataset_key,
+        configuration_name,
+        f"{mname}_combined_traces.{fig_format}",
+        fig_format=fig_format,
     )
 
 
@@ -1018,7 +1042,11 @@ def _plot_single_delta_line(
     )
 
     _finalize_and_save(
-        ax, dataset_key, configuration_name, f"delta_{dname}_time.{fig_format}"
+        ax,
+        dataset_key,
+        configuration_name,
+        f"delta_{dname}_time.{fig_format}",
+        fig_format=fig_format,
     )
 
 
@@ -1426,7 +1454,11 @@ def _draw_start_end_and_cps_traces(
 
 
 def _finalize_and_save(
-    ax: plt.Axes, dataset_key: str, configuration_name: str, filename: str
+    ax: plt.Axes,
+    dataset_key: str,
+    configuration_name: str,
+    filename: str,
+    fig_format: str = "pdf",
 ) -> None:
     mname = ax.get_ylabel()  # may be empty if not set yet
 
@@ -1475,12 +1507,16 @@ def _finalize_and_save(
     out_dir = COMPLEXITY_RESULTS_DIR / dataset_key / configuration_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Extract base filename without extension to save both PNG and PDF
+    # Extract base filename without extension
     filename_path = Path(filename)
     base_filename = filename_path.stem  # filename without extension
 
-    # Save both PNG and PDF formats
-    for fmt in ["png", "pdf"]:
+    # Normalize jpeg to jpg for consistency
+    fmt = "jpg" if fig_format == "jpeg" else fig_format
+
+    # Save only the specified format
+    formats_to_save = [fmt]
+    for fmt in formats_to_save:
         out_path = out_dir / f"{base_filename}.{fmt}"
         try:
             import platform
@@ -1509,6 +1545,8 @@ def _finalize_and_save(
                             save_kwargs["pil_kwargs"] = {
                                 "optimize": False
                             }  # Disable PIL optimization for PNG
+                        elif fmt == "jpg":
+                            save_kwargs["dpi"] = save_dpi
                         else:  # PDF
                             save_kwargs["bbox_inches"] = "tight"
                         fig.savefig(out_path, **save_kwargs)
@@ -1531,14 +1569,15 @@ def _finalize_and_save(
                         f"savefig() timed out after {timeout} seconds on Windows"
                     )
             else:
-                save_dpi = 600 if fmt == "png" else None
-                fig.savefig(
-                    out_path,
-                    dpi=save_dpi,
-                    format=fmt,
-                    facecolor="white",
-                    bbox_inches="tight",
-                )
+                save_dpi = 600 if fmt in ("png", "jpg") else None
+                save_kwargs = {
+                    "format": fmt,
+                    "facecolor": "white",
+                    "bbox_inches": "tight",
+                }
+                if save_dpi is not None:
+                    save_kwargs["dpi"] = save_dpi
+                fig.savefig(out_path, **save_kwargs)
         except PermissionError as e:
             # File is likely open in a viewer - just warn and continue
             print(

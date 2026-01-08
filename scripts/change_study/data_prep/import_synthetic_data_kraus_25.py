@@ -277,7 +277,15 @@ def extract_drift_info_from_csv(
             & (log_df["drift_attribute"] == drift_attribute)
         ]
 
-        for attr in ["change_start", "change_end", "drift_id", "drift_type"]:
+        for attr in [
+            "change_start",
+            "change_end",
+            "drift_id",
+            "drift_type",
+            "activities_deleted",
+            "activities_added",
+            "activities_moved",
+        ]:
             rows = sub_df[sub_df["drift_sub_attribute"] == attr]
             if not rows.empty:
                 info[attr] = rows.iloc[0]["value"]
@@ -322,6 +330,9 @@ def process_gradual_drifts(
                     "drift_id": info.get("drift_id"),
                     "drift_type": info.get("drift_type"),
                     "process_change_id": info.get("process_change_id"),
+                    "activities_deleted": info.get("activities_deleted"),
+                    "activities_added": info.get("activities_added"),
+                    "activities_moved": info.get("activities_moved"),
                     "change_id": change_id_counter,
                 }
                 change_id_counter += 1
@@ -336,6 +347,9 @@ def process_gradual_drifts(
                 "drift_id": info.get("drift_id"),
                 "drift_type": info.get("drift_type"),
                 "process_change_id": info.get("process_change_id"),
+                "activities_deleted": info.get("activities_deleted"),
+                "activities_added": info.get("activities_added"),
+                "activities_moved": info.get("activities_moved"),
                 "change_id": change_id_counter,
             }
             change_id_counter += 1
@@ -362,6 +376,9 @@ def convert_to_drift_detection_format(
                 "calc_change_moment",
                 "calc_change_type",
                 "calc_drift_type",
+                "activities_deleted",
+                "activities_added",
+                "activities_moved",
                 "config_method",
                 "config_constant_alpha",
                 "config_similarity",
@@ -394,6 +411,9 @@ def convert_to_drift_detection_format(
                 "calc_change_moment": change_moment,
                 "calc_change_type": change_type,
                 "calc_drift_type": info.get("drift_type", ""),
+                "activities_deleted": info.get("activities_deleted", ""),
+                "activities_added": info.get("activities_added", ""),
+                "activities_moved": info.get("activities_moved", ""),
                 "config_method": "",
                 "config_constant_alpha": "",
                 "config_similarity": "",

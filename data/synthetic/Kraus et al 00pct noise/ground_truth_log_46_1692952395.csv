@@ -1,4 +1,4 @@
-collection_name,eval_noise_level,eval_complexity,log_size,log_name,calc_drift_id,calc_process_change_id,calc_change_id,calc_change_index,calc_change_moment,calc_change_type,calc_drift_type,config_method,config_constant_alpha,config_similarity,config_incremental,config_recurring,config_steps
-,,,,KA25_046_00_S,,1,1,1416,2021-10-07 19:13:27.983631,sudden,,,,,,,
-,,,,KA25_046_00_S,,2,2,2620,2023-04-08 22:49:45.443521,sudden,,,,,,,
-,,,,KA25_046_00_S,,3,3,3913,2024-11-30 06:09:48.199345,sudden,,,,,,,
+collection_name,eval_noise_level,eval_complexity,log_size,log_name,calc_drift_id,calc_process_change_id,calc_change_id,calc_change_index,calc_change_moment,calc_change_type,calc_drift_type,activities_deleted,activities_added,activities_moved,config_method,config_constant_alpha,config_similarity,config_incremental,config_recurring,config_steps
+,,,,KA25_046_00_S,,1,1,1416,2021-10-07 19:13:27.983631,sudden,,[],[Random activity 1],[],,,,,,
+,,,,KA25_046_00_S,,2,2,2620,2023-04-08 22:49:45.443521,sudden,,[a],[],[],,,,,,
+,,,,KA25_046_00_S,,3,3,3913,2024-11-30 06:09:48.199345,sudden,,[],[Random activity 2],[],,,,,,

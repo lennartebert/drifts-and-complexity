@@ -43,7 +43,7 @@ python -c "import scripts.change_study.computations.assess_datasets; print('Modu
 }
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script with ground-truth-drifts mode..."
-python -m scripts.change_study.computations.assess_datasets --datasets ${CURRENT_LOG} --mode ground-truth-drifts
+python -m scripts.change_study.computations.assess_datasets --datasets ${CURRENT_LOG} --mode ground-truth-drifts --fig-format pdf
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then
@@ -52,7 +52,7 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script with all mode..."
-python -m scripts.change_study.computations.assess_datasets --datasets ${CURRENT_LOG} --mode all
+python -m scripts.change_study.computations.assess_datasets --datasets ${CURRENT_LOG} --mode all --fig-format pdf
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then

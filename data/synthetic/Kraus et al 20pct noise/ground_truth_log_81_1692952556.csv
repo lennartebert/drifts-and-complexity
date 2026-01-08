@@ -1,6 +1,6 @@
-collection_name,eval_noise_level,eval_complexity,log_size,log_name,calc_drift_id,calc_process_change_id,calc_change_id,calc_change_index,calc_change_moment,calc_change_type,calc_drift_type,config_method,config_constant_alpha,config_similarity,config_incremental,config_recurring,config_steps
-,,,,KA25_081_20_S,,1,1,1270,2021-08-17 03:31:04.175578,gradual_start,,,,,,,
-,,,,KA25_081_20_S,,1,2,2223,2022-10-24 18:57:41.385731,gradual_end,,,,,,,
-,,,,KA25_081_20_S,,1,3,3514,2024-06-30 23:21:23.624234,sudden,,,,,,,
-,,,,KA25_081_20_S,,1,4,4835,2026-02-19 21:07:31.534208,gradual_start,,,,,,,
-,,,,KA25_081_20_S,,1,5,5383,2026-11-04 08:59:43.920394,gradual_end,,,,,,,
+collection_name,eval_noise_level,eval_complexity,log_size,log_name,calc_drift_id,calc_process_change_id,calc_change_id,calc_change_index,calc_change_moment,calc_change_type,calc_drift_type,activities_deleted,activities_added,activities_moved,config_method,config_constant_alpha,config_similarity,config_incremental,config_recurring,config_steps
+,,,,KA25_081_20_S,,1,1,1270,2021-08-17 03:31:04.175578,gradual_start,,[],[],"[c, d]",,,,,,
+,,,,KA25_081_20_S,,1,2,2223,2022-10-24 18:57:41.385731,gradual_end,,[],[],"[c, d]",,,,,,
+,,,,KA25_081_20_S,,1,3,3514,2024-06-30 23:21:23.624234,sudden,,[],[Random activity 1],"[g, a]",,,,,,
+,,,,KA25_081_20_S,,1,4,4835,2026-02-19 21:07:31.534208,gradual_start,,[],[Random activity 1],"[e, f]",,,,,,
+,,,,KA25_081_20_S,,1,5,5383,2026-11-04 08:59:43.920394,gradual_end,,[],[Random activity 1],"[e, f]",,,,,,

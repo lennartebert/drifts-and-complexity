@@ -1,3 +1,3 @@
-collection_name,eval_noise_level,eval_complexity,log_size,log_name,calc_drift_id,calc_process_change_id,calc_change_id,calc_change_index,calc_change_moment,calc_change_type,calc_drift_type,config_method,config_constant_alpha,config_similarity,config_incremental,config_recurring,config_steps
-,,,,KA25_053_40_S,,1,1,1168,2021-06-30 14:20:02.088439,gradual_start,,,,,,,
-,,,,KA25_053_40_S,,1,2,2007,2022-07-31 16:42:03.281298,gradual_end,,,,,,,
+collection_name,eval_noise_level,eval_complexity,log_size,log_name,calc_drift_id,calc_process_change_id,calc_change_id,calc_change_index,calc_change_moment,calc_change_type,calc_drift_type,activities_deleted,activities_added,activities_moved,config_method,config_constant_alpha,config_similarity,config_incremental,config_recurring,config_steps
+,,,,KA25_053_40_S,,1,1,1168,2021-06-30 14:20:02.088439,gradual_start,,[],[],"[i, k]",,,,,,
+,,,,KA25_053_40_S,,1,2,2007,2022-07-31 16:42:03.281298,gradual_end,,[],[],"[i, k]",,,,,,
