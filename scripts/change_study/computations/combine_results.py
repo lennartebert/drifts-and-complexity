@@ -346,7 +346,14 @@ def save_aggregated_table(results_df, cp_parameter_setting, results_subfolder="r
     results_df_clean = results_df.dropna()
     change_types = results_df_clean["change_type"].unique()
 
-    measure_cols = [col for col in results_df_clean.columns if col != "change_type"]
+    # Only include numeric columns, excluding "change_type" and "event_log"
+    exclude_cols = ["change_type", "event_log"]
+    measure_cols = [
+        col
+        for col in results_df_clean.columns
+        if col not in exclude_cols
+        and pd.api.types.is_numeric_dtype(results_df_clean[col])
+    ]
     records = []
     alpha = 0.05  # Significance level
 
@@ -607,7 +614,13 @@ def get_synthetic_datasets_by_noise_level(noise_level: str) -> list[str]:
 
 
 def save_boxplots(results_df, cp_parameter_setting, results_subfolder="real"):
-    measure_names = [col for col in results_df.columns if col != "change_type"]
+    # Only include numeric columns, excluding "change_type" and "event_log"
+    exclude_cols = ["change_type", "event_log"]
+    measure_names = [
+        col
+        for col in results_df.columns
+        if col not in exclude_cols and pd.api.types.is_numeric_dtype(results_df[col])
+    ]
 
     for measure in measure_names:
         plt.figure(figsize=(8, 5))
