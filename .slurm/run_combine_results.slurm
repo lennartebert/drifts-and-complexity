@@ -24,7 +24,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Working directory: $(pwd)"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: SLURM_CPUS_PER_TASK: ${SLURM_CPUS_PER_TASK}"
 
 # Define the same dataset list as in run_assess_datasets.slurm
-logs=(ACCRE BPIC12 BPIC13_cp BPIC13_i BPIC14 BPIC15_1 BPIC15_2 BPIC15_3 BPIC15_4 BPIC15_5 BPIC17 BPIC18 BPIC19 BPIC20_dd BPIC20_id BPIC20_ptc BPIC20_rfp BPIC20_tpd CALL ITHD MOBIS RTFMP SEPSIS)
+logs=(ACCRE BPIC11 BPIC12 BPIC13_cp BPIC13_i BPIC14 BPIC15_1 BPIC15_2 BPIC15_3 BPIC15_4 BPIC15_5 BPIC17 BPIC18 BPIC19 BPIC20_dd BPIC20_id BPIC20_ptc BPIC20_rfp BPIC20_tpd CALL ITHD MOBIS RTFMP SEPSIS)
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting to combine results from all datasets (${#logs[@]} datasets)"
 
@@ -35,8 +35,12 @@ python -c "import scripts.change_study.computations.combine_results; print('Modu
     exit 1
 }
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script..."
-python -m scripts.change_study.computations.combine_results --datasets "${logs[@]}" --results-subfolder real
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script for processGraphsPDefaultWDefault..."
+python -m scripts.change_study.computations.combine_results --datasets "${logs[@]}" --results-subfolder real_processGraphsPDefaultWDefault --cp-parameter-setting processGraphsPDefaultWDefault
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script for processGraphsPDefaultWDefault..."
+python -m scripts.change_study.computations.combine_results --datasets "${logs[@]}" --results-subfolder real_emd200 --cp-parameter-setting emd200
+
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
