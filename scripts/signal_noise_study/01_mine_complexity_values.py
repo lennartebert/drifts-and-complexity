@@ -10,6 +10,7 @@ Supports parallelization and resume capability.
 from __future__ import annotations
 
 import os
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -452,33 +453,51 @@ def main(n_jobs: int | None = None) -> None:
 
     print(f"Processing {len(tasks_to_process)} tasks in parallel...")
 
-    # Process tasks in parallel
-    results = run_parallel(
-        tasks_to_process,
-        process_single_task,
-        backend="auto",
-        n_jobs=n_jobs,
-        unordered=True,
-    )
-
-    # Collect successful results with their tasks
+    # Process tasks in parallel and write results as they complete
     results_batch = []
     successful_count = 0
     failed_count = 0
 
-    for task, result in zip(tasks_to_process, results):
-        if result is not None:
-            metrics_df, analysis_df = result
-            results_batch.append((task, metrics_df, analysis_df))
-            successful_count += 1
+    # Create a mapping from future to task for tracking
+    task_future_map = {}
 
-            # Write batch when buffer is full
-            if len(results_batch) >= BATCH_SIZE:
-                write_batch_results(results_batch)
-                print(f"  Written batch of {len(results_batch)} results...")
-                results_batch = []
-        else:
-            failed_count += 1
+    # Set BLAS safety (prevent oversubscription)
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("NUMEXPR_MAX_THREADS", "1")
+
+    # Use ProcessPoolExecutor to process results as they complete
+    with ProcessPoolExecutor(max_workers=n_jobs) as executor:
+        # Submit all tasks
+        for task in tasks_to_process:
+            future = executor.submit(process_single_task, task)
+            task_future_map[future] = task
+
+        # Process results as they complete
+        for future in as_completed(task_future_map):
+            task = task_future_map[future]
+            try:
+                result = future.result()
+                if result is not None:
+                    metrics_df, analysis_df = result
+                    results_batch.append((task, metrics_df, analysis_df))
+                    successful_count += 1
+
+                    # Write batch when buffer is full
+                    if len(results_batch) >= BATCH_SIZE:
+                        write_batch_results(results_batch)
+                        print(
+                            f"  Written batch of {len(results_batch)} results... ({successful_count}/{len(tasks_to_process)} completed)"
+                        )
+                        results_batch = []
+                else:
+                    failed_count += 1
+            except Exception as e:
+                print(
+                    f"  Error getting result for task {task.log_id}/{task.split_name}/{task.window_size}: {e}"
+                )
+                failed_count += 1
 
     # Write remaining results
     if results_batch:
