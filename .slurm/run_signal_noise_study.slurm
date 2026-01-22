@@ -21,6 +21,9 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Python version: $(python --version 2
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Working directory: $(pwd)"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: SLURM_CPUS_PER_TASK: ${SLURM_CPUS_PER_TASK}"
 
+# Set PYTHONPATH to project root so imports work
+export PYTHONPATH="$(pwd):${PYTHONPATH}"
+
 # Test if the script file exists
 SCRIPT_PATH="scripts/signal_noise_study/01_mine_complexity_values.py"
 if [ ! -f "$SCRIPT_PATH" ]; then
