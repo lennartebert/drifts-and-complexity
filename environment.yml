@@ -19,7 +19,6 @@ dependencies:
   - graphviz
   - python-graphviz
 
-
   # Testing
   - pytest
   - pytest-cov
@@ -46,3 +45,4 @@ dependencies:
       - types-setuptools
       - jupyter
       - ipython
+      - ruptures

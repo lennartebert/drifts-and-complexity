@@ -318,6 +318,7 @@ def concept_drift_complexity_assessment(
     concept_drift_info_path: Path,
     test_mode: bool = False,
     fig_format: str = "pdf",
+    filter_approach_types: list[str] | None = None,
 ) -> None:
     """
     Orchestrator:
@@ -337,11 +338,21 @@ def concept_drift_complexity_assessment(
         If True, use simplified configuration for faster testing.
     fig_format
         Figure format to save (e.g., 'pdf', 'png', 'jpg'). Default is 'pdf'.
+    filter_approach_types
+        Optional list of approach types to filter (e.g., ['change_point_windows']).
+        If None, all approaches from config are used.
     """
     print("## Running concept drift complexity assessment ##")
 
     # Load approaches & drift info
     approaches = load_window_config(WINDOW_CONFIG_FILE_PATH)
+
+    # Filter by approach types if specified
+    if filter_approach_types:
+        approaches = [apc for apc in approaches if apc["type"] in filter_approach_types]
+        print(
+            f"## Filtered to {len(approaches)} approach(es) of type(s): {', '.join(filter_approach_types)} ##"
+        )
 
     # In test mode, use the first change_point_windows and first fixed_size_windows approach
     if test_mode:
@@ -547,6 +558,7 @@ def main_per_dataset(
     mode: str = "all",
     test_mode: bool = False,
     fig_format: str = "pdf",
+    filter_approach_types: list[str] | None = None,
 ) -> None:
     """
     Process a single dataset.
@@ -563,6 +575,9 @@ def main_per_dataset(
         If True, use simplified configuration for faster testing.
     fig_format
         Figure format to save (e.g., 'pdf', 'png', 'jpg'). Default is 'pdf'.
+    filter_approach_types
+        Optional list of approach types to filter (e.g., ['change_point_windows']).
+        If None, all approaches from config are used.
     """
     print(f"### Processing dataset: {dataset_key} ###")
     normalized_mode = normalize_mode(mode)
@@ -602,6 +617,7 @@ def main_per_dataset(
                 concept_drift_info_path,
                 test_mode=test_mode,
                 fig_format=fig_format,
+                filter_approach_types=filter_approach_types,
             )
 
 
@@ -610,6 +626,7 @@ def main(
     mode: str = "all",
     test_mode: bool = False,
     fig_format: str = "pdf",
+    filter_approach_types: list[str] | None = None,
 ) -> None:
     """
     Main entry point for drift complexity analysis.
@@ -662,6 +679,7 @@ def main(
             normalized_mode,
             test_mode=test_mode,
             fig_format=fig_format,
+            filter_approach_types=filter_approach_types,
         )
 
 
@@ -696,6 +714,13 @@ if __name__ == "__main__":
         choices=["pdf", "png", "jpg", "jpeg"],
         help="Figure format to save graphs (default: pdf). Options: pdf, png, jpg, jpeg.",
     )
+    parser.add_argument(
+        "--filter-approach-types",
+        nargs="+",
+        default=None,
+        choices=["change_point_windows", "fixed_size_windows", "window_comparison"],
+        help="Filter window approaches by type. Options: change_point_windows, fixed_size_windows, window_comparison.",
+    )
     args = parser.parse_args()
 
     # If test mode: use supplied datasets if provided, otherwise default to TEST_BPIC12
@@ -712,4 +737,5 @@ if __name__ == "__main__":
         mode=args.mode,
         test_mode=args.test,
         fig_format=fig_format,
+        filter_approach_types=args.filter_approach_types,
     )
