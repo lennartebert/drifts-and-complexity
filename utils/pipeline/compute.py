@@ -440,7 +440,7 @@ def compute_analysis_for_metrics(
     include_metrics: Optional[Iterable[str]] = None,
 ) -> pd.DataFrame:
     """
-    Compute analysis metrics from raw metric values: mean values, CIs, correlations, and plateau detection.
+    Compute analysis metrics from raw metric values: mean and median values, CIs, correlations, and plateau detection.
 
     Parameters
     ----------
@@ -457,6 +457,7 @@ def compute_analysis_for_metrics(
     -------
     pd.DataFrame with index (Metric, Sample Size) and columns:
         - Mean Value: mean metric value per (Metric, Sample Size)
+        - Median Value: median metric value per (Metric, Sample Size)
         - Sample CI Low: lower sample CI bound (if extractor provided)
         - Sample CI High: upper sample CI bound (if extractor provided)
         - Sample CI Rel Width: relative CI width (if extractor provided)
@@ -483,12 +484,12 @@ def compute_analysis_for_metrics(
     else:
         metric_list = sorted(metrics_df["Metric"].unique().tolist())
 
-    # 1. Compute mean values per metric and sample size (base structure)
+    # 1. Compute mean and median values per metric and sample size (base structure)
     analysis_df = (
         metrics_df.groupby(["Sample Size", "Metric"], as_index=True)["Value"]
-        .mean()
+        .agg(["mean", "median"])
         .reset_index()
-        .rename(columns={"Value": "Mean Value"})
+        .rename(columns={"mean": "Mean Value", "median": "Median Value"})
     )
 
     # 2. Compute sample confidence intervals if extractor provided

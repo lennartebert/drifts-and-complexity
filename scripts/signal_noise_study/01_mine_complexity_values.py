@@ -42,7 +42,7 @@ DRIFT_POINT_IN_LOGS = (
 
 # Study specific constants
 WINDOW_SIZES = [50, 100, 150, 200]
-SAMPLES_PER_SIZE = 10
+SAMPLES_PER_SIZE = 100
 RANDOM_STATE = 321
 
 # Output directory
