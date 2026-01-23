@@ -53,14 +53,21 @@ BATCH_SIZE = 10
 
 @dataclass
 class ProcessingTask:
-    """Task definition for processing a single log/split/window_size combination."""
+    """Task definition for processing a single log (all splits and window sizes)."""
+
+    log_id: str
+    log_file_path: Path
+
+
+@dataclass
+class SplitResult:
+    """Result for a single split/window_size combination."""
 
     log_id: str
     split_name: str
     window_size: int
-    log_file_path: Path
-    split_start_idx: int  # Start index for split (0 for pre_drift, DRIFT_POINT_IN_LOGS for post_drift)
-    split_end_idx: int  # End index for split (DRIFT_POINT_IN_LOGS for pre_drift, None for post_drift)
+    metrics_df: pd.DataFrame
+    analysis_df: pd.DataFrame
 
 
 def split_event_log(event_log: EventLog, drift_point: int) -> Dict[str, EventLog]:
@@ -89,6 +96,8 @@ def generate_tasks(generated_files_df: pd.DataFrame) -> List[ProcessingTask]:
     """
     Generate all processing tasks from the CSV metadata.
 
+    Creates one task per log, which will process both splits and all window sizes.
+
     Parameters
     ----------
     generated_files_df
@@ -97,7 +106,7 @@ def generate_tasks(generated_files_df: pd.DataFrame) -> List[ProcessingTask]:
     Returns
     -------
     List[ProcessingTask]
-        List of all tasks to process.
+        List of all tasks to process (one per log).
     """
     tasks = []
 
@@ -108,37 +117,30 @@ def generate_tasks(generated_files_df: pd.DataFrame) -> List[ProcessingTask]:
             print(f"  Warning: Log file not found: {log_file_path}, skipping...")
             continue
 
-        # Create tasks for both splits and all window sizes
-        for split_name in ["pre_drift", "post_drift"]:
-            if split_name == "pre_drift":
-                split_start_idx = 0
-                split_end_idx = DRIFT_POINT_IN_LOGS
-            else:  # post_drift
-                split_start_idx = DRIFT_POINT_IN_LOGS
-                split_end_idx = None  # To end of log
-
-            for window_size in WINDOW_SIZES:
-                task = ProcessingTask(
-                    log_id=log_id,
-                    split_name=split_name,
-                    window_size=window_size,
-                    log_file_path=log_file_path,
-                    split_start_idx=split_start_idx,
-                    split_end_idx=split_end_idx,
-                )
-                tasks.append(task)
+        # Create one task per log (will process both splits and all window sizes)
+        task = ProcessingTask(
+            log_id=log_id,
+            log_file_path=log_file_path,
+        )
+        tasks.append(task)
 
     return tasks
 
 
-def get_intermediary_file_paths(task: ProcessingTask) -> Tuple[Path, Path]:
+def get_intermediary_file_paths(
+    log_id: str, split_name: str, window_size: int
+) -> Tuple[Path, Path]:
     """
-    Get paths for intermediary output files for a task.
+    Get paths for intermediary output files for a split/window_size combination.
 
     Parameters
     ----------
-    task
-        The processing task.
+    log_id
+        The log identifier.
+    split_name
+        The split name ('pre_drift' or 'post_drift').
+    window_size
+        The window size.
 
     Returns
     -------
@@ -146,10 +148,8 @@ def get_intermediary_file_paths(task: ProcessingTask) -> Tuple[Path, Path]:
         Paths for per-sample metrics and analysis files.
     """
     # Sanitize log_id for filename (remove .xes.gz extension if present)
-    log_id_safe = (
-        task.log_id.replace(".xes.gz", "").replace(".xes", "").replace("/", "_")
-    )
-    base_name = f"{log_id_safe}_{task.split_name}_{task.window_size}"
+    log_id_safe = log_id.replace(".xes.gz", "").replace(".xes", "").replace("/", "_")
+    base_name = f"{log_id_safe}_{split_name}_{window_size}"
 
     metrics_path = INTERMEDIARY_DIR / f"{base_name}.csv"
     analysis_path = INTERMEDIARY_DIR / f"{base_name}_analysis.csv"
@@ -162,6 +162,7 @@ def check_resume_status(tasks: List[ProcessingTask]) -> List[ProcessingTask]:
     Check which tasks are already completed and filter them out.
 
     First checks if final files exist (complete run), then checks intermediary files.
+    A task is considered complete if all split/window_size combinations for that log are done.
 
     Parameters
     ----------
@@ -196,28 +197,42 @@ def check_resume_status(tasks: List[ProcessingTask]) -> List[ProcessingTask]:
     # Check intermediary files
     remaining_tasks = []
     completed_count = 0
+    total_combinations = len(WINDOW_SIZES) * 2  # 2 splits * N window sizes
 
     for task in tasks:
-        metrics_path, analysis_path = get_intermediary_file_paths(task)
+        # Check if all split/window_size combinations for this log are complete
+        all_complete = True
+        completed_combinations = 0
 
-        if metrics_path.exists() and analysis_path.exists():
-            # Check if files are non-empty
-            try:
-                metrics_df = pd.read_csv(metrics_path)
-                analysis_df = pd.read_csv(analysis_path)
-                if not metrics_df.empty and not analysis_df.empty:
-                    completed_count += 1
-                    continue
-            except Exception:
-                # If file is corrupted or empty, reprocess
-                pass
+        for split_name in ["pre_drift", "post_drift"]:
+            for window_size in WINDOW_SIZES:
+                metrics_path, analysis_path = get_intermediary_file_paths(
+                    task.log_id, split_name, window_size
+                )
 
-        remaining_tasks.append(task)
+                if metrics_path.exists() and analysis_path.exists():
+                    # Check if files are non-empty
+                    try:
+                        metrics_df = pd.read_csv(metrics_path)
+                        analysis_df = pd.read_csv(analysis_path)
+                        if not metrics_df.empty and not analysis_df.empty:
+                            completed_combinations += 1
+                            continue
+                    except Exception:
+                        # If file is corrupted or empty, reprocess
+                        pass
+
+                all_complete = False
+
+        if all_complete:
+            completed_count += 1
+        else:
+            remaining_tasks.append(task)
 
     if completed_count > 0:
         print(
-            f"Resuming: {completed_count} tasks already completed, "
-            f"{len(remaining_tasks)} tasks remaining."
+            f"Resuming: {completed_count} logs already completed, "
+            f"{len(remaining_tasks)} logs remaining."
         )
 
     return remaining_tasks
@@ -225,9 +240,12 @@ def check_resume_status(tasks: List[ProcessingTask]) -> List[ProcessingTask]:
 
 def process_single_task(
     task: ProcessingTask,
-) -> Optional[Tuple[pd.DataFrame, pd.DataFrame]]:
+) -> Optional[List[SplitResult]]:
     """
     Process a single task (worker function for parallel execution).
+
+    Loads the log once and processes both pre-drift and post-drift splits
+    for all window sizes.
 
     Parameters
     ----------
@@ -236,11 +254,11 @@ def process_single_task(
 
     Returns
     -------
-    Optional[Tuple[pd.DataFrame, pd.DataFrame]]
-        Tuple of (metrics_df, analysis_df) if successful, None if failed.
+    Optional[List[SplitResult]]
+        List of results for each split/window_size combination if successful, None if failed.
     """
     try:
-        # Load the event log
+        # Load the event log once
         event_log = xes_importer.apply(str(task.log_file_path))
 
         # Check if log has enough traces
@@ -251,19 +269,10 @@ def process_single_task(
             )
             return None
 
-        # Extract the split
-        if task.split_end_idx is None:
-            split_log = EventLog(event_log[task.split_start_idx :])
-        else:
-            split_log = EventLog(event_log[task.split_start_idx : task.split_end_idx])
-
-        # Check if split has enough traces for this window size
-        if len(split_log) < task.window_size:
-            print(
-                f"  Warning: Split {task.split_name} for log {task.log_id} "
-                f"has only {len(split_log)} traces, need at least {task.window_size}, skipping..."
-            )
-            return None
+        # Split the log into pre-drift and post-drift parts
+        split_logs = split_event_log(event_log, DRIFT_POINT_IN_LOGS)
+        pre_drift_log = split_logs["pre_drift"]
+        post_drift_log = split_logs["post_drift"]
 
         # Set up pipeline components (created in worker to avoid pickling issues)
         population_extractor = NaivePopulationExtractor()
@@ -275,60 +284,85 @@ def process_single_task(
             conf_level=0.95
         )
 
-        # Perform sampling
-        window_samples = (
-            sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                split_log,
-                sizes=[task.window_size],
-                samples_per_size=SAMPLES_PER_SIZE,
-                random_state=RANDOM_STATE,
-            )
-        )
+        results = []
 
-        # Compute raw metrics
-        metrics_df = compute_metrics_for_samples(
-            window_samples,
-            population_extractor=population_extractor,
-            metric_adapters=metric_adapters,
-            bootstrap_sampler=bootstrap_sampler,
-            normalizers=normalizers,
-            include_metrics=include_metrics,
-        )
+        # Process both splits
+        for split_name, split_log in [
+            ("pre_drift", pre_drift_log),
+            ("post_drift", post_drift_log),
+        ]:
+            # Process all window sizes for this split
+            for window_size in WINDOW_SIZES:
+                # Check if split has enough traces for this window size
+                if len(split_log) < window_size:
+                    print(
+                        f"  Warning: Split {split_name} for log {task.log_id} "
+                        f"has only {len(split_log)} traces, need at least {window_size}, skipping..."
+                    )
+                    continue
 
-        # Reset index to access columns
-        metrics_df = metrics_df.reset_index()
+                # Perform sampling
+                window_samples = (
+                    sampling_helper.sample_consecutive_trace_windows_with_replacement(
+                        split_log,
+                        sizes=[window_size],
+                        samples_per_size=SAMPLES_PER_SIZE,
+                        random_state=RANDOM_STATE,
+                    )
+                )
 
-        # Add log_id, split_name, and window_size columns
-        metrics_df["log_id"] = task.log_id
-        metrics_df["split_name"] = task.split_name
-        metrics_df["window_size"] = task.window_size
+                # Compute raw metrics
+                metrics_df = compute_metrics_for_samples(
+                    window_samples,
+                    population_extractor=population_extractor,
+                    metric_adapters=metric_adapters,
+                    bootstrap_sampler=bootstrap_sampler,
+                    normalizers=normalizers,
+                    include_metrics=include_metrics,
+                )
 
-        # Compute aggregates (mean values, CIs, correlations, plateau)
-        analysis_df = compute_analysis_for_metrics(
-            metrics_df,
-            sample_confidence_interval_extractor=sample_confidence_interval_extractor,
-            include_metrics=include_metrics,
-        )
+                # Reset index to access columns
+                metrics_df = metrics_df.reset_index()
 
-        # Reset index to access columns
-        analysis_df = analysis_df.reset_index()
+                # Add log_id, split_name, and window_size columns
+                metrics_df["log_id"] = task.log_id
+                metrics_df["split_name"] = split_name
+                metrics_df["window_size"] = window_size
 
-        # Add log_id, split_name, and window_size columns
-        analysis_df["log_id"] = task.log_id
-        analysis_df["split_name"] = task.split_name
-        analysis_df["window_size"] = task.window_size
+                # Compute aggregates (mean values, CIs, correlations, plateau)
+                analysis_df = compute_analysis_for_metrics(
+                    metrics_df,
+                    sample_confidence_interval_extractor=sample_confidence_interval_extractor,
+                    include_metrics=include_metrics,
+                )
 
-        return (metrics_df, analysis_df)
+                # Reset index to access columns
+                analysis_df = analysis_df.reset_index()
+
+                # Add log_id, split_name, and window_size columns
+                analysis_df["log_id"] = task.log_id
+                analysis_df["split_name"] = split_name
+                analysis_df["window_size"] = window_size
+
+                results.append(
+                    SplitResult(
+                        log_id=task.log_id,
+                        split_name=split_name,
+                        window_size=window_size,
+                        metrics_df=metrics_df,
+                        analysis_df=analysis_df,
+                    )
+                )
+
+        return results if results else None
 
     except Exception as e:
-        print(
-            f"Error processing task {task.log_id}/{task.split_name}/{task.window_size}: {e}"
-        )
+        print(f"Error processing task {task.log_id}: {e}")
         return None
 
 
 def write_batch_results(
-    results_batch: List[Tuple[ProcessingTask, pd.DataFrame, pd.DataFrame]],
+    results_batch: List[Tuple[ProcessingTask, List[SplitResult]]],
 ) -> None:
     """
     Write a batch of task results to intermediary files.
@@ -336,20 +370,25 @@ def write_batch_results(
     Parameters
     ----------
     results_batch
-        List of tuples (task, metrics_df, analysis_df) to write.
+        List of tuples (task, list of split_results) to write.
     """
     INTERMEDIARY_DIR.mkdir(parents=True, exist_ok=True)
 
-    for task, metrics_df, analysis_df in results_batch:
-        metrics_path, analysis_path = get_intermediary_file_paths(task)
-
-        try:
-            metrics_df.to_csv(metrics_path, index=False)
-            analysis_df.to_csv(analysis_path, index=False)
-        except Exception as e:
-            print(
-                f"Error writing results for task {task.log_id}/{task.split_name}/{task.window_size}: {e}"
+    for task, split_results in results_batch:
+        for split_result in split_results:
+            metrics_path, analysis_path = get_intermediary_file_paths(
+                split_result.log_id,
+                split_result.split_name,
+                split_result.window_size,
             )
+
+            try:
+                split_result.metrics_df.to_csv(metrics_path, index=False)
+                split_result.analysis_df.to_csv(analysis_path, index=False)
+            except Exception as e:
+                print(
+                    f"Error writing results for {split_result.log_id}/{split_result.split_name}/{split_result.window_size}: {e}"
+                )
 
 
 def aggregate_final_results() -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -428,7 +467,7 @@ def main(n_jobs: int | None = None) -> None:
     # Generate all tasks
     print("\nGenerating tasks...")
     all_tasks = generate_tasks(generated_files_df)
-    print(f"Generated {len(all_tasks)} tasks")
+    print(f"Generated {len(all_tasks)} tasks (one per log)")
 
     # Check resume status
     print("\nChecking resume status...")
@@ -451,12 +490,13 @@ def main(n_jobs: int | None = None) -> None:
         print("\nDone!")
         return
 
-    print(f"Processing {len(tasks_to_process)} tasks in parallel...")
+    print(f"Processing {len(tasks_to_process)} logs in parallel...")
 
     # Process tasks in parallel and write results as they complete
     results_batch = []
     successful_count = 0
     failed_count = 0
+    total_split_results = 0
 
     # Create a mapping from future to task for tracking
     task_future_map = {}
@@ -480,32 +520,31 @@ def main(n_jobs: int | None = None) -> None:
             try:
                 result = future.result()
                 if result is not None:
-                    metrics_df, analysis_df = result
-                    results_batch.append((task, metrics_df, analysis_df))
+                    split_results = result
+                    results_batch.append((task, split_results))
                     successful_count += 1
+                    total_split_results += len(split_results)
 
                     # Write batch when buffer is full
                     if len(results_batch) >= BATCH_SIZE:
                         write_batch_results(results_batch)
                         print(
-                            f"  Written batch of {len(results_batch)} results... ({successful_count}/{len(tasks_to_process)} completed)"
+                            f"  Written batch of {len(results_batch)} logs ({total_split_results} split/window combinations)... ({successful_count}/{len(tasks_to_process)} logs completed)"
                         )
                         results_batch = []
                 else:
                     failed_count += 1
             except Exception as e:
-                print(
-                    f"  Error getting result for task {task.log_id}/{task.split_name}/{task.window_size}: {e}"
-                )
+                print(f"  Error getting result for task {task.log_id}: {e}")
                 failed_count += 1
 
     # Write remaining results
     if results_batch:
         write_batch_results(results_batch)
-        print(f"  Written final batch of {len(results_batch)} results...")
+        print(f"  Written final batch of {len(results_batch)} logs...")
 
     print(
-        f"\nProcessing complete: {successful_count} successful, {failed_count} failed"
+        f"\nProcessing complete: {successful_count} logs successful ({total_split_results} split/window combinations), {failed_count} failed"
     )
 
     # Aggregate final results
