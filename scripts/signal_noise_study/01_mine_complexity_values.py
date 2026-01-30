@@ -37,7 +37,7 @@ from utils.sample_confidence_interval_extractor import (
 PATH_TO_LOGS = Path("data") / "synthetic" / "sudden_drifts"
 GEN_INFO_FILE_NAME = "generation_info.csv"
 DRIFT_POINT_IN_LOGS = (
-    1000  # First 1000 traces are one process version, second 1000 traces are the other
+    5000  # First 5000 traces are one process version, second 5000 traces are the other
 )
 
 # Study specific constants
@@ -48,7 +48,7 @@ RANDOM_STATE = 321
 # Output directory
 OUTPUT_DIR = Path("results") / "signal_noise_study"
 INTERMEDIARY_DIR = OUTPUT_DIR / "intermediary"
-BATCH_SIZE = 10
+BATCH_SIZE = 5
 
 
 @dataclass
@@ -311,7 +311,7 @@ def process_single_task(
                     )
                 )
 
-                # Compute raw metrics
+                # Compute raw metrics (no inner parallelism to avoid OOM)
                 metrics_df = compute_metrics_for_samples(
                     window_samples,
                     population_extractor=population_extractor,
@@ -319,6 +319,8 @@ def process_single_task(
                     bootstrap_sampler=bootstrap_sampler,
                     normalizers=normalizers,
                     include_metrics=include_metrics,
+                    parallel_backend="off",
+                    n_jobs=1,
                 )
 
                 # Reset index to access columns
@@ -451,10 +453,15 @@ def main(n_jobs: int | None = None) -> None:
     Parameters
     ----------
     n_jobs
-        Number of parallel workers. If None, defaults to number of CPU cores.
+        Number of parallel workers. If None, defaults to half of the CPU cores
+        (SLURM_CPUS_PER_TASK when on Slurm, else os.cpu_count()) to limit
+        memory use.
     """
     if n_jobs is None:
-        n_jobs = os.cpu_count() or 1
+        total_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", 0)) or (
+            os.cpu_count() or 1
+        )
+        n_jobs = max(1, total_cpus // 2)
     # Construct paths
     gen_info_file_path = PATH_TO_LOGS / GEN_INFO_FILE_NAME
 

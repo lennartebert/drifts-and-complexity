@@ -4,7 +4,7 @@
 #SBATCH --error=.slurm/logs/%A/log_%A.err
 #SBATCH --nodelist=gruenau4
 #SBATCH --cpus-per-task=100
-#SBATCH --mem=120G
+#SBATCH --mem=240G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=3-00:00:00
