@@ -21,6 +21,9 @@ from pm4py.objects.log.obj import EventLog
 
 from utils import sampling_helper
 from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetricsAdapter
+from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
+    VidgofMetricsAdapter,
+)
 from utils.parallel import run_parallel
 from utils.pipeline.compute import (
     compute_analysis_for_metrics,
@@ -276,7 +279,7 @@ def process_single_task(
 
         # Set up pipeline components (created in worker to avoid pickling issues)
         population_extractor = NaivePopulationExtractor()
-        metric_adapters = [LocalMetricsAdapter()]
+        metric_adapters = [LocalMetricsAdapter(), VidgofMetricsAdapter()]
         bootstrap_sampler = None
         normalizers = None
         include_metrics = None
