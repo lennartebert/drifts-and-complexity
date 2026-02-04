@@ -26,14 +26,14 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: SLURM_CPUS_PER_TASK: ${SLURM_CPUS_PE
 export PYTHONPATH="$(pwd):${PYTHONPATH}"
 
 # Test if the script file exists
-SCRIPT_PATH="scripts/signal_noise_study/01_mine_complexity_values.py --n-jobs=50"
+SCRIPT_PATH="scripts/signal_noise_study/01_mine_complexity_values.py"
 if [ ! -f "$SCRIPT_PATH" ]; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Script file not found: $SCRIPT_PATH"
     exit 1
 fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Running Python script..."
-python "$SCRIPT_PATH"
+python "$SCRIPT_PATH" --n-jobs="${SLURM_CPUS_PER_TASK:-1}"
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
