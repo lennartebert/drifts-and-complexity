@@ -9,6 +9,7 @@ Supports parallelization and resume capability.
 
 from __future__ import annotations
 
+import argparse
 import os
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -576,4 +577,15 @@ def main(n_jobs: int | None = None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Mine complexity values from synthetic logs with sudden drifts."
+    )
+    parser.add_argument(
+        "--n-jobs",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Number of parallel workers. Default: number of CPU cores.",
+    )
+    args = parser.parse_args()
+    main(n_jobs=args.n_jobs)
