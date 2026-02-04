@@ -3,7 +3,7 @@
 #SBATCH --output=.slurm/logs/%A/log_%A.out
 #SBATCH --error=.slurm/logs/%A/log_%A.err
 #SBATCH --nodelist=gruenau4
-#SBATCH --cpus-per-task=100
+#SBATCH --cpus-per-task=50
 #SBATCH --mem=240G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -26,7 +26,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: SLURM_CPUS_PER_TASK: ${SLURM_CPUS_PE
 export PYTHONPATH="$(pwd):${PYTHONPATH}"
 
 # Test if the script file exists
-SCRIPT_PATH="scripts/signal_noise_study/01_mine_complexity_values.py"
+SCRIPT_PATH="scripts/signal_noise_study/01_mine_complexity_values.py --n-jobs=50"
 if [ ! -f "$SCRIPT_PATH" ]; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Script file not found: $SCRIPT_PATH"
     exit 1
