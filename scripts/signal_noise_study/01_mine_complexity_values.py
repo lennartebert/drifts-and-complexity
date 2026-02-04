@@ -21,9 +21,6 @@ from pm4py.objects.log.obj import EventLog
 
 from utils import sampling_helper
 from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetricsAdapter
-from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
-    VidgofMetricsAdapter,
-)
 from utils.parallel import run_parallel
 from utils.pipeline.compute import (
     compute_analysis_for_metrics,
@@ -35,6 +32,9 @@ from utils.population.extractors.naive_population_extractor import (
 from utils.sample_confidence_interval_extractor import (
     SampleConfidenceIntervalExtractor,
 )
+from utils.sample_standard_deviation_extractor import (
+    SampleStandardDeviationExtractor,
+)
 
 # Constants
 PATH_TO_LOGS = Path("data") / "synthetic" / "sudden_drifts"
@@ -45,13 +45,13 @@ DRIFT_POINT_IN_LOGS = (
 
 # Study specific constants
 WINDOW_SIZES = [50, 100, 150, 200]
-SAMPLES_PER_SIZE = 100
+SAMPLES_PER_SIZE = 200
 RANDOM_STATE = 321
 
 # Output directory
 OUTPUT_DIR = Path("results") / "signal_noise_study"
 INTERMEDIARY_DIR = OUTPUT_DIR / "intermediary"
-BATCH_SIZE = 5
+BATCH_SIZE = 10
 
 
 @dataclass
@@ -279,13 +279,14 @@ def process_single_task(
 
         # Set up pipeline components (created in worker to avoid pickling issues)
         population_extractor = NaivePopulationExtractor()
-        metric_adapters = [LocalMetricsAdapter(), VidgofMetricsAdapter()]
+        metric_adapters = [LocalMetricsAdapter()]
         bootstrap_sampler = None
         normalizers = None
         include_metrics = None
         sample_confidence_interval_extractor = SampleConfidenceIntervalExtractor(
             conf_level=0.95
         )
+        sample_standard_deviation_extractor = SampleStandardDeviationExtractor(ddof=1)
 
         results = []
 
@@ -314,7 +315,7 @@ def process_single_task(
                     )
                 )
 
-                # Compute raw metrics (no inner parallelism to avoid OOM)
+                # Compute raw metrics
                 metrics_df = compute_metrics_for_samples(
                     window_samples,
                     population_extractor=population_extractor,
@@ -322,8 +323,6 @@ def process_single_task(
                     bootstrap_sampler=bootstrap_sampler,
                     normalizers=normalizers,
                     include_metrics=include_metrics,
-                    parallel_backend="off",
-                    n_jobs=1,
                 )
 
                 # Reset index to access columns
@@ -334,10 +333,11 @@ def process_single_task(
                 metrics_df["split_name"] = split_name
                 metrics_df["window_size"] = window_size
 
-                # Compute aggregates (mean values, CIs, correlations, plateau)
+                # Compute aggregates (mean values, CIs, std, correlations, plateau)
                 analysis_df = compute_analysis_for_metrics(
                     metrics_df,
                     sample_confidence_interval_extractor=sample_confidence_interval_extractor,
+                    sample_standard_deviation_extractor=sample_standard_deviation_extractor,
                     include_metrics=include_metrics,
                 )
 
@@ -456,15 +456,10 @@ def main(n_jobs: int | None = None) -> None:
     Parameters
     ----------
     n_jobs
-        Number of parallel workers. If None, defaults to half of the CPU cores
-        (SLURM_CPUS_PER_TASK when on Slurm, else os.cpu_count()) to limit
-        memory use.
+        Number of parallel workers. If None, defaults to number of CPU cores.
     """
     if n_jobs is None:
-        total_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", 0)) or (
-            os.cpu_count() or 1
-        )
-        n_jobs = max(1, total_cpus // 2)
+        n_jobs = os.cpu_count() or 1
     # Construct paths
     gen_info_file_path = PATH_TO_LOGS / GEN_INFO_FILE_NAME
 

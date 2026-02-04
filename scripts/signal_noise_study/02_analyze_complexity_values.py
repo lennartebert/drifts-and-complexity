@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import warnings
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -53,42 +53,76 @@ PATH_NOISE_FACTOR_WIDE_CHANGE = f"{DIR_CSV}/noise_factor_importance_change_wide.
 PATH_NOISE_ABS_MEDIAN = f"{DIR_CSV}/noise_abs_median.csv"
 PATH_NOISE_RELCI = f"{DIR_CSV}/noise_relci.csv"
 PATH_NOISE_CHANGE_DUE_TO_NOISE = f"{DIR_CSV}/noise_change_due_to_noise.csv"
-choose_aggregation: Literal["mean", "median"] = "mean"
+AGGREGATION: Literal["mean", "median"] = "mean"
 eps = 0  # was 1e-9; set to 0 to surface NA when denominator is zero
 MIN_OBS_FOR_FACTOR_ANALYSIS = 30
+# Regression-only: small positive shift to avoid log(0) dropping rows in factor-importance
+# models for nonnegative outcomes (e.g. rel_noise_log, change_vs_baseline_log).
+# This MUST NOT be used in the estimands/ratios themselves.
+FACTOR_IMPORTANCE_LOG_SHIFT = 0
 
-# Required columns in aggregate_analysis.csv
-REQUIRED_COLS = [
-    "Mean Value",
-    "Sample CI Low",
-    "Sample CI High",
-    "log_id",
-    "split_name",
-    "window_size",
-]
+# Debugging: set True to print why partial-R² observations are filtered out.
+# This is intentionally noisy; keep False for normal runs.
+DEBUG_R2_FILTERING = True
+DEBUG_R2_MAX_EXAMPLES = 5
 
-# Stable split name variants (normalized internally)
-STABLE_SPLIT_NAMES = {"pre_drift", "pre-drift", "pre"}
+# Factor column names used across the analysis (title case, no underscores).
+MODEL_COMPLEXITY_COL = "Model Complexity"
+NOISE_LEVEL_COL = "Noise Level"
+CHANGE_MAGNITUDE_COL = "Change Magnitude"
+EDIT_OPERATIONS_COL = "Edit Operations"
+WINDOW_SIZE_COL = "Window Size"
+SEED_COL = "Seed"
+LOG_ID_COL = "Log ID"
+SPLIT_NAME_COL = "Split Name"
+LOG_NUMBER_COL = "Log Number"
+
+# Required columns in aggregate_analysis.csv: file column name -> analysis column name.
+# All keys must exist in the file; columns are renamed to values. If "Sample Size"
+# is present it is validated to equal Window Size and then dropped.
+AGGREGATE_ANALYSIS_COL_MAP = {
+    "Metric": "Metric",
+    "Mean Value": "Mean Value",
+    "Median Value": "Median Value",
+    "Sample CI Low": "Sample CI Low",
+    "Sample CI High": "Sample CI High",
+    "log_id": LOG_ID_COL,
+    "split_name": SPLIT_NAME_COL,
+    "window_size": WINDOW_SIZE_COL,
+}
+# Optional: if present, must equal Window Size; then dropped.
+AGGREGATE_ANALYSIS_VALIDATE_AND_DROP = "Sample Size"
+
+# Required columns in generation_info.csv: file column name -> analysis column name.
+# All keys must exist; output DataFrame has columns = values (with value mapping applied).
+GEN_INFO_COL_MAP = {
+    "log_id": LOG_ID_COL,
+    "Noisy_trace_prob": NOISE_LEVEL_COL,
+    "Process_tree_complexity": MODEL_COMPLEXITY_COL,
+    "Process_tree_evolution_proportion": CHANGE_MAGNITUDE_COL,
+    "Allowed_edit_operations": EDIT_OPERATIONS_COL,
+    "Log_seed": SEED_COL,
+}
 
 # Noise probability to noise level mapping
-NOISE_PROB_TO_LEVEL = {0.0: "0", 0.1: "low", 0.2: "high"}
+NOISE_PROB_TO_LEVEL = {0.0: "None", 0.01: "Low", 0.02: "High"}
 
 # Complexity level mapping (from generation_info.csv)
-COMPLEXITY_MAPPING = {"simple": "simple", "middle": "mid", "complex": "complex"}
+COMPLEXITY_MAPPING = {"simple": "Simple", "middle": "Middle", "complex": "Complex"}
 
-# Ordered numeric encoding for factor analysis (simple < mid < complex; 0 < low < high)
-COMPLEXITY_ORD = {"simple": 0, "mid": 1, "complex": 2}
-NOISE_ORD = {"0": 0, "low": 1, "high": 2}
+# Ordered numeric encoding for factor analysis (Simple < Middle < Complex; None < Low < High)
+COMPLEXITY_ORD = {"Simple": 0, "Middle": 1, "Complex": 2}
+NOISE_ORD = {"None": 0, "Low": 1, "High": 2}
 
 # Change operation mapping (from generation_info.csv)
-# Keep original names, only map combined case to "combined"
+# Combined case (all operations allowed) is mapped to "mixed".
 CHANGE_OPERATION_MAPPING = {
     "deletion": "deletion",
     "insertion": "insertion",
     "resequentialization": "resequentialization",
     "operator_replacement": "operator_replacement",
     "activity_replacement": "activity_replacement",
-    "deletion, insertion, resequentialization, operator_replacement, activity_replacement": "combined",
+    "deletion, insertion, resequentialization, operator_replacement, activity_replacement": "mixed",
 }
 
 # Change operation sort order for wide tables
@@ -98,13 +132,32 @@ CHANGE_OPERATION_ORDER = [
     "activity_replacement",
     "resequentialization",
     "operator_replacement",
-    "combined",
+    "mixed",
 ]
 
 # Metric order: by dimension (DIMENSIONS_ORDER) then by order in METRIC_DIMENSION_MAP
 _METRIC_ORDER = [
     m for d in DIMENSIONS_ORDER for m, dim in METRIC_DIMENSION_MAP.items() if dim == d
 ]
+
+# Grouping keys for noise/relative-noise tables (with and without seed for two-stage aggregation)
+NOISE_TABLE_GROUP_KEYS = [
+    "Metric",
+    MODEL_COMPLEXITY_COL,
+    NOISE_LEVEL_COL,
+    WINDOW_SIZE_COL,
+]
+NOISE_TABLE_GROUP_KEYS_WITH_SEED = [*NOISE_TABLE_GROUP_KEYS, SEED_COL]
+
+# Factor importance LaTeX: column headers with (%) for percent display
+FACTOR_IMPORTANCE_PCT_HEADERS = {
+    MODEL_COMPLEXITY_COL: "Model Complexity (%)",
+    NOISE_LEVEL_COL: "Noise Level (%)",
+    WINDOW_SIZE_COL: "Window Size (%)",
+    SEED_COL: "Seed (%)",
+    "Residual": "Residual (%)",
+    "R2 Full": "R2 Full (%)",
+}
 
 
 def _add_dimension_and_sort_long(
@@ -126,9 +179,9 @@ def _add_dimension_and_sort_long(
         Copy with dimension column first and rows sorted.
     """
     df = df.copy()
-    df["dimension"] = df[metric_col].map(METRIC_DIMENSION_MAP).fillna("Other")
+    df["Dimension"] = df[metric_col].map(METRIC_DIMENSION_MAP).fillna("Other")
     dim_order = list(DIMENSIONS_ORDER) + ["Other"]
-    df["_dim_ord"] = df["dimension"].map(
+    df["_dim_ord"] = df["Dimension"].map(
         lambda x: dim_order.index(x) if x in dim_order else len(dim_order)
     )
     metric_order = {m: i for i, m in enumerate(_METRIC_ORDER)}
@@ -136,10 +189,101 @@ def _add_dimension_and_sort_long(
         lambda m: metric_order.get(m, len(metric_order))
     )
     df = df.sort_values(["_dim_ord", "_met_ord"]).drop(columns=["_dim_ord", "_met_ord"])
-    cols = ["dimension", metric_col] + [
-        c for c in df.columns if c not in ("dimension", metric_col)
+    cols = ["Dimension", metric_col] + [
+        c for c in df.columns if c not in ("Dimension", metric_col)
     ]
     return df[cols]
+
+
+def _collapse_within_sigma(
+    df: pd.DataFrame,
+    *,
+    group_keys_with_sigma: list[str],
+    value_cols: list[str],
+) -> pd.DataFrame:
+    """
+    Collapse potential multiplicity within seed by taking medians per seed-cell.
+
+    Aggregate within seed first (e.g. over nuisance multiplicity), then across seeds.
+
+    Parameters
+    ----------
+    df
+        Input DataFrame.
+    group_keys_with_sigma
+        Grouping keys that MUST include SEED_COL (log_seed).
+    value_cols
+        Value columns to aggregate by median.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with one row per group_keys_with_sigma.
+
+    Raises
+    ------
+    ValueError
+        If SEED_COL is not present in group_keys_with_sigma or df.
+    """
+    if SEED_COL not in group_keys_with_sigma:
+        raise ValueError(f"group_keys_with_sigma must include {SEED_COL!r}.")
+    missing_cols = [
+        c for c in [*group_keys_with_sigma, *value_cols] if c not in df.columns
+    ]
+    if missing_cols:
+        raise ValueError(
+            f"Missing required columns for within-seed collapse: {missing_cols}"
+        )
+
+    grouped = df.groupby(group_keys_with_sigma, dropna=False, sort=False)
+    agg_map = {c: "median" for c in value_cols}
+    out = grouped.agg(agg_map).reset_index()
+    return out
+
+
+def _median_over_sigma(
+    df: pd.DataFrame,
+    *,
+    group_keys_without_sigma: list[str],
+    value_col: str,
+    out_col: str,
+    n_col: str = "N Seed",
+) -> pd.DataFrame:
+    """
+    Aggregate across seed as the final step by median.
+
+    Parameters
+    ----------
+    df
+        Input DataFrame containing SEED_COL and value_col.
+    group_keys_without_sigma
+        Grouping keys that must NOT include SEED_COL.
+    value_col
+        Column to take the median of across seed.
+    out_col
+        Name of the output column containing the median-over-seed value.
+    n_col
+        Name of the output column containing the number of seed replications.
+
+    Returns
+    -------
+    pd.DataFrame
+        Aggregated DataFrame with columns group_keys_without_sigma + [out_col, n_col].
+    """
+    if SEED_COL in group_keys_without_sigma:
+        raise ValueError(f"group_keys_without_sigma must not include {SEED_COL!r}.")
+    required = [*group_keys_without_sigma, SEED_COL, value_col]
+    missing_cols = [c for c in required if c not in df.columns]
+    if missing_cols:
+        raise ValueError(
+            f"Missing required columns for across-seed aggregation: {missing_cols}"
+        )
+
+    grouped = df.groupby(group_keys_without_sigma, dropna=False, sort=False)
+    out = grouped.agg(
+        **{out_col: (value_col, "median"), n_col: (SEED_COL, "nunique")}
+    ).reset_index()
+    return out
 
 
 def _add_dimension_and_sort_wide(df: pd.DataFrame) -> pd.DataFrame:
@@ -159,7 +303,7 @@ def _add_dimension_and_sort_wide(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     dimension = df.index.map(METRIC_DIMENSION_MAP).fillna("Other")
     df.index = pd.MultiIndex.from_arrays(
-        [dimension, df.index], names=["dimension", "Metric"]
+        [dimension, df.index], names=["Dimension", "Metric"]
     )
     dim_order = list(DIMENSIONS_ORDER) + ["Other"]
     desired_index = []
@@ -177,6 +321,10 @@ def load_and_validate_input(path_agg: str) -> pd.DataFrame:
     """
     Load and validate the aggregate analysis CSV.
 
+    Uses AGGREGATE_ANALYSIS_COL_MAP to require and rename columns. If
+    AGGREGATE_ANALYSIS_VALIDATE_AND_DROP is present, validates equality with
+    window_size and drops it.
+
     Parameters
     ----------
     path_agg
@@ -185,37 +333,26 @@ def load_and_validate_input(path_agg: str) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Validated DataFrame with required columns.
+        Validated DataFrame with analysis column names.
 
     Raises
     ------
     ValueError
-        If required columns are missing.
+        If required columns are missing or Sample Size != window_size.
     """
     df = pd.read_csv(path_agg, low_memory=False)
-
-    # Auto-detect metric column
-    metric_col = None
-    for col in ["Metric", "metric", "metric_name"]:
-        if col in df.columns:
-            metric_col = col
-            break
-
-    if metric_col is None:
-        raise ValueError(
-            "Could not auto-detect metric column. "
-            "Expected one of: 'Metric', 'metric', 'metric_name'"
-        )
-
-    # Verify required columns exist
-    missing_cols = [col for col in REQUIRED_COLS if col not in df.columns]
-    if missing_cols:
-        raise ValueError(f"Missing required columns in {path_agg}: {missing_cols}")
-
-    # Rename metric column to standard name for consistency
-    if metric_col != "Metric":
-        df = df.rename(columns={metric_col: "Metric"})
-
+    missing = [k for k in AGGREGATE_ANALYSIS_COL_MAP if k not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns in {path_agg}: {missing}")
+    if AGGREGATE_ANALYSIS_VALIDATE_AND_DROP in df.columns:
+        if not (
+            df[AGGREGATE_ANALYSIS_VALIDATE_AND_DROP] == df["window_size"]
+        ).all():  # file cols before rename
+            raise ValueError(
+                f"In {path_agg}: '{AGGREGATE_ANALYSIS_VALIDATE_AND_DROP}' must equal 'window_size'."
+            )
+        df = df.drop(columns=[AGGREGATE_ANALYSIS_VALIDATE_AND_DROP])
+    df = df.rename(columns=AGGREGATE_ANALYSIS_COL_MAP)
     return df
 
 
@@ -226,27 +363,14 @@ def filter_to_stable_regime(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df
-        Input DataFrame with split_name column.
+        Input DataFrame with SPLIT_NAME_COL.
 
     Returns
     -------
     pd.DataFrame
         Filtered DataFrame containing only stable regime rows.
     """
-    # Normalize split_name values
-    df = df.copy()
-    df["split_name_normalized"] = df["split_name"].str.lower().str.replace("_", "-")
-
-    # Filter to stable splits
-    stable_mask = df["split_name_normalized"].isin(
-        {name.replace("_", "-") for name in STABLE_SPLIT_NAMES}
-    )
-    df_stable = df[stable_mask].copy()
-
-    # Drop the temporary normalized column
-    df_stable = df_stable.drop(columns=["split_name_normalized"])
-
-    return df_stable
+    return df[df[SPLIT_NAME_COL] == "pre_drift"].copy()
 
 
 def extract_log_number(log_id: str) -> int:
@@ -271,7 +395,10 @@ def extract_log_number(log_id: str) -> int:
 
 def load_generation_info(path_gen_info: str) -> pd.DataFrame:
     """
-    Load generation info CSV to map log_id to complexity, noise, evolution_proportion, and change_operation.
+    Load generation info CSV and return standardized analysis columns.
+
+    Uses GEN_INFO_COL_MAP: all keys must exist in the file; output has columns
+    = values with value mappings applied. Adds log_number from log_id.
 
     Parameters
     ----------
@@ -281,68 +408,56 @@ def load_generation_info(path_gen_info: str) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        DataFrame with log_number, complexity, noise, evolution_proportion,
-        change_operation, and log_seed columns.
+        DataFrame with log_id, log_number, complexity, noise, evolution_proportion,
+        change_operation, log_seed.
+
+    Raises
+    ------
+    ValueError
+        If required columns are missing or any value mapping fails.
     """
     df = pd.read_csv(path_gen_info, sep=";")
+    missing = [k for k in GEN_INFO_COL_MAP if k not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns in {path_gen_info}: {missing}")
 
-    # Extract log number from log_id
-    df["log_number"] = df["log_id"].apply(extract_log_number)
+    out = pd.DataFrame()
+    out[LOG_NUMBER_COL] = df["log_id"].apply(extract_log_number).values
+    out[NOISE_LEVEL_COL] = df["Noisy_trace_prob"].map(NOISE_PROB_TO_LEVEL).values
+    out[MODEL_COMPLEXITY_COL] = (
+        df["Process_tree_complexity"].map(COMPLEXITY_MAPPING).values
+    )
+    out[CHANGE_MAGNITUDE_COL] = (
+        df["Process_tree_evolution_proportion"].astype(float).values
+    )
+    out[EDIT_OPERATIONS_COL] = (
+        df["Allowed_edit_operations"].map(CHANGE_OPERATION_MAPPING).values
+    )
+    out[SEED_COL] = df["Log_seed"].values
 
-    # Map noise probability to noise level
-    df["noise"] = df["Noisy_trace_prob"].map(NOISE_PROB_TO_LEVEL)
-
-    # Map complexity
-    df["complexity"] = df["Process_tree_complexity"].map(COMPLEXITY_MAPPING)
-
-    # Map evolution proportion (keep as float)
-    df["evolution_proportion"] = df["Process_tree_evolution_proportion"].astype(float)
-
-    # Map change operation
-    df["change_operation"] = df["Allowed_edit_operations"].map(CHANGE_OPERATION_MAPPING)
-
-    # Log seed (from generation_info) for factor importance
-    df["log_seed"] = df["Log_seed"]
-
-    # Select and rename columns
-    df_mapping = df[
-        [
-            "log_number",
-            "complexity",
-            "noise",
-            "evolution_proportion",
-            "change_operation",
-            "log_seed",
-        ]
-    ].copy()
-
-    # Check for unmapped values
-    if df_mapping["noise"].isna().any():
-        unmapped_probs = df[df_mapping["noise"].isna()]["Noisy_trace_prob"].unique()
+    if out[NOISE_LEVEL_COL].isna().any():
+        unmapped = df.loc[out[NOISE_LEVEL_COL].isna(), "Noisy_trace_prob"].unique()
         raise ValueError(
-            f"Unmapped noise probabilities found: {unmapped_probs}. "
-            f"Expected values: {list(NOISE_PROB_TO_LEVEL.keys())}"
+            f"Unmapped noise probabilities in {path_gen_info}: {unmapped}. "
+            f"Expected: {list(NOISE_PROB_TO_LEVEL.keys())}"
         )
-
-    if df_mapping["complexity"].isna().any():
-        unmapped_complexities = df[df_mapping["complexity"].isna()][
-            "Process_tree_complexity"
+    if out[MODEL_COMPLEXITY_COL].isna().any():
+        unmapped = df.loc[
+            out[MODEL_COMPLEXITY_COL].isna(), "Process_tree_complexity"
         ].unique()
         raise ValueError(
-            f"Unmapped complexity values found: {unmapped_complexities}. "
-            f"Expected values: {list(COMPLEXITY_MAPPING.keys())}"
+            f"Unmapped complexity values in {path_gen_info}: {unmapped}. "
+            f"Expected: {list(COMPLEXITY_MAPPING.keys())}"
         )
-
-    if df_mapping["change_operation"].isna().any():
-        unmapped_ops = df[df_mapping["change_operation"].isna()][
-            "Allowed_edit_operations"
+    if out[EDIT_OPERATIONS_COL].isna().any():
+        unmapped = df.loc[
+            out[EDIT_OPERATIONS_COL].isna(), "Allowed_edit_operations"
         ].unique()
         raise ValueError(
-            f"Unmapped change operations found: {unmapped_ops}. "
-            f"Expected values: {list(CHANGE_OPERATION_MAPPING.keys())}"
+            f"Unmapped change operations in {path_gen_info}: {unmapped}. "
+            f"Expected: {list(CHANGE_OPERATION_MAPPING.keys())}"
         )
-
-    return df_mapping
+    return out
 
 
 def normalize_split_name(df: pd.DataFrame) -> pd.DataFrame:
@@ -362,7 +477,7 @@ def normalize_split_name(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     # Normalize split_name
-    df["split_name_normalized"] = df["split_name"].str.lower().str.replace("_", "-")
+    df["Split Name Normalized"] = df[SPLIT_NAME_COL].str.lower().str.replace("_", "-")
 
     # Map to canonical names
     pre_variants = {"pre-drift", "pre_drift", "pre"}
@@ -376,8 +491,8 @@ def normalize_split_name(df: pd.DataFrame) -> pd.DataFrame:
         else:
             return split  # Keep unknown values as-is for error detection
 
-    df["split_name"] = df["split_name_normalized"].apply(normalize_split)
-    df = df.drop(columns=["split_name_normalized"])
+    df[SPLIT_NAME_COL] = df["Split Name Normalized"].apply(normalize_split)
+    df = df.drop(columns=["Split Name Normalized"])
 
     return df
 
@@ -409,29 +524,29 @@ def enrich_with_experimental_factors(
     df = df.copy()
 
     # Extract log number from log_id
-    df["log_number"] = df["log_id"].apply(extract_log_number)
+    df[LOG_NUMBER_COL] = df[LOG_ID_COL].apply(extract_log_number)
 
     # Merge with generation info on log_number
-    df_enriched = df.merge(gen_info, on="log_number", how="left")
+    df_enriched = df.merge(gen_info, on=LOG_NUMBER_COL, how="left")
 
     # Drop the temporary log_number column
-    df_enriched = df_enriched.drop(columns=["log_number"])
+    df_enriched = df_enriched.drop(columns=[LOG_NUMBER_COL])
 
     # Check for unmapped evolution_proportion and change_operation
-    if "evolution_proportion" in df_enriched.columns:
-        if df_enriched["evolution_proportion"].isna().any():
-            unmapped_log_ids = df_enriched[df_enriched["evolution_proportion"].isna()][
-                "log_id"
+    if CHANGE_MAGNITUDE_COL in df_enriched.columns:
+        if df_enriched[CHANGE_MAGNITUDE_COL].isna().any():
+            unmapped_log_ids = df_enriched[df_enriched[CHANGE_MAGNITUDE_COL].isna()][
+                LOG_ID_COL
             ].unique()
             raise ValueError(
                 f"Cannot map evolution_proportion for {len(unmapped_log_ids)} log_ids: "
                 f"{unmapped_log_ids[:5].tolist() if len(unmapped_log_ids) > 5 else unmapped_log_ids.tolist()}"
             )
 
-    if "change_operation" in df_enriched.columns:
-        if df_enriched["change_operation"].isna().any():
-            unmapped_log_ids = df_enriched[df_enriched["change_operation"].isna()][
-                "log_id"
+    if EDIT_OPERATIONS_COL in df_enriched.columns:
+        if df_enriched[EDIT_OPERATIONS_COL].isna().any():
+            unmapped_log_ids = df_enriched[df_enriched[EDIT_OPERATIONS_COL].isna()][
+                LOG_ID_COL
             ].unique()
             raise ValueError(
                 f"Cannot map change_operation for {len(unmapped_log_ids)} log_ids: "
@@ -440,10 +555,10 @@ def enrich_with_experimental_factors(
 
     # Check for unmapped log_ids
     unmapped = df_enriched[
-        df_enriched["complexity"].isna() | df_enriched["noise"].isna()
+        df_enriched[MODEL_COMPLEXITY_COL].isna() | df_enriched[NOISE_LEVEL_COL].isna()
     ]
     if not unmapped.empty:
-        unmapped_log_ids = unmapped["log_id"].unique()
+        unmapped_log_ids = unmapped[LOG_ID_COL].unique()
         n_unmapped_rows = len(unmapped)
         n_total_rows = len(df_enriched)
         print(
@@ -458,7 +573,7 @@ def enrich_with_experimental_factors(
 
     # Filter to only mapped rows
     df_mapped = df_enriched[
-        df_enriched["complexity"].notna() & df_enriched["noise"].notna()
+        df_enriched[MODEL_COMPLEXITY_COL].notna() & df_enriched[NOISE_LEVEL_COL].notna()
     ].copy()
 
     if len(df_mapped) == 0:
@@ -469,15 +584,105 @@ def enrich_with_experimental_factors(
 
     print(
         f"  Proceeding with {len(df_mapped)} rows from "
-        f"{df_mapped['log_id'].nunique()} unique log_ids."
+        f"{df_mapped[LOG_ID_COL].nunique()} unique log_ids."
     )
 
     return df_mapped
 
 
+def remove_pre_drift_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove pre-drift duplicates across evolution-related design factors.
+
+    In this dataset family, pre-drift segments are generated *before* any
+    evolution/edit operations are applied, so pre-drift metric outputs should
+    not depend on `evolution_proportion` or `change_operation`. However, the
+    input tables can still contain multiple rows per seed-cell because multiple
+    logs share the same replication seed (`log_seed`) while varying in those
+    nuisance factors.
+
+    This function collapses duplicates per seed-cell by taking medians of numeric
+    columns, and drops `evolution_proportion` and `change_operation` to prevent
+    accidental pooling/weighting across nuisance multiplicity in downstream
+    analyses.
+
+    Parameters
+    ----------
+    df
+        Pre-drift DataFrame enriched with experimental factors, including
+        `Metric`, `complexity`, `noise`, `window_size`, and SEED_COL.
+
+    Returns
+    -------
+    pd.DataFrame
+        Deduplicated DataFrame with one row per (Metric, complexity, noise,
+        window_size, seed). Keeps a representative `log_id` and a `log_ids` list
+        for traceability.
+    """
+    if SEED_COL not in df.columns:
+        raise ValueError(
+            f"remove_pre_drift_duplicates requires {SEED_COL!r} to define seed-cells."
+        )
+    required = [*NOISE_TABLE_GROUP_KEYS_WITH_SEED, LOG_ID_COL]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"Missing required columns for pre-drift deduplication: {missing}"
+        )
+
+    # Ensure pre-drift only if split_name exists.
+    if SPLIT_NAME_COL in df.columns:
+        allowed_pre = {"pre_drift", "pre-drift", "pre"}
+        split_vals = (
+            df[SPLIT_NAME_COL].dropna().astype(str).str.lower().unique().tolist()
+        )
+        bad = [s for s in split_vals if s not in allowed_pre]
+        if bad:
+            raise ValueError(
+                "remove_pre_drift_duplicates received non-pre rows. "
+                f"Unexpected split_name values: {bad}."
+            )
+
+    keys = NOISE_TABLE_GROUP_KEYS_WITH_SEED
+    grouped = df.groupby(keys, dropna=False, sort=False)
+
+    # Aggregate numeric columns by median, excluding nuisance factors.
+    numeric_cols = [
+        c
+        for c in df.select_dtypes(include=[np.number]).columns.tolist()
+        if c not in keys and c not in {CHANGE_MAGNITUDE_COL}
+    ]
+    agg_map: dict[str, str] = {c: "median" for c in numeric_cols}
+    out = grouped.agg(agg_map).reset_index()
+
+    # Keep a representative split_name if present.
+    if SPLIT_NAME_COL in df.columns:
+        split_first = grouped[SPLIT_NAME_COL].first().reset_index(name=SPLIT_NAME_COL)
+        out = out.merge(split_first, on=keys, how="left")
+
+    # Keep contributing log_ids for traceability and a representative log_id.
+    log_ids = (
+        grouped[LOG_ID_COL]
+        .apply(lambda x: sorted(set(x.astype(str).tolist())))
+        .reset_index(name="Log IDs")
+    )
+    out = out.merge(log_ids, on=keys, how="left")
+    out[LOG_ID_COL] = out["Log IDs"].apply(
+        lambda ids: ids[0] if isinstance(ids, list) and ids else None
+    )
+
+    # Drop nuisance factor columns if they survived (should not, but be explicit).
+    out = out.drop(
+        columns=[
+            c for c in (CHANGE_MAGNITUDE_COL, EDIT_OPERATIONS_COL) if c in out.columns
+        ]
+    )
+    return out
+
+
 def compute_per_log_relative_noise(
     df: pd.DataFrame, aggregation: Literal["mean", "median"] = "mean"
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, int]:
     """
     Compute relative noise per log (IQR / center).
 
@@ -490,36 +695,37 @@ def compute_per_log_relative_noise(
 
     Returns
     -------
-    pd.DataFrame
-        DataFrame with added iqr, center, and rel_noise_log columns.
+    tuple[pd.DataFrame, int]
+        (df_valid, n_invalid) where df_valid has added iqr, center, and
+        rel_noise_log columns, and n_invalid is the number of dropped rows.
     """
     df = df.copy()
 
     # Compute IQR
-    df["iqr"] = df["Sample CI High"] - df["Sample CI Low"]
+    df["IQR"] = df["Sample CI High"] - df["Sample CI Low"]
 
     # Compute center based on aggregation method
     if aggregation == "mean":
-        df["center"] = df["Mean Value"]
+        df["Center"] = df["Mean Value"]
     elif aggregation == "median":
         if "Median Value" not in df.columns:
             raise ValueError(
                 "choose_aggregation='median' requires 'Median Value' column, "
                 "which is not present in the input data."
             )
-        df["center"] = df["Median Value"]
+        df["Center"] = df["Median Value"]
     else:
         raise ValueError(f"Unknown aggregation method: {aggregation}")
 
     # Compute relative noise
-    df["rel_noise_log"] = df["iqr"] / (df["center"].abs() + eps)
+    df["Relative Noise Log"] = df["IQR"] / (df["Center"].abs() + eps)
 
     # Flag invalid rows
     invalid_mask = (
-        df["center"].isna()
-        | df["iqr"].isna()
-        | (df["iqr"] < 0)
-        | (df["rel_noise_log"] < 0)
+        df["Center"].isna()
+        | df["IQR"].isna()
+        | (df["IQR"] < 0)
+        | (df["Relative Noise Log"] < 0)
     )
 
     n_invalid = invalid_mask.sum()
@@ -538,14 +744,16 @@ def add_change_vs_baseline_log(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add per-log change vs. no-noise baseline (relative absolute deviation).
 
-    For each (Metric, complexity, window_size), baseline is the median of
-    center over rows where noise == "0". Then change_vs_baseline_log =
-    |center - baseline| / (|baseline| + eps). For noise == "0", set to 0.
+    Baseline is computed within the same seed (log_seed).
+
+    For each (Metric, complexity, window_size, seed), baseline is the median of
+    center over rows where noise == "None". Then change_vs_baseline_log =
+    |center - baseline| / (|baseline| + eps). For noise == "None", set to 0.
 
     Parameters
     ----------
     df
-        DataFrame with Metric, complexity, noise, window_size, center.
+        DataFrame with Metric, complexity, noise, window_size, center, and SEED_COL.
 
     Returns
     -------
@@ -553,20 +761,28 @@ def add_change_vs_baseline_log(df: pd.DataFrame) -> pd.DataFrame:
         Copy of df with added column change_vs_baseline_log.
     """
     df = df.copy()
+    if SEED_COL not in df.columns:
+        raise ValueError(
+            f"add_change_vs_baseline_log requires {SEED_COL!r} for baseline within seed."
+        )
     baseline = (
-        df[df["noise"] == "0"]
-        .groupby(["Metric", "complexity", "window_size"])["center"]
+        df[df[NOISE_LEVEL_COL] == "None"]
+        .groupby(["Metric", MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL, SEED_COL])["Center"]
         .median()
         .reset_index()
-        .rename(columns={"center": "baseline"})
+        .rename(columns={"Center": "Baseline"})
     )
-    df = df.merge(baseline, on=["Metric", "complexity", "window_size"], how="left")
-    df["change_vs_baseline_log"] = np.where(
-        df["noise"] == "0",
+    df = df.merge(
+        baseline,
+        on=["Metric", MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL, SEED_COL],
+        how="left",
+    )
+    df["Change Vs Baseline Log"] = np.where(
+        df[NOISE_LEVEL_COL] == "None",
         0.0,
-        (df["center"] - df["baseline"]).abs() / (df["baseline"].abs() + eps),
+        (df["Center"] - df["Baseline"]).abs() / (df["Baseline"].abs() + eps),
     )
-    df = df.drop(columns=["baseline"])
+    df = df.drop(columns=["Baseline"])
     return df
 
 
@@ -577,31 +793,50 @@ def aggregate_relative_noise(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df
-        DataFrame with rel_noise_log, Metric, complexity, noise, window_size columns.
+        Pre-drift DataFrame with rel_noise_log, Metric, complexity, noise, window_size,
+        and SEED_COL.
 
     Returns
     -------
     pd.DataFrame
-        Long-format DataFrame with aggregated rel_noise and n_logs.
+        Long-format DataFrame with aggregated rel_noise and n_sigma.
+        rel_noise is the median over seed of per-seed rel_noise_log values.
     """
-    # Group by experimental factors
-    grouped = df.groupby(["Metric", "complexity", "noise", "window_size"])
+    if SEED_COL not in df.columns:
+        raise ValueError(
+            f"aggregate_relative_noise requires {SEED_COL!r} for seed-last aggregation."
+        )
 
-    # Aggregate
-    agg_result = grouped.agg(
-        rel_noise=("rel_noise_log", "median"),
-        n_logs=("rel_noise_log", "count"),
-        rel_noise_iqr_logs=(
-            "rel_noise_log",
-            lambda x: x.quantile(0.75) - x.quantile(0.25),
-        ),
-    ).reset_index()
+    # 1) Collapse within seed to one rel_noise_log per (Metric, complexity, noise, window_size, seed)
+    rel_noise_sigma = _collapse_within_sigma(
+        df,
+        group_keys_with_sigma=NOISE_TABLE_GROUP_KEYS_WITH_SEED,
+        value_cols=["Relative Noise Log"],
+    )
+
+    # 2) Aggregate across seed last
+    agg_result = _median_over_sigma(
+        rel_noise_sigma,
+        group_keys_without_sigma=NOISE_TABLE_GROUP_KEYS,
+        value_col="Relative Noise Log",
+        out_col="Relative Noise",
+        n_col="N Seed",
+    )
+
+    # Optional dispersion across seed (IQR over seed-level values)
+    grouped = rel_noise_sigma.groupby(NOISE_TABLE_GROUP_KEYS, dropna=False, sort=False)
+    iqr_sigma = (
+        grouped["Relative Noise Log"]
+        .apply(lambda x: x.quantile(0.75) - x.quantile(0.25))
+        .reset_index(name="Relative Noise IQR Seed")
+    )
+    agg_result = agg_result.merge(iqr_sigma, on=NOISE_TABLE_GROUP_KEYS, how="left")
 
     agg_result = _add_dimension_and_sort_long(agg_result)
     return agg_result
 
 
-def partial_r2(full_model, reduced_model) -> float:
+def partial_r2(full_model: Any, reduced_model: Any) -> float:
     """
     Compute partial R² using SSE-based formula.
 
@@ -624,19 +859,18 @@ def partial_r2(full_model, reduced_model) -> float:
         return 1.0
 
     partial_r2_val = (sse_reduced - sse_full) / sse_reduced
-    return np.clip(partial_r2_val, 0.0, 1.0)
+    return float(np.clip(partial_r2_val, 0.0, 1.0))
 
 
 def compute_partial_r2_components(
     df_m: pd.DataFrame,
     *,
-    outcome_col: str = "rel_noise_log",
+    outcome_col: str = "Relative Noise Log",
     outcome_log_shift: float = 0.0,
 ) -> dict:
     """
     Compute partial R² for each factor (complexity, noise, window_size, log_seed).
-    Complexity and noise are treated as ordered (numeric); log_id is not a factor.
-    Includes complexity × window_size interaction (effect of window size may depend on process complexity).
+    Main effects only; no interactions (factors are never combined).
 
     Parameters
     ----------
@@ -655,24 +889,30 @@ def compute_partial_r2_components(
         Dictionary with keys: complexity, noise, window_size, log_seed, residual, n_obs, r2_full.
         Values are normalized shares (percentages) that sum to 100.
     """
-    required = [outcome_col, "window_size", "complexity", "noise", "log_seed"]
+    required = [
+        outcome_col,
+        WINDOW_SIZE_COL,
+        MODEL_COMPLEXITY_COL,
+        NOISE_LEVEL_COL,
+        SEED_COL,
+    ]
     df_clean = df_m[[c for c in required if c in df_m.columns]].copy()
-    if outcome_col not in df_clean.columns or "log_seed" not in df_clean.columns:
+    if outcome_col not in df_clean.columns or SEED_COL not in df_clean.columns:
         return {
-            "complexity": 0.0,
-            "noise": 0.0,
-            "window_size": 0.0,
-            "log_seed": 0.0,
-            "residual": 1.0,
-            "n_obs": 0,
-            "r2_full": 0.0,
+            MODEL_COMPLEXITY_COL: 0.0,
+            NOISE_LEVEL_COL: 0.0,
+            WINDOW_SIZE_COL: 0.0,
+            SEED_COL: 0.0,
+            "Residual": 1.0,
+            "N Obs": 0,
+            "R2 Full": 0.0,
         }
 
     # Ordered numeric encoding for complexity and noise (simple<mid<complex; 0<low<high)
-    df_clean["complexity_ord"] = df_clean["complexity"].map(COMPLEXITY_ORD)
-    df_clean["noise_ord"] = df_clean["noise"].map(NOISE_ORD)
+    df_clean["Complexity Ord"] = df_clean[MODEL_COMPLEXITY_COL].map(COMPLEXITY_ORD)
+    df_clean["Noise Ord"] = df_clean[NOISE_LEVEL_COL].map(NOISE_ORD)
     df_clean = df_clean[
-        df_clean["complexity_ord"].notna() & df_clean["noise_ord"].notna()
+        df_clean["Complexity Ord"].notna() & df_clean["Noise Ord"].notna()
     ].copy()
 
     # Create log-transformed outcome
@@ -681,130 +921,140 @@ def compute_partial_r2_components(
     # Drop rows with non-finite y
     df_clean = df_clean[np.isfinite(df_clean["y"])].copy()
 
+    # Snake-case aliases for OLS formula (formula uses identifiers, not title-case col names)
+    df_clean["window_size"] = df_clean[WINDOW_SIZE_COL]
+    df_clean["complexity_ord"] = df_clean["Complexity Ord"]
+    df_clean["noise_ord"] = df_clean["Noise Ord"]
+    df_clean["log_seed"] = df_clean[SEED_COL]
+
     n_obs = len(df_clean)
 
     if n_obs < MIN_OBS_FOR_FACTOR_ANALYSIS:
         # Return zeros if insufficient data (residual as proportion, not percentage)
         return {
-            "complexity": 0.0,
-            "noise": 0.0,
-            "window_size": 0.0,
-            "log_seed": 0.0,
-            "residual": 1.0,  # 100% as proportion
-            "n_obs": n_obs,
-            "r2_full": 0.0,
+            MODEL_COMPLEXITY_COL: 0.0,
+            NOISE_LEVEL_COL: 0.0,
+            WINDOW_SIZE_COL: 0.0,
+            SEED_COL: 0.0,
+            "Residual": 1.0,  # 100% as proportion
+            "N Obs": n_obs,
+            "R2 Full": 0.0,
         }
 
-    # Fit full model (complexity and noise as ordered numeric; complexity × window_size interaction)
+    # Full model: main effects only (no interactions)
     try:
         model_full = smf.ols(
-            "y ~ np.log(window_size) + complexity_ord + noise_ord + np.log(window_size):complexity_ord + C(log_seed)",
+            "y ~ np.log(window_size) + complexity_ord + noise_ord + C(log_seed)",
             data=df_clean,
         ).fit()
         r2_full = model_full.rsquared
     except Exception as e:
         print(f"Warning: Failed to fit full model: {e}")
         return {
-            "complexity": 0.0,
-            "noise": 0.0,
-            "window_size": 0.0,
-            "log_seed": 0.0,
-            "residual": 1.0,  # 100% as proportion
-            "n_obs": n_obs,
-            "r2_full": 0.0,
+            MODEL_COMPLEXITY_COL: 0.0,
+            NOISE_LEVEL_COL: 0.0,
+            WINDOW_SIZE_COL: 0.0,
+            SEED_COL: 0.0,
+            "Residual": 1.0,  # 100% as proportion
+            "N Obs": n_obs,
+            "R2 Full": 0.0,
         }
 
-    # Fit reduced models (drop one factor at a time)
+    # Reduced models: drop exactly one factor at a time (no combined terms)
     partial_r2_vals = {}
 
-    # Drop complexity
     try:
         model_no_complexity = smf.ols(
             "y ~ np.log(window_size) + noise_ord + C(log_seed)",
             data=df_clean,
         ).fit()
-        partial_r2_vals["complexity"] = partial_r2(model_full, model_no_complexity)
+        partial_r2_vals[MODEL_COMPLEXITY_COL] = partial_r2(
+            model_full, model_no_complexity
+        )
     except Exception:
-        partial_r2_vals["complexity"] = 0.0
+        partial_r2_vals[MODEL_COMPLEXITY_COL] = 0.0
 
-    # Drop noise (keep complexity × window_size interaction)
     try:
         model_no_noise = smf.ols(
-            "y ~ np.log(window_size) + complexity_ord + np.log(window_size):complexity_ord + C(log_seed)",
+            "y ~ np.log(window_size) + complexity_ord + C(log_seed)",
             data=df_clean,
         ).fit()
-        partial_r2_vals["noise"] = partial_r2(model_full, model_no_noise)
+        partial_r2_vals[NOISE_LEVEL_COL] = partial_r2(model_full, model_no_noise)
     except Exception:
-        partial_r2_vals["noise"] = 0.0
+        partial_r2_vals[NOISE_LEVEL_COL] = 0.0
 
-    # Drop window_size
     try:
         model_no_window = smf.ols(
             "y ~ complexity_ord + noise_ord + C(log_seed)",
             data=df_clean,
         ).fit()
-        partial_r2_vals["window_size"] = partial_r2(model_full, model_no_window)
+        partial_r2_vals[WINDOW_SIZE_COL] = partial_r2(model_full, model_no_window)
     except Exception:
-        partial_r2_vals["window_size"] = 0.0
+        partial_r2_vals[WINDOW_SIZE_COL] = 0.0
 
-    # Drop log_seed (keep complexity × window_size interaction)
     try:
         model_no_log_seed = smf.ols(
-            "y ~ np.log(window_size) + complexity_ord + noise_ord + np.log(window_size):complexity_ord",
+            "y ~ np.log(window_size) + complexity_ord + noise_ord",
             data=df_clean,
         ).fit()
-        partial_r2_vals["log_seed"] = partial_r2(model_full, model_no_log_seed)
+        partial_r2_vals[SEED_COL] = partial_r2(model_full, model_no_log_seed)
     except Exception:
-        partial_r2_vals["log_seed"] = 0.0
+        partial_r2_vals[SEED_COL] = 0.0
 
     # Compute residual share (unexplained variance)
     residual_raw = max(0.0, 1.0 - r2_full)
 
     # Normalize partial R² values and residual to sum to 100%
     total_all = (
-        partial_r2_vals["complexity"]
-        + partial_r2_vals["noise"]
-        + partial_r2_vals["window_size"]
-        + partial_r2_vals["log_seed"]
+        partial_r2_vals[MODEL_COMPLEXITY_COL]
+        + partial_r2_vals[NOISE_LEVEL_COL]
+        + partial_r2_vals[WINDOW_SIZE_COL]
+        + partial_r2_vals[SEED_COL]
         + residual_raw
     )
 
     if total_all > 0:
         normalized = {
-            "complexity": partial_r2_vals["complexity"] / total_all,
-            "noise": partial_r2_vals["noise"] / total_all,
-            "window_size": partial_r2_vals["window_size"] / total_all,
-            "log_seed": partial_r2_vals["log_seed"] / total_all,
+            MODEL_COMPLEXITY_COL: partial_r2_vals[MODEL_COMPLEXITY_COL] / total_all,
+            NOISE_LEVEL_COL: partial_r2_vals[NOISE_LEVEL_COL] / total_all,
+            WINDOW_SIZE_COL: partial_r2_vals[WINDOW_SIZE_COL] / total_all,
+            SEED_COL: partial_r2_vals[SEED_COL] / total_all,
         }
         residual_share = residual_raw / total_all
     else:
         normalized = {
-            "complexity": 0.0,
-            "noise": 0.0,
-            "window_size": 0.0,
-            "log_seed": 0.0,
+            MODEL_COMPLEXITY_COL: 0.0,
+            NOISE_LEVEL_COL: 0.0,
+            WINDOW_SIZE_COL: 0.0,
+            SEED_COL: 0.0,
         }
         residual_share = 1.0
 
     return {
-        "complexity": normalized["complexity"],
-        "noise": normalized["noise"],
-        "window_size": normalized["window_size"],
-        "log_seed": normalized["log_seed"],
-        "residual": residual_share,
-        "n_obs": n_obs,
-        "r2_full": r2_full,
+        MODEL_COMPLEXITY_COL: normalized[MODEL_COMPLEXITY_COL],
+        NOISE_LEVEL_COL: normalized[NOISE_LEVEL_COL],
+        WINDOW_SIZE_COL: normalized[WINDOW_SIZE_COL],
+        SEED_COL: normalized[SEED_COL],
+        "Residual": residual_share,
+        "N Obs": n_obs,
+        "R2 Full": r2_full,
     }
 
 
 def run_noise_factor_importance(
     df_relnoise_log: pd.DataFrame,
     *,
-    outcome_col: str = "rel_noise_log",
+    outcome_col: str = "Relative Noise Log",
     outcome_log_shift: float = 0.0,
+    debug_filtering: bool = False,
+    debug_max_examples: int = 5,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Run factor importance analysis for a per-log outcome across all metrics.
+    Run factor importance analysis for an outcome across all metrics.
+
+    To avoid overweighting seed with multiple rows (e.g., nuisance multiplicity),
+    this function collapses within seed first so the regression sees at most
+    one observation per (Metric, complexity, noise, window_size, seed).
 
     Parameters
     ----------
@@ -821,11 +1071,119 @@ def run_noise_factor_importance(
     tuple[pd.DataFrame, pd.DataFrame]
         Long and wide format DataFrames with factor importance results.
     """
+
+    def _debug_print_filtered_out(
+        *,
+        metric: str,
+        df_metric_raw: pd.DataFrame,
+        df_metric_sigma: pd.DataFrame,
+        outcome_col: str,
+        outcome_log_shift: float,
+        max_examples: int,
+    ) -> None:
+        """
+        Print which seed-cells are filtered out and why (mypy/OLS preprocessing).
+
+        Notes
+        -----
+        This debug helper is intentionally verbose and only runs when requested.
+        It reports counts and a small sample of affected keys. Keys are at the
+        seed-cell level: (window_size, complexity, noise, log_seed).
+        """
+        keys = [WINDOW_SIZE_COL, MODEL_COMPLEXITY_COL, NOISE_LEVEL_COL, SEED_COL]
+        # Attach contributing log_ids per seed-cell if available in the raw table.
+        sigma_log_ids = None
+        if LOG_ID_COL in df_metric_raw.columns:
+            sigma_log_ids = (
+                df_metric_raw.groupby(keys, dropna=False, sort=False)[LOG_ID_COL]
+                .apply(lambda x: sorted(set(x.astype(str).tolist())))
+                .reset_index(name="Log IDs")
+            )
+
+        d = df_metric_sigma.copy()
+        if sigma_log_ids is not None:
+            d = d.merge(sigma_log_ids, on=keys, how="left")
+
+        # Map ordinals and compute y exactly like compute_partial_r2_components.
+        d["Complexity Ord"] = d[MODEL_COMPLEXITY_COL].map(COMPLEXITY_ORD)
+        d["Noise Ord"] = d[NOISE_LEVEL_COL].map(NOISE_ORD)
+
+        reasons: dict[str, pd.Series] = {}
+        reasons["unmapped_complexity_or_noise"] = (
+            d["Complexity Ord"].isna() | d["Noise Ord"].isna()
+        )
+        reasons["outcome_nan"] = d[outcome_col].isna()
+        reasons["outcome_nonfinite"] = ~np.isfinite(d[outcome_col].astype(float))
+        # log() domain issues (after shift)
+        log_arg = d[outcome_col].astype(float) + float(outcome_log_shift)
+        reasons["log_arg_nonpositive"] = ~(log_arg > 0)  # includes NaN, 0, negative
+        with np.errstate(divide="ignore", invalid="ignore"):
+            y = np.log(log_arg)
+        reasons["y_nonfinite"] = ~np.isfinite(y)
+
+        # What ends up excluded from the regression input?
+        excluded = reasons["unmapped_complexity_or_noise"] | reasons["y_nonfinite"]
+        n_total = len(d)
+        n_excl = int(excluded.sum())
+        if n_excl == 0:
+            return
+
+        print("\n" + "-" * 60)
+        print(f"R2 FILTER DEBUG — Metric: {metric}")
+        print(f"  seed-cells before cleaning: {n_total}")
+        print(f"  seed-cells excluded from model: {n_excl}")
+        for reason, mask in reasons.items():
+            n = int(mask.sum())
+            if n == 0:
+                continue
+            print(f"  - {reason}: {n}")
+            cols = keys + [outcome_col]
+            if "Log IDs" in d.columns:
+                cols = cols + ["Log IDs"]
+            ex = d.loc[mask, cols].copy()
+            if "Log IDs" in ex.columns:
+                ex["Log IDs Preview"] = ex["Log IDs"].apply(
+                    lambda ids: (
+                        ids[:5]
+                        + (["..."] if isinstance(ids, list) and len(ids) > 5 else [])
+                        if isinstance(ids, list)
+                        else ids
+                    )
+                )
+                ex = ex.drop(columns=["Log IDs"], errors="ignore")
+                ex = ex.assign(log_ids=ex["Log IDs Preview"]).drop(
+                    columns=["Log IDs Preview"]
+                )
+            print(ex.head(max_examples).to_string(index=False))
+        print("-" * 60)
+
     results = []
 
-    required_cols = [outcome_col, "window_size", "complexity", "noise", "log_seed"]
-    for metric in df_relnoise_log["Metric"].unique():
-        df_metric = df_relnoise_log[df_relnoise_log["Metric"] == metric].copy()
+    # Collapse within seed to one observation per (Metric, complexity, noise, window_size, seed).
+    df_in = df_relnoise_log
+    if SEED_COL in df_in.columns:
+        df_in = _collapse_within_sigma(
+            df_in,
+            group_keys_with_sigma=[
+                "Metric",
+                WINDOW_SIZE_COL,
+                MODEL_COMPLEXITY_COL,
+                NOISE_LEVEL_COL,
+                SEED_COL,
+            ],
+            value_cols=[outcome_col],
+        )
+
+    required_cols = [
+        outcome_col,
+        WINDOW_SIZE_COL,
+        MODEL_COMPLEXITY_COL,
+        NOISE_LEVEL_COL,
+        SEED_COL,
+    ]
+    for metric in df_in["Metric"].unique():
+        df_metric = df_in[df_in["Metric"] == metric].copy()
+        df_metric_raw = df_relnoise_log[df_relnoise_log["Metric"] == metric].copy()
 
         missing_cols = [col for col in required_cols if col not in df_metric.columns]
         if missing_cols:
@@ -838,16 +1196,26 @@ def run_noise_factor_importance(
             outcome_log_shift=outcome_log_shift,
         )
 
+        if debug_filtering:
+            _debug_print_filtered_out(
+                metric=metric,
+                df_metric_raw=df_metric_raw,
+                df_metric_sigma=df_metric,
+                outcome_col=outcome_col,
+                outcome_log_shift=outcome_log_shift,
+                max_examples=debug_max_examples,
+            )
+
         results.append(
             {
                 "Metric": metric,
-                "complexity": components["complexity"] * 100,
-                "noise": components["noise"] * 100,
-                "window_size": components["window_size"] * 100,
-                "log_seed": components["log_seed"] * 100,
-                "residual": components["residual"] * 100,
-                "n_obs": components["n_obs"],
-                "r2_full": components["r2_full"],
+                MODEL_COMPLEXITY_COL: components[MODEL_COMPLEXITY_COL] * 100,
+                NOISE_LEVEL_COL: components[NOISE_LEVEL_COL] * 100,
+                WINDOW_SIZE_COL: components[WINDOW_SIZE_COL] * 100,
+                SEED_COL: components[SEED_COL] * 100,
+                "Residual": components["Residual"] * 100,
+                "N Obs": components["N Obs"],
+                "R2 Full": components["R2 Full"] * 100,
             }
         )
 
@@ -858,8 +1226,14 @@ def run_noise_factor_importance(
 
     # Create long format by melting
     df_long = df_wide.reset_index().melt(
-        id_vars=["dimension", "Metric", "n_obs", "r2_full"],
-        value_vars=["complexity", "noise", "window_size", "log_seed", "residual"],
+        id_vars=["Dimension", "Metric", "N Obs", "R2 Full"],
+        value_vars=[
+            MODEL_COMPLEXITY_COL,
+            NOISE_LEVEL_COL,
+            WINDOW_SIZE_COL,
+            SEED_COL,
+            "Residual",
+        ],
         var_name="factor",
         value_name="percent",
     )
@@ -890,7 +1264,7 @@ def print_factor_importance_summary(
     # Average share across metrics
     print("\n1. Average factor importance across all metrics:")
     factor_means = df_wide[
-        ["complexity", "noise", "window_size", "log_seed", "residual"]
+        [MODEL_COMPLEXITY_COL, NOISE_LEVEL_COL, WINDOW_SIZE_COL, SEED_COL, "Residual"]
     ].mean()
     for factor, mean_pct in factor_means.items():
         print(f"   {factor:15s}: {mean_pct:6.2f}%")
@@ -899,23 +1273,29 @@ def print_factor_importance_summary(
     print("\n2. Dominant factor per metric (highest share):")
     for dim, metric in df_wide.index:
         row = df_wide.loc[(dim, metric)]
-        factors = ["complexity", "noise", "window_size", "log_seed", "residual"]
+        factors = [
+            MODEL_COMPLEXITY_COL,
+            NOISE_LEVEL_COL,
+            WINDOW_SIZE_COL,
+            SEED_COL,
+            "Residual",
+        ]
         top_factor = max(factors, key=lambda f: row[f])
         top_value = row[top_factor]
         print(f"   {metric:40s}: {top_factor:15s} ({top_value:6.2f}%)")
 
     # Metrics with low n_obs
-    low_n = df_wide[df_wide["n_obs"] < MIN_OBS_FOR_FACTOR_ANALYSIS]
+    low_n = df_wide[df_wide["N Obs"] < MIN_OBS_FOR_FACTOR_ANALYSIS]
     if len(low_n) > 0:
         print(
             f"\n3. Warning: {len(low_n)} metrics have n_obs < {MIN_OBS_FOR_FACTOR_ANALYSIS}:"
         )
         for dim, metric in low_n.index:
-            print(f"   {metric}: n_obs = {low_n.loc[(dim, metric), 'n_obs']}")
+            print(f"   {metric}: N Obs = {low_n.loc[(dim, metric), 'N Obs']}")
 
     # Sanity checks
     print("\n4. Sanity checks:")
-    window_mean = df_wide["window_size"].mean()
+    window_mean = df_wide[WINDOW_SIZE_COL].mean()
     if window_mean < 20:
         print(
             f"   ⚠ Warning: Average window_size importance ({window_mean:.2f}%) is lower than expected"
@@ -925,7 +1305,7 @@ def print_factor_importance_summary(
             f"   ✓ Average window_size importance: {window_mean:.2f}% (expected to be high)"
         )
 
-    noise_mean = df_wide["noise"].mean()
+    noise_mean = df_wide[NOISE_LEVEL_COL].mean()
     print(f"   ✓ Average noise importance: {noise_mean:.2f}%")
 
     print("\n" + "=" * 60)
@@ -948,7 +1328,7 @@ def _pivot_noise_wide(
     value_column
         Name of the column to use as cell values.
     drop_no_noise_columns
-        If True, drop columns where noise level is "0".
+        If True, drop columns where noise level is "None".
 
     Returns
     -------
@@ -956,8 +1336,8 @@ def _pivot_noise_wide(
         Wide-format DataFrame with MultiIndex columns (complexity, noise, window_size).
     """
     df_wide = df_long.pivot_table(
-        index=["dimension", "Metric"],
-        columns=["complexity", "noise", "window_size"],
+        index=["Dimension", "Metric"],
+        columns=[MODEL_COMPLEXITY_COL, NOISE_LEVEL_COL, WINDOW_SIZE_COL],
         values=value_column,
         aggfunc="first",
     )
@@ -974,11 +1354,11 @@ def _pivot_noise_wide(
 
     if drop_no_noise_columns and isinstance(df_wide.columns, pd.MultiIndex):
         noise_level = df_wide.columns.get_level_values(1)
-        cols_keep = [i for i, n in enumerate(noise_level) if n != "0"]
+        cols_keep = [i for i, n in enumerate(noise_level) if n != "None"]
         df_wide = df_wide.iloc[:, cols_keep]
 
-    complexity_order = ["simple", "mid", "complex"]
-    noise_order = ["0", "low", "high"]
+    complexity_order = ["Simple", "Middle", "Complex"]
+    noise_order = ["None", "Low", "High"]
     if isinstance(df_wide.columns, pd.MultiIndex):
         complexity_level = list(df_wide.columns.get_level_values(0).unique())
         noise_level = list(df_wide.columns.get_level_values(1).unique())
@@ -991,7 +1371,7 @@ def _pivot_noise_wide(
         noise_sorted.extend([n for n in noise_level if n not in noise_order])
         sorted_columns = pd.MultiIndex.from_product(
             [complexity_sorted, noise_sorted, window_sizes],
-            names=["complexity", "noise", "window_size"],
+            names=[MODEL_COMPLEXITY_COL, NOISE_LEVEL_COL, WINDOW_SIZE_COL],
         )
         existing_columns = [col for col in sorted_columns if col in df_wide.columns]
         df_wide = df_wide[existing_columns]
@@ -1005,19 +1385,31 @@ def _aggregate_abs_median(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df
-        DataFrame with Metric, complexity, noise, window_size, center.
+        Pre-drift DataFrame with Metric, complexity, noise, window_size, center,
+        and SEED_COL.
 
     Returns
     -------
     pd.DataFrame
         Long table with Metric, complexity, noise, window_size, value.
     """
-    agg = (
-        df.groupby(["Metric", "complexity", "noise", "window_size"])["center"]
-        .median()
-        .reset_index()
+    if SEED_COL not in df.columns:
+        raise ValueError(
+            f"_aggregate_abs_median requires {SEED_COL!r} for seed-last aggregation."
+        )
+
+    center_sigma = _collapse_within_sigma(
+        df,
+        group_keys_with_sigma=NOISE_TABLE_GROUP_KEYS_WITH_SEED,
+        value_cols=["Center"],
     )
-    agg = agg.rename(columns={"center": "value"})
+    agg = _median_over_sigma(
+        center_sigma,
+        group_keys_without_sigma=NOISE_TABLE_GROUP_KEYS,
+        value_col="Center",
+        out_col="Value",
+        n_col="N Seed",
+    )
     return agg
 
 
@@ -1028,60 +1420,96 @@ def _aggregate_relci(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df
-        DataFrame with Metric, complexity, noise, window_size, center, Sample CI Low/High.
+        Pre-drift DataFrame with Metric, complexity, noise, window_size, center,
+        Sample CI Low/High, and SEED_COL.
 
     Returns
     -------
     pd.DataFrame
         Long table with Metric, complexity, noise, window_size, value.
+        value is the median over seed of per-seed relative CI values.
     """
     d = df.copy()
-    d["rel_ci"] = (d["Sample CI High"] - d["Sample CI Low"]) / (d["center"].abs() + eps)
-    agg = (
-        d.groupby(["Metric", "complexity", "noise", "window_size"])["rel_ci"]
-        .median()
-        .reset_index()
+    if SEED_COL not in d.columns:
+        raise ValueError(
+            f"_aggregate_relci requires {SEED_COL!r} for seed-last aggregation."
+        )
+
+    d["Rel CI Row"] = (d["Sample CI High"] - d["Sample CI Low"]) / (
+        d["Center"].abs() + eps
     )
-    agg = agg.rename(columns={"rel_ci": "value"})
+
+    # 1) Collapse within seed to a single rel_ci per (Metric, complexity, noise, window_size, seed)
+    rel_ci_sigma = _collapse_within_sigma(
+        d,
+        group_keys_with_sigma=NOISE_TABLE_GROUP_KEYS_WITH_SEED,
+        value_cols=["Rel CI Row"],
+    )
+
+    # 2) Aggregate across seed last
+    agg = _median_over_sigma(
+        rel_ci_sigma,
+        group_keys_without_sigma=NOISE_TABLE_GROUP_KEYS,
+        value_col="Rel CI Row",
+        out_col="Value",
+        n_col="N Seed",
+    )
     return agg
 
 
 def _aggregate_change_due_to_noise(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Robustness = |median_current_noise - median_no_noise| / |median_no_noise|; only noise != "0".
+    Robustness = |median_current_noise - median_no_noise| / |median_no_noise|; only noise != "None".
 
     Parameters
     ----------
     df
-        DataFrame with Metric, complexity, noise, window_size, center.
+        Pre-drift DataFrame with Metric, complexity, noise, window_size, center, and SEED_COL.
 
     Returns
     -------
     pd.DataFrame
-        Long table with Metric, complexity, noise, window_size, value (only noise != "0").
+        Long table with Metric, complexity, noise, window_size, value (only noise != "None").
+        value is the median over seed of per-seed robustness deviations.
     """
-    median_cur = (
-        df.groupby(["Metric", "complexity", "noise", "window_size"])["center"]
-        .median()
-        .reset_index()
+    if SEED_COL not in df.columns:
+        raise ValueError(
+            f"_aggregate_change_due_to_noise requires {SEED_COL!r} for seed-last aggregation."
+        )
+
+    # 1) Within-seed medians of center for each (Metric, complexity, noise, window_size, seed)
+    c_pre_sigma = _collapse_within_sigma(
+        df,
+        group_keys_with_sigma=NOISE_TABLE_GROUP_KEYS_WITH_SEED,
+        value_cols=["Center"],
     )
-    median_no = (
-        df[df["noise"] == "0"]
-        .groupby(["Metric", "complexity", "window_size"])["center"]
-        .median()
-        .reset_index()
+
+    # 2) Within-seed noise=None baseline for each (Metric, complexity, window_size, seed)
+    baseline = c_pre_sigma[c_pre_sigma[NOISE_LEVEL_COL] == "None"][
+        ["Metric", MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL, SEED_COL, "Center"]
+    ].rename(columns={"Center": "Center No Noise"})
+
+    merged = c_pre_sigma.merge(
+        baseline,
+        on=["Metric", MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL, SEED_COL],
+        how="inner",
     )
-    median_no = median_no.rename(columns={"center": "median_no_noise"})
-    merged = median_cur.merge(
-        median_no, on=["Metric", "complexity", "window_size"], how="inner"
+
+    # 3) Per-seed robustness deviation (exclude noise=None)
+    merged["R Seed"] = (merged["Center"] - merged["Center No Noise"]).abs() / (
+        merged["Center No Noise"].abs() + eps
     )
-    merged["value"] = (merged["center"] - merged["median_no_noise"]).abs() / (
-        merged["median_no_noise"].abs() + eps
+    merged = merged[merged[NOISE_LEVEL_COL] != "None"].copy()
+
+    # 4) Aggregate across seed last
+    out = _median_over_sigma(
+        merged,
+        group_keys_without_sigma=NOISE_TABLE_GROUP_KEYS,
+        value_col="R Seed",
+        out_col="Value",
+        n_col="N Seed",
     )
-    merged = merged[merged["noise"] != "0"][
-        ["Metric", "complexity", "noise", "window_size", "value"]
-    ]
-    return merged
+    return out
 
 
 def create_wide_format_table(df_long: pd.DataFrame) -> pd.DataFrame:
@@ -1098,7 +1526,7 @@ def create_wide_format_table(df_long: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         Wide-format DataFrame with MultiIndex columns (complexity, noise, window_size).
     """
-    return _pivot_noise_wide(df_long, "rel_noise", drop_no_noise_columns=False)
+    return _pivot_noise_wide(df_long, "Relative Noise", drop_no_noise_columns=False)
 
 
 def save_outputs(df_long: pd.DataFrame, df_wide: pd.DataFrame) -> None:
@@ -1144,15 +1572,15 @@ def perform_sanity_checks(df_long: pd.DataFrame, n_invalid: int) -> None:
     print("\n1. Checking: rel_noise decreases with increasing window_size")
     for metric in df_long["Metric"].unique():
         metric_df = df_long[df_long["Metric"] == metric]
-        for complexity in metric_df["complexity"].unique():
-            for noise in metric_df["noise"].unique():
+        for complexity in metric_df[MODEL_COMPLEXITY_COL].unique():
+            for noise in metric_df[NOISE_LEVEL_COL].unique():
                 subset = metric_df[
-                    (metric_df["complexity"] == complexity)
-                    & (metric_df["noise"] == noise)
-                ].sort_values("window_size")
+                    (metric_df[MODEL_COMPLEXITY_COL] == complexity)
+                    & (metric_df[NOISE_LEVEL_COL] == noise)
+                ].sort_values(WINDOW_SIZE_COL)
 
                 if len(subset) > 1:
-                    rel_noise_values = subset["rel_noise"].values
+                    rel_noise_values = subset["Relative Noise"].values
                     # Check if generally decreasing (allow some exceptions)
                     decreasing = all(
                         rel_noise_values[i] >= rel_noise_values[i + 1] * 0.9
@@ -1168,21 +1596,21 @@ def perform_sanity_checks(df_long: pd.DataFrame, n_invalid: int) -> None:
     print("\n2. Checking: rel_noise increases with higher noise level")
     for metric in df_long["Metric"].unique():
         metric_df = df_long[df_long["Metric"] == metric]
-        for complexity in metric_df["complexity"].unique():
-            for window_size in metric_df["window_size"].unique():
+        for complexity in metric_df[MODEL_COMPLEXITY_COL].unique():
+            for window_size in metric_df[WINDOW_SIZE_COL].unique():
                 subset = metric_df[
-                    (metric_df["complexity"] == complexity)
-                    & (metric_df["window_size"] == window_size)
+                    (metric_df[MODEL_COMPLEXITY_COL] == complexity)
+                    & (metric_df[WINDOW_SIZE_COL] == window_size)
                 ]
 
                 # Map noise levels to numeric for comparison
-                noise_order_map = {"0": 0, "low": 1, "high": 2}
+                noise_order_map = {"None": 0, "Low": 1, "High": 2}
                 subset = subset.copy()
-                subset["noise_numeric"] = subset["noise"].map(noise_order_map)
-                subset = subset.sort_values("noise_numeric")
+                subset["Noise Numeric"] = subset[NOISE_LEVEL_COL].map(noise_order_map)
+                subset = subset.sort_values("Noise Numeric")
 
                 if len(subset) > 1:
-                    rel_noise_values = subset["rel_noise"].values
+                    rel_noise_values = subset["Relative Noise"].values
                     # Check if generally increasing (allow some exceptions)
                     increasing = all(
                         rel_noise_values[i] <= rel_noise_values[i + 1] * 1.1
@@ -1198,16 +1626,17 @@ def perform_sanity_checks(df_long: pd.DataFrame, n_invalid: int) -> None:
     print("\n3. Summary Statistics")
     print(f"   Number of invalid rows dropped: {n_invalid}")
     print(f"   Number of metrics: {df_long['Metric'].nunique()}")
-    print(f"   Number of complexity levels: {df_long['complexity'].nunique()}")
-    print(f"   Number of noise levels: {df_long['noise'].nunique()}")
-    print(f"   Number of window sizes: {df_long['window_size'].nunique()}")
+    print(f"   Number of complexity levels: {df_long[MODEL_COMPLEXITY_COL].nunique()}")
+    print(f"   Number of noise levels: {df_long[NOISE_LEVEL_COL].nunique()}")
+    print(f"   Number of window sizes: {df_long[WINDOW_SIZE_COL].nunique()}")
     print(f"   Total cells (metric × complexity × noise × window_size): {len(df_long)}")
 
-    n_logs_stats = df_long["n_logs"].describe()
-    print(f"\n   n_logs per cell:")
-    print(f"     Min: {n_logs_stats['min']:.0f}")
-    print(f"     Median: {n_logs_stats['50%']:.0f}")
-    print(f"     Max: {n_logs_stats['max']:.0f}")
+    n_col = "N Seed" if "N Seed" in df_long.columns else "N Logs"
+    n_stats = df_long[n_col].describe()
+    print(f"\n   {n_col} per cell:")
+    print(f"     Min: {n_stats['min']:.0f}")
+    print(f"     Median: {n_stats['50%']:.0f}")
+    print(f"     Max: {n_stats['max']:.0f}")
 
     print("\n" + "=" * 60)
 
@@ -1216,36 +1645,44 @@ def compute_snr_per_log(
     df: pd.DataFrame, choose_aggregation: Literal["mean", "median"] = "mean"
 ) -> pd.DataFrame:
     """
-    Compute SNR per log by joining pre_drift and post_drift rows.
+    Compute SNR per seed (log_seed) by joining pre_drift and post_drift rows.
 
     Parameters
     ----------
     df
         DataFrame with pre_drift and post_drift rows, enriched with design factors.
     choose_aggregation
-        Aggregation method (not used for SNR, but kept for consistency).
+        Aggregation method for center: "mean" uses Mean Value, "median" uses Median Value.
 
     Returns
     -------
     pd.DataFrame
-        Long DataFrame with SNR per log, including signal, iqr_pre, and snr_log.
+        Long DataFrame with SNR per seed (log_seed), including signal, iqr_pre, and snr_sigma.
     """
+    center_col = "Median Value" if choose_aggregation == "median" else "Mean Value"
+    if choose_aggregation == "median" and center_col not in df.columns:
+        raise ValueError(
+            "choose_aggregation='median' requires 'Median Value' column, "
+            "which is not present in the input data."
+        )
+
     # Filter to pre_drift and post_drift only
-    df_split = df[df["split_name"].isin(["pre_drift", "post_drift"])].copy()
+    df_split = df[df[SPLIT_NAME_COL].isin(["pre_drift", "post_drift"])].copy()
 
     # Select needed columns
     required_cols = [
         "Metric",
-        "log_id",
-        "window_size",
-        "split_name",
-        "Mean Value",
+        LOG_ID_COL,
+        WINDOW_SIZE_COL,
+        SPLIT_NAME_COL,
+        center_col,
         "Sample CI Low",
         "Sample CI High",
-        "complexity",
-        "noise",
-        "evolution_proportion",
-        "change_operation",
+        MODEL_COMPLEXITY_COL,
+        NOISE_LEVEL_COL,
+        CHANGE_MAGNITUDE_COL,
+        EDIT_OPERATIONS_COL,
+        SEED_COL,
     ]
 
     missing_cols = [col for col in required_cols if col not in df_split.columns]
@@ -1257,39 +1694,40 @@ def compute_snr_per_log(
     df_split = df_split[required_cols].copy()
 
     # Create pre_drift and post_drift frames
-    df_pre = df_split[df_split["split_name"] == "pre_drift"].copy()
-    df_post = df_split[df_split["split_name"] == "post_drift"].copy()
+    df_pre = df_split[df_split[SPLIT_NAME_COL] == "pre_drift"].copy()
+    df_post = df_split[df_split[SPLIT_NAME_COL] == "post_drift"].copy()
 
     # Compute IQR_pre in df_pre
-    df_pre["iqr_pre"] = df_pre["Sample CI High"] - df_pre["Sample CI Low"]
+    df_pre["IQR Pre"] = df_pre["Sample CI High"] - df_pre["Sample CI Low"]
 
-    # Rename columns to avoid collisions
+    # Rename columns to avoid collisions (use chosen center column)
     df_pre = df_pre.rename(
         columns={
-            "Mean Value": "center_pre",
+            center_col: "Center Pre",
             "Sample CI Low": "ci_low_pre",
             "Sample CI High": "ci_high_pre",
         }
     )
     df_post = df_post.rename(
         columns={
-            "Mean Value": "center_post",
+            center_col: "Center Post",
             "Sample CI Low": "ci_low_post",
             "Sample CI High": "ci_high_post",
         }
     )
 
     # Select columns for join
-    join_cols = ["Metric", "log_id", "window_size"]
+    join_cols = ["Metric", LOG_ID_COL, WINDOW_SIZE_COL]
     pre_cols = join_cols + [
-        "center_pre",
-        "iqr_pre",
-        "complexity",
-        "noise",
-        "evolution_proportion",
-        "change_operation",
+        "Center Pre",
+        "IQR Pre",
+        MODEL_COMPLEXITY_COL,
+        NOISE_LEVEL_COL,
+        CHANGE_MAGNITUDE_COL,
+        EDIT_OPERATIONS_COL,
+        SEED_COL,
     ]
-    post_cols = join_cols + ["center_post"]
+    post_cols = join_cols + ["Center Post"]
 
     df_pre_join = df_pre[pre_cols].copy()
     df_post_join = df_post[post_cols].copy()
@@ -1307,31 +1745,46 @@ def compute_snr_per_log(
             "Check that both splits exist for each (metric, log_id, window_size)."
         )
 
-    # Compute signal, SNR, and relative change
-    df_joined["signal"] = (df_joined["center_post"] - df_joined["center_pre"]).abs()
-    df_joined["snr_log"] = df_joined["signal"] / (df_joined["iqr_pre"] + eps)
-    df_joined["rel_change_log"] = (
-        df_joined["center_post"] - df_joined["center_pre"]
-    ) / (df_joined["center_pre"].abs() + eps)
+    # Collapse within seed so each seed contributes at most once per cell.
+    df_sigma = _collapse_within_sigma(
+        df_joined,
+        group_keys_with_sigma=[
+            "Metric",
+            SEED_COL,
+            WINDOW_SIZE_COL,
+            MODEL_COMPLEXITY_COL,
+            NOISE_LEVEL_COL,
+            CHANGE_MAGNITUDE_COL,
+            EDIT_OPERATIONS_COL,
+        ],
+        value_cols=["Center Pre", "Center Post", "IQR Pre"],
+    )
+
+    # Compute signal, SNR, and relative change (per seed)
+    df_sigma["Relative Change Seed"] = (
+        (df_sigma["Center Post"] - df_sigma["Center Pre"]).abs()
+    ) / (df_sigma["Center Pre"].abs() + eps)
+    df_sigma["Signal"] = (df_sigma["Center Post"] - df_sigma["Center Pre"]).abs()
+    df_sigma["SNR Seed"] = df_sigma["Signal"] / (df_sigma["IQR Pre"] + eps)
 
     # Select final columns
     result_cols = [
         "Metric",
-        "log_id",
-        "complexity",
-        "noise",
-        "evolution_proportion",
-        "change_operation",
-        "window_size",
-        "center_pre",
-        "center_post",
-        "iqr_pre",
-        "signal",
-        "snr_log",
-        "rel_change_log",
+        SEED_COL,
+        MODEL_COMPLEXITY_COL,
+        NOISE_LEVEL_COL,
+        CHANGE_MAGNITUDE_COL,
+        EDIT_OPERATIONS_COL,
+        WINDOW_SIZE_COL,
+        "Center Pre",
+        "Center Post",
+        "IQR Pre",
+        "Signal",
+        "SNR Seed",
+        "Relative Change Seed",
     ]
 
-    df_snr = df_joined[result_cols].copy()
+    df_snr = df_sigma[result_cols].copy()
 
     # Check for missing joins
     n_pre = len(df_pre)
@@ -1350,12 +1803,12 @@ def compute_snr_per_log(
 
 def aggregate_snr_cells(df_snr_log: pd.DataFrame) -> pd.DataFrame:
     """
-    Aggregate SNR across logs by experimental factors.
+    Aggregate SNR across seed by experimental factors.
 
     Parameters
     ----------
     df_snr_log
-        DataFrame with snr_log per log.
+        DataFrame with snr_sigma per seed (log_seed).
 
     Returns
     -------
@@ -1366,19 +1819,21 @@ def aggregate_snr_cells(df_snr_log: pd.DataFrame) -> pd.DataFrame:
     grouped = df_snr_log.groupby(
         [
             "Metric",
-            "evolution_proportion",
-            "change_operation",
-            "complexity",
-            "noise",
-            "window_size",
+            CHANGE_MAGNITUDE_COL,
+            EDIT_OPERATIONS_COL,
+            MODEL_COMPLEXITY_COL,
+            NOISE_LEVEL_COL,
+            WINDOW_SIZE_COL,
         ]
     )
 
     # Aggregate
     agg_result = grouped.agg(
-        snr=("snr_log", "median"),
-        n_logs=("snr_log", "count"),
-        snr_iqr_logs=("snr_log", lambda x: x.quantile(0.75) - x.quantile(0.25)),
+        **{
+            "SNR": ("SNR Seed", "median"),
+            "N Seed": ("SNR Seed", "count"),
+            "SNR IQR Seed": ("SNR Seed", lambda x: x.quantile(0.75) - x.quantile(0.25)),
+        }
     ).reset_index()
 
     agg_result = _add_dimension_and_sort_long(agg_result)
@@ -1401,15 +1856,15 @@ def pivot_snr_wide(df_snr_cells: pd.DataFrame) -> pd.DataFrame:
     """
     # Pivot to wide format (index = dimension, Metric)
     df_wide = df_snr_cells.pivot_table(
-        index=["dimension", "Metric"],
+        index=["Dimension", "Metric"],
         columns=[
-            "evolution_proportion",
-            "change_operation",
-            "complexity",
-            "noise",
-            "window_size",
+            CHANGE_MAGNITUDE_COL,
+            EDIT_OPERATIONS_COL,
+            MODEL_COMPLEXITY_COL,
+            NOISE_LEVEL_COL,
+            WINDOW_SIZE_COL,
         ],
-        values="snr",
+        values="SNR",
         aggfunc="first",
     )
 
@@ -1441,14 +1896,14 @@ def pivot_snr_wide(df_snr_cells: pd.DataFrame) -> pd.DataFrame:
         )
 
         # Reorder complexity
-        complexity_order = ["simple", "mid", "complex"]
+        complexity_order = ["Simple", "Middle", "Complex"]
         complexities_sorted = [c for c in complexity_order if c in complexities]
         complexities_sorted.extend(
             [c for c in complexities if c not in complexity_order]
         )
 
         # Reorder noise
-        noise_order = ["0", "low", "high"]
+        noise_order = ["None", "Low", "High"]
         noises_sorted = [n for n in noise_order if n in noises]
         noises_sorted.extend([n for n in noises if n not in noise_order])
 
@@ -1462,11 +1917,11 @@ def pivot_snr_wide(df_snr_cells: pd.DataFrame) -> pd.DataFrame:
                 window_sizes,
             ],
             names=[
-                "evolution_proportion",
-                "change_operation",
-                "complexity",
-                "noise",
-                "window_size",
+                CHANGE_MAGNITUDE_COL,
+                EDIT_OPERATIONS_COL,
+                MODEL_COMPLEXITY_COL,
+                NOISE_LEVEL_COL,
+                WINDOW_SIZE_COL,
             ],
         )
 
@@ -1494,9 +1949,9 @@ def _aggregate_by_group(
     Parameters
     ----------
     df_log
-        Per-log DataFrame with Metric, value_col, and group_col (and optional filter_col).
+        Per-seed DataFrame with Metric, value_col, and group_col (and optional filter_col).
     value_col
-        Column to aggregate (e.g. snr_log or rel_change_log).
+        Column to aggregate (e.g. snr_sigma or rel_change_sigma).
     group_col
         Column to use as wide columns (e.g. change_operation, evolution_proportion, noise).
     column_order
@@ -1519,7 +1974,24 @@ def _aggregate_by_group(
                 f"No data found with {filter_col}={filter_val!r}. "
                 f"Cannot create table grouped by {group_col}."
             )
-    agg_result = df.groupby(["Metric", group_col])[value_col].median().reset_index()
+    if SEED_COL not in df.columns:
+        raise ValueError(
+            f"_aggregate_by_group requires {SEED_COL!r} to aggregate across seed last."
+        )
+
+    # Collapse within seed first so each seed contributes at most once per (Metric, group_col).
+    per_sigma = _collapse_within_sigma(
+        df,
+        group_keys_with_sigma=["Metric", group_col, SEED_COL],
+        value_cols=[value_col],
+    )
+    agg_result = _median_over_sigma(
+        per_sigma,
+        group_keys_without_sigma=["Metric", group_col],
+        value_col=value_col,
+        out_col=value_col,
+        n_col="N Seed",
+    )
     df_wide = agg_result.pivot_table(
         index="Metric",
         columns=group_col,
@@ -1542,7 +2014,7 @@ def aggregate_snr_by_operation(df_snr_log: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df_snr_log
-        DataFrame with snr_log per log.
+        DataFrame with snr_sigma per seed.
 
     Returns
     -------
@@ -1551,20 +2023,20 @@ def aggregate_snr_by_operation(df_snr_log: pd.DataFrame) -> pd.DataFrame:
     """
     return _aggregate_by_group(
         df_snr_log,
-        "snr_log",
-        "change_operation",
+        "SNR Seed",
+        EDIT_OPERATIONS_COL,
         CHANGE_OPERATION_ORDER,
     )
 
 
 def aggregate_snr_by_evolution_proportion(df_snr_log: pd.DataFrame) -> pd.DataFrame:
     """
-    Aggregate SNR by metric and evolution_proportion, fixing change_operation to "combined".
+    Aggregate SNR by metric and evolution_proportion, fixing Edit Operations to "mixed".
 
     Parameters
     ----------
     df_snr_log
-        DataFrame with snr_log per log.
+        DataFrame with snr_sigma per seed.
 
     Returns
     -------
@@ -1573,36 +2045,36 @@ def aggregate_snr_by_evolution_proportion(df_snr_log: pd.DataFrame) -> pd.DataFr
     """
     return _aggregate_by_group(
         df_snr_log,
-        "snr_log",
-        "evolution_proportion",
+        "SNR Seed",
+        CHANGE_MAGNITUDE_COL,
         None,
-        filter_col="change_operation",
-        filter_val="combined",
+        filter_col=EDIT_OPERATIONS_COL,
+        filter_val="mixed",
     )
 
 
 def aggregate_snr_by_noise(df_snr_log: pd.DataFrame) -> pd.DataFrame:
     """
-    Aggregate SNR by metric and noise, fixing change_operation to "combined".
+    Aggregate SNR by metric and noise, fixing Edit Operations to "mixed".
 
     Parameters
     ----------
     df_snr_log
-        DataFrame with snr_log per log.
+        DataFrame with snr_sigma per seed.
 
     Returns
     -------
     pd.DataFrame
         Wide-format DataFrame with metric × noise.
     """
-    noise_order = ["0", "low", "high"]
+    noise_order = ["None", "Low", "High"]
     return _aggregate_by_group(
         df_snr_log,
-        "snr_log",
-        "noise",
+        "SNR Seed",
+        NOISE_LEVEL_COL,
         noise_order,
-        filter_col="change_operation",
-        filter_val="combined",
+        filter_col=EDIT_OPERATIONS_COL,
+        filter_val="mixed",
     )
 
 
@@ -1615,7 +2087,7 @@ def perform_snr_sanity_checks(
     Parameters
     ----------
     df_snr_log
-        Long-format DataFrame with SNR per log.
+        Long-format DataFrame with SNR per seed (log_seed).
     df_snr_cells
         Long-format DataFrame with aggregated SNR per cell.
     """
@@ -1624,34 +2096,46 @@ def perform_snr_sanity_checks(
     print("=" * 60)
 
     # Check: Report missing pre/post pairs
-    print("\nChecking: Pre/post drift pair completeness")
-    df_pre = df_snr_log.groupby(["Metric", "log_id", "window_size"]).size()
-    total_combinations = len(df_snr_log.groupby(["Metric", "log_id", "window_size"]))
+    print("\nChecking: SNR key uniqueness (per seed)")
+    total_combinations = len(df_snr_log.groupby(["Metric", SEED_COL, WINDOW_SIZE_COL]))
     print(
-        f"   Total (metric, log_id, window_size) combinations with SNR: {total_combinations}"
+        f"   Total (metric, {SEED_COL}, window_size) combinations with SNR: {total_combinations}"
     )
+    dup_counts = (
+        df_snr_log.groupby(["Metric", SEED_COL, WINDOW_SIZE_COL], dropna=False)
+        .size()
+        .reset_index(name="N Rows")
+    )
+    n_dups = int((dup_counts["N Rows"] > 1).sum())
+    if n_dups > 0:
+        print(
+            f"   ⚠ Warning: Found {n_dups} duplicated (Metric, {SEED_COL}, window_size) keys in df_snr_log."
+        )
 
     # Summary statistics
     print("\nSummary Statistics")
     print(f"   Number of metrics: {df_snr_cells['Metric'].nunique()}")
     print(
-        f"   Number of evolution_proportions: {df_snr_cells['evolution_proportion'].nunique()}"
+        f"   Number of evolution_proportions: {df_snr_cells[CHANGE_MAGNITUDE_COL].nunique()}"
     )
     print(
-        f"   Number of change_operations: {df_snr_cells['change_operation'].nunique()}"
+        f"   Number of change_operations: {df_snr_cells[EDIT_OPERATIONS_COL].nunique()}"
     )
-    print(f"   Number of complexity levels: {df_snr_cells['complexity'].nunique()}")
-    print(f"   Number of noise levels: {df_snr_cells['noise'].nunique()}")
-    print(f"   Number of window sizes: {df_snr_cells['window_size'].nunique()}")
+    print(
+        f"   Number of complexity levels: {df_snr_cells[MODEL_COMPLEXITY_COL].nunique()}"
+    )
+    print(f"   Number of noise levels: {df_snr_cells[NOISE_LEVEL_COL].nunique()}")
+    print(f"   Number of window sizes: {df_snr_cells[WINDOW_SIZE_COL].nunique()}")
     print(f"   Total cells (metric × δ × O × C × N × W): {len(df_snr_cells)}")
 
-    n_logs_stats = df_snr_cells["n_logs"].describe()
-    print(f"\n   n_logs per cell:")
-    print(f"     Min: {n_logs_stats['min']:.0f}")
-    print(f"     Median: {n_logs_stats['50%']:.0f}")
-    print(f"     Max: {n_logs_stats['max']:.0f}")
+    n_col = "N Seed" if "N Seed" in df_snr_cells.columns else "N Logs"
+    n_stats = df_snr_cells[n_col].describe()
+    print(f"\n   {n_col} per cell:")
+    print(f"     Min: {n_stats['min']:.0f}")
+    print(f"     Median: {n_stats['50%']:.0f}")
+    print(f"     Max: {n_stats['max']:.0f}")
 
-    snr_stats = df_snr_cells["snr"].describe()
+    snr_stats = df_snr_cells["SNR"].describe()
     print(f"\n   SNR per cell:")
     print(f"     Min: {snr_stats['min']:.4f}")
     print(f"     Median: {snr_stats['50%']:.4f}")
@@ -1731,13 +2215,15 @@ def _apply_latex_metric_names(df: pd.DataFrame, index: bool) -> pd.DataFrame:
 
 
 def _latex_header_label(name: str | None) -> str | None:
-    """Normalize header for LaTeX: log_id -> log\\_id (escaped); others underscore -> space."""
+    """Normalize header for LaTeX: log_id -> log\\_id (escaped); % -> \\%; underscore -> space."""
     if name is None:
         return None
     s = str(name)
-    if s == "log_id":
+    if s == LOG_ID_COL:
         return "log\\_id"
-    return s.replace("_", " ")
+    s = s.replace("_", " ")
+    s = s.replace("%", "\\%")
+    return s
 
 
 def _headers_underscores_to_spaces(df: pd.DataFrame) -> pd.DataFrame:
@@ -1792,13 +2278,14 @@ def _inject_heatmap_cellcolor(
     df: pd.DataFrame,
     n_index_cols: int,
     *,
-    heatmap_max_percentile: float | None = None,
+    heatmap_vmax: float | None = None,
     heatmap_exclude_columns: list[str] | None = None,
 ) -> str:
     """
-    Inject \\cellcolor{blue!NN} into numeric data cells (white=min, dark blue=max).
+    Inject \\cellcolor{blue!NN} into numeric data cells (white=0, dark blue=max).
 
-    Inf and NA values are excluded from the min/max scale and are not colored.
+    Linear scale from 0 to heatmap_vmax; values >= heatmap_vmax get the same
+    darkest color. Inf and NA are excluded from coloring.
 
     Parameters
     ----------
@@ -1808,9 +2295,9 @@ def _inject_heatmap_cellcolor(
         DataFrame that was used to generate the table (same row/column order).
     n_index_cols
         Number of index columns at the start of each row.
-    heatmap_max_percentile
-        If set (e.g. 95), use this percentile as the max for the color scale;
-        values at or above it get the darkest color. If None, use the actual max.
+    heatmap_vmax
+        Max value for the color scale (min is 0). Color increases linearly from
+        0 to heatmap_vmax; values >= heatmap_vmax get the darkest color.
     heatmap_exclude_columns
         Column names to exclude from coloring (e.g. n_obs, r2_full).
 
@@ -1834,17 +2321,7 @@ def _inject_heatmap_cellcolor(
     if not numeric_cols:
         return latex
     vals = df.iloc[:, numeric_cols].values.astype(float)
-    valid = np.isfinite(vals)
-    # Use only finite values for scale so inf/NA do not affect color range
-    vals_finite = vals[valid]
-    vmin = float(np.min(vals_finite)) if np.any(valid) else 0.0
-    if heatmap_max_percentile is not None and np.any(valid):
-        vmax = float(np.nanpercentile(vals_finite, heatmap_max_percentile))
-    else:
-        vmax = float(np.max(vals_finite)) if np.any(valid) else 1.0
-    span = vmax - vmin
-    if span <= 0:
-        span = 1.0
+    vmax = heatmap_vmax if heatmap_vmax is not None and heatmap_vmax > 0 else 1.0
     col_to_numeric_idx = {j: i for i, j in enumerate(numeric_cols)}
 
     lines = latex.split("\n")
@@ -1875,8 +2352,10 @@ def _inject_heatmap_cellcolor(
                         try:
                             v = float(df.iloc[row_idx, j])
                             if np.isfinite(v):
-                                pct = int(5 + 95 * (v - vmin) / span)
-                                pct = max(0, min(100, pct))  # values >= vmax get 100
+                                # Linear 0..vmax -> white..dark; values >= vmax same dark
+                                t = min(1.0, max(0.0, v) / vmax)
+                                pct = int(5 + 95 * t)
+                                pct = max(0, min(100, pct))
                                 cell = f"\\cellcolor{{blue!{pct}}}{{{cell}}}"
                         except (ValueError, TypeError):
                             pass
@@ -1897,7 +2376,7 @@ def dataframe_to_latex_table(
     index: bool = True,
     use_latex_metric_names: bool = True,
     heatmap: bool = False,
-    heatmap_max_percentile: float | None = None,
+    heatmap_vmax: float | None = None,
     heatmap_exclude_columns: list[str] | None = None,
 ) -> None:
     """
@@ -1907,7 +2386,8 @@ def dataframe_to_latex_table(
     are rendered with multicolumn so multi-headers are correct. When
     use_latex_metric_names is True, metric names are replaced by
     METRIC_NAMES_TO_LATEX_MAP (and escape=False is used). When heatmap=True,
-    data cells are colored from white (min) to dark blue (max).
+    data cells are colored linearly from 0 (white) to heatmap_vmax (dark blue);
+    values >= heatmap_vmax get the same darkest color.
 
     Parameters
     ----------
@@ -1927,10 +2407,10 @@ def dataframe_to_latex_table(
     use_latex_metric_names
         If True, replace metric names with METRIC_NAMES_TO_LATEX_MAP for LaTeX.
     heatmap
-        If True, color data cells by value (min=white, max=dark blue).
-    heatmap_max_percentile
-        If set (e.g. 95), use this percentile as max for the color scale;
-        values at or above it get the darkest color. If None, use actual max.
+        If True, color data cells by value (0=white, heatmap_vmax=dark blue).
+    heatmap_vmax
+        Max value for the linear color scale; values >= this get the darkest color.
+        E.g. 1 for noise/SNR tables, 100 for factor importance (percent).
     heatmap_exclude_columns
         Column names to exclude from heatmap coloring (e.g. n_obs, r2_full).
     """
@@ -1984,7 +2464,7 @@ def dataframe_to_latex_table(
             out,
             df,
             n_index_levels,
-            heatmap_max_percentile=heatmap_max_percentile,
+            heatmap_vmax=heatmap_vmax,
             heatmap_exclude_columns=heatmap_exclude_columns,
         )
     # Inject \tiny inside the table environment (after \centering) for tiny size
@@ -2004,7 +2484,7 @@ def _write_latex_table(
     heatmap: bool = True,
     index: bool = True,
     decimals: int = 2,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> None:
     """
     Write a wide table to DIR_LATEX/{stem}.tex using dataframe_to_latex_table.
@@ -2050,17 +2530,26 @@ def main() -> None:
     df = load_and_validate_input(PATH_AGG)
 
     print("Filtering to stable regime...")
-    df_stable = filter_to_stable_regime(df)
+    df_predrift = filter_to_stable_regime(df)
 
     print("Loading generation info for log_id mapping...")
     gen_info = load_generation_info(PATH_GEN_INFO)
 
     print("Enriching with experimental factors...")
-    df_enriched = enrich_with_experimental_factors(df_stable, gen_info)
+    df_predrift_enriched = enrich_with_experimental_factors(df_predrift, gen_info)
+
+    print("Removing pre-drift duplicates...")
+    n_before = len(df_predrift_enriched)
+    n_logs_before = df_predrift_enriched[LOG_ID_COL].nunique()
+    df_predrift_enriched = remove_pre_drift_duplicates(df_predrift_enriched)
+    print(
+        f"  Reduced from {n_before} to {len(df_predrift_enriched)} rows "
+        f"({n_logs_before} -> {df_predrift_enriched[LOG_ID_COL].nunique()} representative log_ids)."
+    )
 
     print("Computing per-log relative noise...")
     df_with_noise, n_invalid = compute_per_log_relative_noise(
-        df_enriched, aggregation=choose_aggregation
+        df_predrift_enriched, aggregation=AGGREGATION
     )
     print("Adding per-log change vs. baseline...")
     df_with_noise = add_change_vs_baseline_log(df_with_noise)
@@ -2074,13 +2563,14 @@ def main() -> None:
     print("Saving outputs...")
     save_outputs(df_long, df_wide)
 
-    # LaTeX tables for relative noise
+    # LaTeX tables for relative noise (heatmap scale 0..1)
     _write_latex_table(
         df_long,
         Path(PATH_OUT_LONG).stem,
         caption="Relative noise (long format).",
         label="tab:signal-noise-relative-long",
         index=False,
+        heatmap_vmax=1,
     )
     _write_latex_table(
         df_wide,
@@ -2088,6 +2578,7 @@ def main() -> None:
         caption="Relative noise by complexity, noise, and window size.",
         label="tab:signal-noise-relative-wide",
         index=True,
+        heatmap_vmax=1,
     )
 
     print("Performing sanity checks...")
@@ -2099,14 +2590,14 @@ def main() -> None:
             "noise_abs_median",
             _aggregate_abs_median,
             False,
-            "Absolute median metric value.",
+            f"Absolute {AGGREGATION} metric value.",
             "tab:signal-noise-abs-median",
         ),
         (
             "noise_relci",
             _aggregate_relci,
             False,
-            "Relative confidence interval (CI width / median).",
+            f"Relative confidence interval (CI width / {AGGREGATION}).",
             "tab:signal-noise-relci",
         ),
         (
@@ -2123,15 +2614,15 @@ def main() -> None:
         df_noise_long = aggregator_fn(df_with_noise)
         df_noise_long = _add_dimension_and_sort_long(df_noise_long)
         df_noise_wide = _pivot_noise_wide(
-            df_noise_long, "value", drop_no_noise_columns=drop_no_noise
+            df_noise_long, "Value", drop_no_noise_columns=drop_no_noise
         )
         path_csv = f"{DIR_CSV}/{stem}.csv"
         df_noise_wide.to_csv(path_csv)
         print(f"Saved {stem} to {path_csv}")
-        # LaTeX: only window sizes 50 and 200; color scale capped at 95th percentile
+        # LaTeX: only window sizes 50 and 200; linear color scale 0..1
         df_noise_wide_latex = df_noise_wide.loc[
             :,
-            df_noise_wide.columns.get_level_values("window_size").isin(
+            df_noise_wide.columns.get_level_values(WINDOW_SIZE_COL).isin(
                 _NOISE_LATEX_WINDOW_SIZES
             ),
         ]
@@ -2141,7 +2632,7 @@ def main() -> None:
             caption=caption,
             label=label,
             index=True,
-            heatmap_max_percentile=95.0,
+            heatmap_vmax=1,
         )
 
     print("\n" + "=" * 60)
@@ -2151,7 +2642,13 @@ def main() -> None:
     # Factor importance: relative CI (rel_noise_log)
     print("Computing factor importance for relative CIs (rel_noise_log)...")
     df_factor_long, df_factor_wide = run_noise_factor_importance(
-        df_with_noise, outcome_col="rel_noise_log", outcome_log_shift=0.0
+        df_with_noise,
+        outcome_col="Relative Noise Log",
+        # Regression-only: keep zero-noise cases where rel_noise_log can be exactly 0.
+        # Without this (shift=0), zeros produce -inf and are dropped, biasing n_obs.
+        outcome_log_shift=FACTOR_IMPORTANCE_LOG_SHIFT,
+        debug_filtering=DEBUG_R2_FILTERING,
+        debug_max_examples=DEBUG_R2_MAX_EXAMPLES,
     )
     Path(PATH_NOISE_FACTOR_LONG).parent.mkdir(parents=True, exist_ok=True)
     df_factor_long.to_csv(PATH_NOISE_FACTOR_LONG, index=False)
@@ -2159,48 +2656,80 @@ def main() -> None:
     df_factor_wide.to_csv(PATH_NOISE_FACTOR_WIDE)
     print(f"Saved factor importance (relci) wide to {PATH_NOISE_FACTOR_WIDE}")
     _write_latex_table(
-        df_factor_long,
+        df_factor_long.rename(
+            columns={
+                k: v
+                for k, v in FACTOR_IMPORTANCE_PCT_HEADERS.items()
+                if k in df_factor_long.columns
+            }
+        ),
         Path(PATH_NOISE_FACTOR_LONG).stem,
         caption="Noise factor importance (relative CI), long format.",
         label="tab:signal-noise-factor-importance-long",
         index=False,
+        heatmap_vmax=100,
     )
     _write_latex_table(
-        df_factor_wide,
+        df_factor_wide.rename(
+            columns={
+                k: v
+                for k, v in FACTOR_IMPORTANCE_PCT_HEADERS.items()
+                if k in df_factor_wide.columns
+            }
+        ),
         Path(PATH_NOISE_FACTOR_WIDE).stem,
         caption="Noise factor importance (relative CI) by metric.",
         label="tab:signal-noise-factor-importance-wide",
         index=True,
-        heatmap_exclude_columns=["n_obs", "r2_full"],
+        heatmap_vmax=100,
+        heatmap_exclude_columns=["N Obs", "R2 Full (%)"],
     )
     print("Factor importance (relative CI) summary:")
     print_factor_importance_summary(df_factor_long, df_factor_wide)
 
-    # Factor importance: change vs. baseline (exclude noise=0: change is always 0 there)
+    # Factor importance: change vs. baseline (exclude noise=None: change is always 0 there)
     print("Computing factor importance for change vs. baseline...")
     df_factor_long_change, df_factor_wide_change = run_noise_factor_importance(
-        df_with_noise[df_with_noise["noise"] != "0"],
-        outcome_col="change_vs_baseline_log",
-        outcome_log_shift=eps,
+        df_with_noise[df_with_noise[NOISE_LEVEL_COL] != "None"],
+        outcome_col="Change Vs Baseline Log",
+        # Regression-only: keep zero-change cases by shifting before log-transform.
+        # Without this (shift=0), zeros produce -inf and are dropped, biasing n_obs.
+        outcome_log_shift=FACTOR_IMPORTANCE_LOG_SHIFT,
+        debug_filtering=DEBUG_R2_FILTERING,
+        debug_max_examples=DEBUG_R2_MAX_EXAMPLES,
     )
     df_factor_long_change.to_csv(PATH_NOISE_FACTOR_LONG_CHANGE, index=False)
     print(f"Saved factor importance (change) long to {PATH_NOISE_FACTOR_LONG_CHANGE}")
     df_factor_wide_change.to_csv(PATH_NOISE_FACTOR_WIDE_CHANGE)
     print(f"Saved factor importance (change) wide to {PATH_NOISE_FACTOR_WIDE_CHANGE}")
     _write_latex_table(
-        df_factor_long_change,
+        df_factor_long_change.rename(
+            columns={
+                k: v
+                for k, v in FACTOR_IMPORTANCE_PCT_HEADERS.items()
+                if k in df_factor_long_change.columns
+            }
+        ),
         Path(PATH_NOISE_FACTOR_LONG_CHANGE).stem,
         caption="Noise factor importance (change vs. baseline), long format.",
         label="tab:signal-noise-factor-importance-change-long",
         index=False,
+        heatmap_vmax=100,
     )
     _write_latex_table(
-        df_factor_wide_change,
+        df_factor_wide_change.rename(
+            columns={
+                k: v
+                for k, v in FACTOR_IMPORTANCE_PCT_HEADERS.items()
+                if k in df_factor_wide_change.columns
+            }
+        ),
         Path(PATH_NOISE_FACTOR_WIDE_CHANGE).stem,
         caption="Noise factor importance (change vs. baseline) by metric.",
         label="tab:signal-noise-factor-importance-change-wide",
         index=True,
-        heatmap_exclude_columns=["n_obs", "r2_full"],
+        heatmap_vmax=100,
+        heatmap_exclude_columns=["N Obs", "R2 Full (%)"],
     )
     print("Factor importance (change vs. baseline) summary:")
     print_factor_importance_summary(df_factor_long_change, df_factor_wide_change)
@@ -2218,7 +2747,7 @@ def main() -> None:
     df_snr_enriched = enrich_with_experimental_factors(df_normalized, gen_info)
 
     print("Computing SNR per log...")
-    df_snr_log = compute_snr_per_log(df_snr_enriched, choose_aggregation)
+    df_snr_log = compute_snr_per_log(df_snr_enriched, AGGREGATION)
 
     print("Aggregating SNR across logs...")
     df_snr_cells = aggregate_snr_cells(df_snr_log)
@@ -2229,67 +2758,52 @@ def main() -> None:
     print("Aggregating SNR by operation...")
     df_snr_by_op = aggregate_snr_by_operation(df_snr_log)
 
-    print("Aggregating SNR by evolution_proportion (change_operation=combined)...")
+    print("Aggregating SNR by evolution_proportion (Edit Operations=mixed)...")
     df_snr_by_evol = aggregate_snr_by_evolution_proportion(df_snr_log)
 
-    print("Aggregating SNR by noise (change_operation=combined)...")
+    print("Aggregating SNR by noise (Edit Operations=mixed)...")
     df_snr_by_noise = aggregate_snr_by_noise(df_snr_log)
 
     print("Saving SNR outputs...")
-    # Ensure output directory exists
-    Path(PATH_SNR_LONG).parent.mkdir(parents=True, exist_ok=True)
-    Path(PATH_SNR_WIDE).parent.mkdir(parents=True, exist_ok=True)
-    Path(PATH_SNR_BY_OP).parent.mkdir(parents=True, exist_ok=True)
-    Path(PATH_SNR_BY_EVOL).parent.mkdir(parents=True, exist_ok=True)
-    Path(PATH_SNR_BY_NOISE).parent.mkdir(parents=True, exist_ok=True)
-
-    # Save SNR long format (use df_snr_cells, not df_snr_log, for consistency with relative_noise)
-    df_snr_cells.to_csv(PATH_SNR_LONG, index=False)
-    print(f"Saved SNR long-format output to {PATH_SNR_LONG}")
-
-    # Save SNR wide format
-    df_snr_wide.to_csv(PATH_SNR_WIDE)
-    print(f"Saved SNR wide-format output to {PATH_SNR_WIDE}")
-
-    # Save SNR by operation
-    df_snr_by_op.to_csv(PATH_SNR_BY_OP)
-    print(f"Saved SNR by operation output to {PATH_SNR_BY_OP}")
-
-    # Save SNR by evolution_proportion
-    df_snr_by_evol.to_csv(PATH_SNR_BY_EVOL)
-    print(f"Saved SNR by evolution_proportion output to {PATH_SNR_BY_EVOL}")
-
-    # Save SNR by noise
-    df_snr_by_noise.to_csv(PATH_SNR_BY_NOISE)
-    print(f"Saved SNR by noise output to {PATH_SNR_BY_NOISE}")
+    Path(DIR_CSV).mkdir(parents=True, exist_ok=True)
+    _SNR_SAVE_CONFIGS = [
+        (PATH_SNR_LONG, df_snr_cells, False, "SNR long-format"),
+        (PATH_SNR_WIDE, df_snr_wide, True, "SNR wide"),
+        (PATH_SNR_BY_OP, df_snr_by_op, True, "SNR by operation"),
+        (PATH_SNR_BY_EVOL, df_snr_by_evol, True, "SNR by evolution proportion"),
+        (PATH_SNR_BY_NOISE, df_snr_by_noise, True, "SNR by noise"),
+    ]
+    for path, frame, index, desc in _SNR_SAVE_CONFIGS:
+        frame.to_csv(path, index=index)
+        print(f"Saved {desc} to {path}")
 
     # Tables 4–6: signal_relchange by operation, evolution_proportion, noise
     _SIGNAL_RELCHANGE_CONFIGS = [
         (
             "signal_relchange_by_operation",
-            "change_operation",
+            EDIT_OPERATIONS_COL,
             CHANGE_OPERATION_ORDER,
             None,
             None,
-            "Median relative change pre-to-post by change operation.",
+            f"{AGGREGATION.capitalize()} relative change pre-to-post by change operation.",
             "tab:signal-relchange-by-operation",
         ),
         (
             "signal_relchange_by_evolution_proportion",
-            "evolution_proportion",
+            CHANGE_MAGNITUDE_COL,
             None,
-            "change_operation",
-            "combined",
-            "Median relative change pre-to-post by evolution proportion (change_operation=combined).",
+            EDIT_OPERATIONS_COL,
+            "mixed",
+            f"{AGGREGATION.capitalize()} relative change pre-to-post by evolution proportion (Edit Operations=mixed).",
             "tab:signal-relchange-by-evolution",
         ),
         (
             "signal_relchange_by_noise",
-            "noise",
-            ["0", "low", "high"],
-            "change_operation",
-            "combined",
-            "Median relative change pre-to-post by noise (change_operation=combined).",
+            NOISE_LEVEL_COL,
+            ["None", "Low", "High"],
+            EDIT_OPERATIONS_COL,
+            "mixed",
+            f"{AGGREGATION.capitalize()} relative change pre-to-post by noise (Edit Operations=mixed).",
             "tab:signal-relchange-by-noise",
         ),
     ]
@@ -2304,7 +2818,7 @@ def main() -> None:
     ) in _SIGNAL_RELCHANGE_CONFIGS:
         df_rel = _aggregate_by_group(
             df_snr_log,
-            "rel_change_log",
+            "Relative Change Seed",
             group_col,
             column_order,
             filter_col=filter_col,
@@ -2313,7 +2827,9 @@ def main() -> None:
         path_csv = f"{DIR_CSV}/{stem}.csv"
         df_rel.to_csv(path_csv)
         print(f"Saved {stem} to {path_csv}")
-        _write_latex_table(df_rel, stem, caption=caption, label=label, index=True)
+        _write_latex_table(
+            df_rel, stem, caption=caption, label=label, index=True, heatmap_vmax=1
+        )
 
     # Tables 7–9: signal_snr (same DataFrames as snr_by_*; write to signal_snr_by_* paths)
     _SIGNAL_SNR_CONFIGS = [
@@ -2326,13 +2842,13 @@ def main() -> None:
         (
             PATH_SIGNAL_SNR_BY_EVOL,
             "signal_snr_by_evolution_proportion",
-            "SNR by evolution proportion (change\\_operation=combined).",
+            "SNR by evolution proportion (Edit Operations=mixed).",
             "tab:signal-snr-by-evolution",
         ),
         (
             PATH_SIGNAL_SNR_BY_NOISE,
             "signal_snr_by_noise",
-            "SNR by noise level (change\\_operation=combined).",
+            "SNR by noise level (Edit Operations=mixed).",
             "tab:signal-snr-by-noise",
         ),
     ]
@@ -2342,15 +2858,23 @@ def main() -> None:
     ):
         df_snr_by.to_csv(path_csv)
         print(f"Saved {stem} to {path_csv}")
-        _write_latex_table(df_snr_by, stem, caption=caption, label=label, index=True)
+        _write_latex_table(
+            df_snr_by,
+            stem,
+            caption=caption,
+            label=label,
+            index=True,
+            heatmap_vmax=1,
+        )
 
-    # LaTeX tables for SNR
+    # LaTeX tables for SNR (heatmap scale 0..1)
     _write_latex_table(
         df_snr_cells,
         Path(PATH_SNR_LONG).stem,
         caption="SNR per cell (long format).",
         label="tab:signal-noise-snr-long",
         index=False,
+        heatmap_vmax=1,
     )
     _write_latex_table(
         df_snr_wide,
@@ -2358,6 +2882,7 @@ def main() -> None:
         caption="SNR by evolution proportion, change operation, complexity, noise, and window size.",
         label="tab:signal-noise-snr-wide",
         index=True,
+        heatmap_vmax=1,
     )
     _write_latex_table(
         df_snr_by_op,
@@ -2365,20 +2890,23 @@ def main() -> None:
         caption="SNR by change operation.",
         label="tab:signal-noise-snr-by-operation",
         index=True,
+        heatmap_vmax=1,
     )
     _write_latex_table(
         df_snr_by_evol,
         Path(PATH_SNR_BY_EVOL).stem,
-        caption="SNR by evolution proportion (change\\_operation=combined).",
+        caption="SNR by evolution proportion (Edit Operations=mixed).",
         label="tab:signal-noise-snr-by-evolution",
         index=True,
+        heatmap_vmax=1,
     )
     _write_latex_table(
         df_snr_by_noise,
         Path(PATH_SNR_BY_NOISE).stem,
-        caption="SNR by noise level (change\\_operation=combined).",
+        caption="SNR by noise level (Edit Operations=mixed).",
         label="tab:signal-noise-snr-by-noise",
         index=True,
+        heatmap_vmax=1,
     )
 
     print("Performing SNR sanity checks...")
@@ -2388,4 +2916,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always", RuntimeWarning)
+        main()
+    if caught_warnings:
+        print(
+            f"\n  {len(caught_warnings)} runtime warning(s) (e.g. invalid value in subtract)."
+        )

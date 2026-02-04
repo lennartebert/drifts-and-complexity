@@ -24,6 +24,7 @@ from utils.population.extractors.naive_population_extractor import (
 )
 from utils.population.extractors.population_extractor import PopulationExtractor
 from utils.sample_confidence_interval_extractor import SampleConfidenceIntervalExtractor
+from utils.sample_standard_deviation_extractor import SampleStandardDeviationExtractor
 from utils.windowing.window import Window
 
 
@@ -437,6 +438,9 @@ def compute_analysis_for_metrics(
     sample_confidence_interval_extractor: Optional[
         "SampleConfidenceIntervalExtractor"
     ] = None,
+    sample_standard_deviation_extractor: Optional[
+        "SampleStandardDeviationExtractor"
+    ] = None,
     include_metrics: Optional[Iterable[str]] = None,
 ) -> pd.DataFrame:
     """
@@ -450,6 +454,8 @@ def compute_analysis_for_metrics(
         May have a MultiIndex (will be reset if present).
     sample_confidence_interval_extractor : Optional[SampleConfidenceIntervalExtractor]
         If provided, computes sample confidence intervals across samples.
+    sample_standard_deviation_extractor : Optional[SampleStandardDeviationExtractor]
+        If provided, computes sample standard deviation across samples.
     include_metrics : Optional[Iterable[str]]
         If provided, only analyze these metrics.
 
@@ -461,6 +467,7 @@ def compute_analysis_for_metrics(
         - Sample CI Low: lower sample CI bound (if extractor provided)
         - Sample CI High: upper sample CI bound (if extractor provided)
         - Sample CI Rel Width: relative CI width (if extractor provided)
+        - Sample Std: sample standard deviation (if extractor provided)
         - Pearson Rho: Pearson correlation coefficient (constant per Metric)
         - Pearson P: Pearson p-value (constant per Metric)
         - Spearman Rho: Spearman correlation coefficient (constant per Metric)
@@ -514,6 +521,19 @@ def compute_analysis_for_metrics(
         analysis_df["Sample CI Low"] = None
         analysis_df["Sample CI High"] = None
         analysis_df["Sample CI Rel Width"] = None
+
+    # 2b. Compute sample standard deviation if extractor provided
+    if sample_standard_deviation_extractor is not None:
+        sample_std_df = sample_standard_deviation_extractor.compute_sample_std_long(
+            metrics_df
+        )
+        analysis_df = analysis_df.merge(
+            sample_std_df[["Sample Size", "Metric", "Sample Std"]],
+            on=["Sample Size", "Metric"],
+            how="left",
+        )
+    else:
+        analysis_df["Sample Std"] = None
 
     # 3. Compute correlations (per metric, not per sample size)
     correlations_df = helpers.compute_correlations_from_long_format(metrics_df)
