@@ -150,20 +150,14 @@ def generate_tasks(generated_files_df: pd.DataFrame) -> List[ProcessingTask]:
     return tasks
 
 
-def get_intermediary_file_paths(
-    log_id: str, split_name: str, window_size: int
-) -> Tuple[Path, Path]:
+def get_intermediary_file_paths(log_id: str) -> Tuple[Path, Path]:
     """
-    Get paths for intermediary output files for a split/window_size combination.
+    Get paths for intermediary output files for a log.
 
     Parameters
     ----------
     log_id
         The log identifier.
-    split_name
-        The split name ('pre_drift' or 'post_drift').
-    window_size
-        The window size.
 
     Returns
     -------
@@ -172,10 +166,9 @@ def get_intermediary_file_paths(
     """
     # Sanitize log_id for filename (remove .xes.gz extension if present)
     log_id_safe = log_id.replace(".xes.gz", "").replace(".xes", "").replace("/", "_")
-    base_name = f"{log_id_safe}_{split_name}_{window_size}"
 
-    metrics_path = INTERMEDIARY_DIR / f"{base_name}.csv"
-    analysis_path = INTERMEDIARY_DIR / f"{base_name}_analysis.csv"
+    metrics_path = INTERMEDIARY_DIR / f"{log_id_safe}_metrics.csv"
+    analysis_path = INTERMEDIARY_DIR / f"{log_id_safe}_analysis.csv"
 
     return metrics_path, analysis_path
 
@@ -217,40 +210,26 @@ def check_resume_status(tasks: List[ProcessingTask]) -> List[ProcessingTask]:
                 f"Warning: Could not read final files: {e}. Proceeding with processing."
             )
 
-    # Check intermediary files
+    # Check intermediary files (now 2 files per log: metrics + analysis)
     remaining_tasks = []
     completed_count = 0
-    total_combinations = len(WINDOW_SIZES) * 2  # 2 splits * N window sizes
 
     for task in tasks:
-        # Check if all split/window_size combinations for this log are complete
-        all_complete = True
-        completed_combinations = 0
+        metrics_path, analysis_path = get_intermediary_file_paths(task.log_id)
 
-        for split_name in ["pre_drift", "post_drift"]:
-            for window_size in WINDOW_SIZES:
-                metrics_path, analysis_path = get_intermediary_file_paths(
-                    task.log_id, split_name, window_size
-                )
+        if metrics_path.exists() and analysis_path.exists():
+            # Check if files are non-empty
+            try:
+                metrics_df = pd.read_csv(metrics_path)
+                analysis_df = pd.read_csv(analysis_path)
+                if not metrics_df.empty and not analysis_df.empty:
+                    completed_count += 1
+                    continue
+            except Exception:
+                # If file is corrupted or empty, reprocess
+                pass
 
-                if metrics_path.exists() and analysis_path.exists():
-                    # Check if files are non-empty
-                    try:
-                        metrics_df = pd.read_csv(metrics_path)
-                        analysis_df = pd.read_csv(analysis_path)
-                        if not metrics_df.empty and not analysis_df.empty:
-                            completed_combinations += 1
-                            continue
-                    except Exception:
-                        # If file is corrupted or empty, reprocess
-                        pass
-
-                all_complete = False
-
-        if all_complete:
-            completed_count += 1
-        else:
-            remaining_tasks.append(task)
+        remaining_tasks.append(task)
 
     if completed_count > 0:
         print(
@@ -464,6 +443,9 @@ def write_batch_results(
     """
     Write a batch of task results to intermediary files.
 
+    Consolidates all split/window_size results for each log into 2 files
+    (metrics + analysis) to reduce file count.
+
     Parameters
     ----------
     results_batch
@@ -472,20 +454,29 @@ def write_batch_results(
     INTERMEDIARY_DIR.mkdir(parents=True, exist_ok=True)
 
     for task, split_results in results_batch:
-        for split_result in split_results:
-            metrics_path, analysis_path = get_intermediary_file_paths(
-                split_result.log_id,
-                split_result.split_name,
-                split_result.window_size,
-            )
+        # Consolidate all split_results for this log into single DataFrames
+        all_metrics_dfs = []
+        all_analysis_dfs = []
 
-            try:
-                split_result.metrics_df.to_csv(metrics_path, index=False)
-                split_result.analysis_df.to_csv(analysis_path, index=False)
-            except Exception as e:
-                print(
-                    f"Error writing results for {split_result.log_id}/{split_result.split_name}/{split_result.window_size}: {e}"
-                )
+        for split_result in split_results:
+            all_metrics_dfs.append(split_result.metrics_df)
+            all_analysis_dfs.append(split_result.analysis_df)
+
+        if not all_metrics_dfs:
+            continue
+
+        # Combine into single DataFrames
+        combined_metrics_df = pd.concat(all_metrics_dfs, ignore_index=True)
+        combined_analysis_df = pd.concat(all_analysis_dfs, ignore_index=True)
+
+        # Write consolidated files (2 files per log instead of 16)
+        metrics_path, analysis_path = get_intermediary_file_paths(task.log_id)
+
+        try:
+            combined_metrics_df.to_csv(metrics_path, index=False)
+            combined_analysis_df.to_csv(analysis_path, index=False)
+        except Exception as e:
+            print(f"Error writing results for {task.log_id}: {e}")
 
 
 def aggregate_final_results() -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -502,13 +493,15 @@ def aggregate_final_results() -> Tuple[pd.DataFrame, pd.DataFrame]:
     all_per_sample_dfs = []
     all_analysis_dfs = []
 
-    # Find all metrics files (those that don't end with _analysis.csv)
-    all_csv_files = list(INTERMEDIARY_DIR.glob("*.csv"))
-    metrics_files = [f for f in all_csv_files if not f.name.endswith("_analysis.csv")]
+    # Find all metrics files (named {log_id}_metrics.csv)
+    metrics_files = list(INTERMEDIARY_DIR.glob("*_metrics.csv"))
 
     # For each metrics file, find corresponding analysis file
     for metrics_file in metrics_files:
-        analysis_file = metrics_file.with_name(metrics_file.stem + "_analysis.csv")
+        # Replace _metrics.csv with _analysis.csv to find the pair
+        analysis_file = metrics_file.with_name(
+            metrics_file.name.replace("_metrics.csv", "_analysis.csv")
+        )
 
         if not analysis_file.exists():
             print(f"Warning: Analysis file not found for {metrics_file}, skipping...")
@@ -646,12 +639,14 @@ def main(n_jobs: int | None = None) -> None:
                     avg_str = _format_duration(avg_time)
                     print(
                         f"  [{completed_count}/{total_tasks}] Completed {task.log_id} "
-                        f"in {_format_duration(elapsed)} (avg: {avg_str}/log, ETA: {eta_str})"
+                        f"in {_format_duration(elapsed)} (avg: {avg_str}/log, ETA: {eta_str})",
+                        flush=True,
                     )
                 else:
                     print(
                         f"  [{completed_count}/{total_tasks}] Completed {task.log_id} "
-                        f"in {_format_duration(elapsed)}"
+                        f"in {_format_duration(elapsed)}",
+                        flush=True,
                     )
 
                 if result is not None:
@@ -664,20 +659,21 @@ def main(n_jobs: int | None = None) -> None:
                         write_batch_results(results_batch)
                         print(
                             f"    Written batch of {len(results_batch)} logs "
-                            f"({total_split_results} split/window combinations)..."
+                            f"({total_split_results} split/window combinations)...",
+                            flush=True,
                         )
                         results_batch = []
                 else:
                     failed_count += 1
 
             except Exception as e:
-                print(f"    Error processing {task.log_id}: {e}")
+                print(f"    Error processing {task.log_id}: {e}", flush=True)
                 failed_count += 1
 
     # Write remaining results
     if results_batch:
         write_batch_results(results_batch)
-        print(f"    Written final batch of {len(results_batch)} logs...")
+        print(f"    Written final batch of {len(results_batch)} logs...", flush=True)
 
     total_elapsed = time.time() - start_time
     avg_time_str = (
