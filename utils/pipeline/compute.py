@@ -398,7 +398,7 @@ def compute_metrics_for_samples(
         backend=parallel_backend,
         n_jobs=n_jobs,  # defaults to SLURM_CPUS_PER_TASK
         chunksize=chunksize,  # auto for processes; 1 for threads
-        unordered=True,  # faster; order doesn't matter here
+        unordered=False,  # use chunked map for better batching
     )
 
     # Collect long format rows directly (each result is a list of rows)
