@@ -13,7 +13,7 @@ import argparse
 import os
 import shutil
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -562,21 +562,25 @@ def main(n_jobs: int | None = None) -> None:
         print("\nDone!")
         return
 
-    # Conservative CPU allocation: reserve 1 thread for I/O prefetching
-    processing_jobs = max(1, n_jobs - 1)
-    print(
-        f"Processing {len(tasks_to_process)} logs with pipeline loading "
-        f"({processing_jobs} CPUs for compute, 1 for prefetch)..."
-    )
-
     # Set BLAS safety (prevent oversubscription from NumPy/SciPy)
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     os.environ.setdefault("NUMEXPR_MAX_THREADS", "1")
 
-    # Process logs with prefetching: load next log while processing current
-    results_batch = []
+    # Hybrid parallelism: process multiple logs concurrently, each with fewer workers
+    # This overlaps sequential phases (sampling, analysis) of different logs
+    concurrent_logs = min(4, max(1, n_jobs // 4))  # 1-4 concurrent logs
+    workers_per_log = max(1, n_jobs // concurrent_logs)
+
+    print(
+        f"Processing {len(tasks_to_process)} logs with hybrid parallelism "
+        f"({concurrent_logs} concurrent logs × {workers_per_log} workers each, "
+        f"total: {concurrent_logs * workers_per_log} CPUs)..."
+    )
+
+    # Process logs with hybrid parallelism
+    results_batch: List[Tuple[ProcessingTask, List[SplitResult]]] = []
     successful_count = 0
     failed_count = 0
     total_split_results = 0
@@ -586,67 +590,75 @@ def main(n_jobs: int | None = None) -> None:
     start_time = time.time()
     log_times: List[float] = []
 
-    # Single background thread for prefetching logs
-    with ThreadPoolExecutor(max_workers=1) as prefetcher:
-        # Start loading the first log immediately
-        current_future = prefetcher.submit(load_event_log, tasks_to_process[0])
+    def load_and_process_log(
+        task: ProcessingTask, workers: int
+    ) -> Tuple[ProcessingTask, Optional[List[SplitResult]], float]:
+        """Load and process a single log, returning task, result, and elapsed time."""
+        log_start = time.time()
+        event_log = load_event_log(task)
+        if event_log is None:
+            return task, None, time.time() - log_start
+        result = process_loaded_log(task, event_log, n_jobs=workers)
+        return task, result, time.time() - log_start
 
-        for i, task in enumerate(tasks_to_process):
-            log_start_time = time.time()
+    # Use ThreadPoolExecutor for concurrent log processing
+    # (each log's inner parallelism uses ProcessPoolExecutor)
+    with ThreadPoolExecutor(max_workers=concurrent_logs) as executor:
+        # Submit all tasks
+        future_to_idx = {
+            executor.submit(load_and_process_log, task, workers_per_log): i
+            for i, task in enumerate(tasks_to_process)
+        }
 
-            # Progress info with timing
-            completed = successful_count + failed_count
-            if log_times:
-                avg_time = sum(log_times) / len(log_times)
-                remaining = total_tasks - completed - 1  # -1 for current
-                eta_seconds = avg_time * remaining
-                eta_str = _format_duration(eta_seconds)
-                avg_str = _format_duration(avg_time)
-                print(
-                    f"  [{i + 1}/{total_tasks}] Processing {task.log_id}... "
-                    f"(avg: {avg_str}/log, ETA: {eta_str})"
-                )
-            else:
-                print(f"  [{i + 1}/{total_tasks}] Processing {task.log_id}...")
+        # Process results as they complete
+        completed_count = 0
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            task = tasks_to_process[idx]
+            completed_count += 1
 
-            # Wait for current log to finish loading (should already be done if prefetch worked)
-            event_log = current_future.result()
+            try:
+                task, result, elapsed = future.result()
+                log_times.append(elapsed)
 
-            # Start prefetching the next log while we process this one
-            if i + 1 < total_tasks:
-                next_future = prefetcher.submit(load_event_log, tasks_to_process[i + 1])
+                # Progress info with timing
+                if len(log_times) > 1:
+                    avg_time = sum(log_times) / len(log_times)
+                    remaining = total_tasks - completed_count
+                    eta_seconds = (
+                        avg_time * remaining / concurrent_logs
+                    )  # Adjust for concurrency
+                    eta_str = _format_duration(eta_seconds)
+                    avg_str = _format_duration(avg_time)
+                    print(
+                        f"  [{completed_count}/{total_tasks}] Completed {task.log_id} "
+                        f"in {_format_duration(elapsed)} (avg: {avg_str}/log, ETA: {eta_str})"
+                    )
+                else:
+                    print(
+                        f"  [{completed_count}/{total_tasks}] Completed {task.log_id} "
+                        f"in {_format_duration(elapsed)}"
+                    )
 
-            # Process the current log (CPU work happens here, overlapped with next load)
-            if event_log is not None:
-                try:
-                    result = process_loaded_log(task, event_log, n_jobs=processing_jobs)
-                    if result is not None:
-                        results_batch.append((task, result))
-                        successful_count += 1
-                        total_split_results += len(result)
+                if result is not None:
+                    results_batch.append((task, result))
+                    successful_count += 1
+                    total_split_results += len(result)
 
-                        # Write batch when buffer is full
-                        if len(results_batch) >= BATCH_SIZE:
-                            write_batch_results(results_batch)
-                            print(
-                                f"    Written batch of {len(results_batch)} logs "
-                                f"({total_split_results} split/window combinations)..."
-                            )
-                            results_batch = []
-                    else:
-                        failed_count += 1
-                except Exception as e:
-                    print(f"    Error processing {task.log_id}: {e}")
+                    # Write batch when buffer is full
+                    if len(results_batch) >= BATCH_SIZE:
+                        write_batch_results(results_batch)
+                        print(
+                            f"    Written batch of {len(results_batch)} logs "
+                            f"({total_split_results} split/window combinations)..."
+                        )
+                        results_batch = []
+                else:
                     failed_count += 1
-            else:
+
+            except Exception as e:
+                print(f"    Error processing {task.log_id}: {e}")
                 failed_count += 1
-
-            # Track time for this log
-            log_times.append(time.time() - log_start_time)
-
-            # Advance to the next prefetch future
-            if i + 1 < total_tasks:
-                current_future = next_future
 
     # Write remaining results
     if results_batch:
