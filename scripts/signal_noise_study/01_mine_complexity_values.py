@@ -570,8 +570,9 @@ def main(n_jobs: int | None = None) -> None:
 
     # Hybrid parallelism: process multiple logs concurrently, each with fewer workers
     # This overlaps sequential phases (sampling, analysis) of different logs
-    concurrent_logs = min(4, max(1, n_jobs // 4))  # 1-4 concurrent logs
-    workers_per_log = max(1, n_jobs // concurrent_logs)
+    # Aim for ~4 workers per log (sweet spot for pool efficiency)
+    workers_per_log = 4
+    concurrent_logs = max(1, n_jobs // workers_per_log)
 
     print(
         f"Processing {len(tasks_to_process)} logs with hybrid parallelism "
