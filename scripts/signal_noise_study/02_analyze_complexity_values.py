@@ -46,16 +46,32 @@ PATH_SIGNAL_RELCHANGE_BY_NOISE = f"{DIR_CSV}/signal_relchange_by_noise.csv"
 PATH_SIGNAL_SNR_BY_OP = f"{DIR_CSV}/signal_snr_by_operation.csv"
 PATH_SIGNAL_SNR_BY_EVOL = f"{DIR_CSV}/signal_snr_by_evolution_proportion.csv"
 PATH_SIGNAL_SNR_BY_NOISE = f"{DIR_CSV}/signal_snr_by_noise.csv"
-PATH_NOISE_FACTOR_LONG = f"{DIR_CSV}/noise_factor_importance_long.csv"
-PATH_NOISE_FACTOR_WIDE = f"{DIR_CSV}/noise_factor_importance_wide.csv"
+PATH_SIGNAL_ABS_COHENS_D_BY_OP = f"{DIR_CSV}/signal_abs_cohens_d_by_operation.csv"
+PATH_SIGNAL_ABS_COHENS_D_BY_EVOL = (
+    f"{DIR_CSV}/signal_abs_cohens_d_by_evolution_proportion.csv"
+)
+PATH_SIGNAL_ABS_COHENS_D_BY_NOISE = f"{DIR_CSV}/signal_abs_cohens_d_by_noise.csv"
+PATH_NOISE_FACTOR_LONG = f"{DIR_CSV}/noise_factor_importance_relci_long.csv"
+PATH_NOISE_FACTOR_WIDE = f"{DIR_CSV}/noise_factor_importance_relci_wide.csv"
 PATH_NOISE_FACTOR_LONG_CHANGE = f"{DIR_CSV}/noise_factor_importance_change_long.csv"
 PATH_NOISE_FACTOR_WIDE_CHANGE = f"{DIR_CSV}/noise_factor_importance_change_wide.csv"
+PATH_NOISE_FACTOR_LONG_STD = f"{DIR_CSV}/noise_factor_importance_std_long.csv"
+PATH_NOISE_FACTOR_WIDE_STD = f"{DIR_CSV}/noise_factor_importance_std_wide.csv"
+PATH_NOISE_FACTOR_LONG_CV = f"{DIR_CSV}/noise_factor_importance_cv_long.csv"
+PATH_NOISE_FACTOR_WIDE_CV = f"{DIR_CSV}/noise_factor_importance_cv_wide.csv"
 PATH_NOISE_ABS_MEDIAN = f"{DIR_CSV}/noise_abs_median.csv"
 PATH_NOISE_RELCI = f"{DIR_CSV}/noise_relci.csv"
+PATH_NOISE_STD_PRE = f"{DIR_CSV}/noise_std_pre.csv"
+PATH_NOISE_CV_PRE = f"{DIR_CSV}/noise_cv_pre.csv"
 PATH_NOISE_CHANGE_DUE_TO_NOISE = f"{DIR_CSV}/noise_change_due_to_noise.csv"
 AGGREGATION: Literal["mean", "median"] = "mean"
 eps = 0  # was 1e-9; set to 0 to surface NA when denominator is zero
 MIN_OBS_FOR_FACTOR_ANALYSIS = 30
+# SNR definition:
+#   - "pooled_cohens_d": (mean_post - mean_pre) / pooled_std (signed, effects can cancel)
+#   - "abs_cohens_d": |mean_post - mean_pre| / pooled_std (absolute, effects don't cancel)
+#   - "iqr": signal / IQR_pre (legacy)
+SNR_DEFINITION: Literal["pooled_cohens_d", "abs_cohens_d", "iqr"] = "abs_cohens_d"
 # Regression-only: small positive shift to avoid log(0) dropping rows in factor-importance
 # models for nonnegative outcomes (e.g. rel_noise_log, change_vs_baseline_log).
 # This MUST NOT be used in the estimands/ratios themselves.
@@ -86,6 +102,7 @@ AGGREGATE_ANALYSIS_COL_MAP = {
     "Median Value": "Median Value",
     "Sample CI Low": "Sample CI Low",
     "Sample CI High": "Sample CI High",
+    "Sample Std": "Sample Std",
     "log_id": LOG_ID_COL,
     "split_name": SPLIT_NAME_COL,
     "window_size": WINDOW_SIZE_COL,
@@ -1512,6 +1529,95 @@ def _aggregate_change_due_to_noise(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _aggregate_std_pre(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aggregate standard deviation per (Metric, complexity, noise, window_size).
+
+    Parameters
+    ----------
+    df
+        Pre-drift DataFrame with Metric, complexity, noise, window_size, Sample Std,
+        and SEED_COL.
+
+    Returns
+    -------
+    pd.DataFrame
+        Long table with Metric, complexity, noise, window_size, value.
+        value is the median over seed of per-seed Sample Std values.
+    """
+    d = df.copy()
+    if SEED_COL not in d.columns:
+        raise ValueError(
+            f"_aggregate_std_pre requires {SEED_COL!r} for seed-last aggregation."
+        )
+    if "Sample Std" not in d.columns:
+        raise ValueError("_aggregate_std_pre requires 'Sample Std' column.")
+
+    # 1) Collapse within seed to a single std per (Metric, complexity, noise, window_size, seed)
+    std_sigma = _collapse_within_sigma(
+        d,
+        group_keys_with_sigma=NOISE_TABLE_GROUP_KEYS_WITH_SEED,
+        value_cols=["Sample Std"],
+    )
+
+    # 2) Aggregate across seed last
+    agg = _median_over_sigma(
+        std_sigma,
+        group_keys_without_sigma=NOISE_TABLE_GROUP_KEYS,
+        value_col="Sample Std",
+        out_col="Value",
+        n_col="N Seed",
+    )
+    return agg
+
+
+def _aggregate_cv_pre(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aggregate coefficient of variation (CV = std / |mean|) per cell; median across logs.
+
+    Parameters
+    ----------
+    df
+        Pre-drift DataFrame with Metric, complexity, noise, window_size, Center,
+        Sample Std, and SEED_COL.
+
+    Returns
+    -------
+    pd.DataFrame
+        Long table with Metric, complexity, noise, window_size, value.
+        value is the median over seed of per-seed CV values.
+    """
+    d = df.copy()
+    if SEED_COL not in d.columns:
+        raise ValueError(
+            f"_aggregate_cv_pre requires {SEED_COL!r} for seed-last aggregation."
+        )
+    if "Sample Std" not in d.columns:
+        raise ValueError("_aggregate_cv_pre requires 'Sample Std' column.")
+    if "Center" not in d.columns:
+        raise ValueError("_aggregate_cv_pre requires 'Center' column.")
+
+    # Compute CV = std / |mean|
+    d["CV Row"] = d["Sample Std"] / (d["Center"].abs() + eps)
+
+    # 1) Collapse within seed to a single CV per (Metric, complexity, noise, window_size, seed)
+    cv_sigma = _collapse_within_sigma(
+        d,
+        group_keys_with_sigma=NOISE_TABLE_GROUP_KEYS_WITH_SEED,
+        value_cols=["CV Row"],
+    )
+
+    # 2) Aggregate across seed last
+    agg = _median_over_sigma(
+        cv_sigma,
+        group_keys_without_sigma=NOISE_TABLE_GROUP_KEYS,
+        value_col="CV Row",
+        out_col="Value",
+        n_col="N Seed",
+    )
+    return agg
+
+
 def create_wide_format_table(df_long: pd.DataFrame) -> pd.DataFrame:
     """
     Create wide-format table with 3-level column hierarchy (relative noise).
@@ -1642,7 +1748,9 @@ def perform_sanity_checks(df_long: pd.DataFrame, n_invalid: int) -> None:
 
 
 def compute_snr_per_log(
-    df: pd.DataFrame, choose_aggregation: Literal["mean", "median"] = "mean"
+    df: pd.DataFrame,
+    choose_aggregation: Literal["mean", "median"] = "mean",
+    snr_definition: Literal["pooled_cohens_d", "abs_cohens_d", "iqr"] = "abs_cohens_d",
 ) -> pd.DataFrame:
     """
     Compute SNR per seed (log_seed) by joining pre_drift and post_drift rows.
@@ -1653,11 +1761,16 @@ def compute_snr_per_log(
         DataFrame with pre_drift and post_drift rows, enriched with design factors.
     choose_aggregation
         Aggregation method for center: "mean" uses Mean Value, "median" uses Median Value.
+    snr_definition
+        SNR definition to use:
+        - "pooled_cohens_d": (mean_post - mean_pre) / sqrt((s_pre² + s_post²) / 2) (signed)
+        - "abs_cohens_d": |mean_post - mean_pre| / sqrt((s_pre² + s_post²) / 2) (absolute)
+        - "iqr": signal / IQR_pre (legacy)
 
     Returns
     -------
     pd.DataFrame
-        Long DataFrame with SNR per seed (log_seed), including signal, iqr_pre, and snr_sigma.
+        Long DataFrame with SNR per seed (log_seed), including signal and snr_sigma.
     """
     center_col = "Median Value" if choose_aggregation == "median" else "Mean Value"
     if choose_aggregation == "median" and center_col not in df.columns:
@@ -1669,7 +1782,7 @@ def compute_snr_per_log(
     # Filter to pre_drift and post_drift only
     df_split = df[df[SPLIT_NAME_COL].isin(["pre_drift", "post_drift"])].copy()
 
-    # Select needed columns
+    # Select needed columns - include Sample Std for pooled Cohen's d
     required_cols = [
         "Metric",
         LOG_ID_COL,
@@ -1678,6 +1791,7 @@ def compute_snr_per_log(
         center_col,
         "Sample CI Low",
         "Sample CI High",
+        "Sample Std",
         MODEL_COMPLEXITY_COL,
         NOISE_LEVEL_COL,
         CHANGE_MAGNITUDE_COL,
@@ -1697,7 +1811,7 @@ def compute_snr_per_log(
     df_pre = df_split[df_split[SPLIT_NAME_COL] == "pre_drift"].copy()
     df_post = df_split[df_split[SPLIT_NAME_COL] == "post_drift"].copy()
 
-    # Compute IQR_pre in df_pre
+    # Compute IQR_pre in df_pre (still used for legacy SNR if requested)
     df_pre["IQR Pre"] = df_pre["Sample CI High"] - df_pre["Sample CI Low"]
 
     # Rename columns to avoid collisions (use chosen center column)
@@ -1706,6 +1820,7 @@ def compute_snr_per_log(
             center_col: "Center Pre",
             "Sample CI Low": "ci_low_pre",
             "Sample CI High": "ci_high_pre",
+            "Sample Std": "Std Pre",
         }
     )
     df_post = df_post.rename(
@@ -1713,6 +1828,7 @@ def compute_snr_per_log(
             center_col: "Center Post",
             "Sample CI Low": "ci_low_post",
             "Sample CI High": "ci_high_post",
+            "Sample Std": "Std Post",
         }
     )
 
@@ -1720,6 +1836,7 @@ def compute_snr_per_log(
     join_cols = ["Metric", LOG_ID_COL, WINDOW_SIZE_COL]
     pre_cols = join_cols + [
         "Center Pre",
+        "Std Pre",
         "IQR Pre",
         MODEL_COMPLEXITY_COL,
         NOISE_LEVEL_COL,
@@ -1727,7 +1844,7 @@ def compute_snr_per_log(
         EDIT_OPERATIONS_COL,
         SEED_COL,
     ]
-    post_cols = join_cols + ["Center Post"]
+    post_cols = join_cols + ["Center Post", "Std Post"]
 
     df_pre_join = df_pre[pre_cols].copy()
     df_post_join = df_post[post_cols].copy()
@@ -1757,7 +1874,7 @@ def compute_snr_per_log(
             CHANGE_MAGNITUDE_COL,
             EDIT_OPERATIONS_COL,
         ],
-        value_cols=["Center Pre", "Center Post", "IQR Pre"],
+        value_cols=["Center Pre", "Center Post", "Std Pre", "Std Post", "IQR Pre"],
     )
 
     # Compute signal, SNR, and relative change (per seed)
@@ -1765,7 +1882,30 @@ def compute_snr_per_log(
         (df_sigma["Center Post"] - df_sigma["Center Pre"]).abs()
     ) / (df_sigma["Center Pre"].abs() + eps)
     df_sigma["Signal"] = (df_sigma["Center Post"] - df_sigma["Center Pre"]).abs()
-    df_sigma["SNR Seed"] = df_sigma["Signal"] / (df_sigma["IQR Pre"] + eps)
+
+    # Compute pooled std for Cohen's d variants
+    pooled_std = np.sqrt((df_sigma["Std Pre"] ** 2 + df_sigma["Std Post"] ** 2) / 2)
+
+    # Absolute Cohen's d: |mean_post - mean_pre| / pooled_std
+    # This prevents effects from canceling out when aggregating across seeds
+    df_sigma["Abs Cohen D Seed"] = (
+        (df_sigma["Center Post"] - df_sigma["Center Pre"]).abs()
+    ) / (pooled_std + eps)
+
+    # Compute SNR based on definition
+    if snr_definition == "pooled_cohens_d":
+        # Pooled Cohen's d (signed): (mean_post - mean_pre) / sqrt((s_pre² + s_post²) / 2)
+        df_sigma["SNR Seed"] = (df_sigma["Center Post"] - df_sigma["Center Pre"]) / (
+            pooled_std + eps
+        )
+    elif snr_definition == "abs_cohens_d":
+        # Absolute Cohen's d: |mean_post - mean_pre| / sqrt((s_pre² + s_post²) / 2)
+        # Effects don't cancel out when aggregating across seeds
+        df_sigma["SNR Seed"] = (
+            (df_sigma["Center Post"] - df_sigma["Center Pre"]).abs()
+        ) / (pooled_std + eps)
+    else:  # "iqr" - legacy definition
+        df_sigma["SNR Seed"] = df_sigma["Signal"] / (df_sigma["IQR Pre"] + eps)
 
     # Select final columns
     result_cols = [
@@ -1778,9 +1918,12 @@ def compute_snr_per_log(
         WINDOW_SIZE_COL,
         "Center Pre",
         "Center Post",
+        "Std Pre",
+        "Std Post",
         "IQR Pre",
         "Signal",
         "SNR Seed",
+        "Abs Cohen D Seed",
         "Relative Change Seed",
     ]
 
@@ -2554,6 +2697,12 @@ def main() -> None:
     print("Adding per-log change vs. baseline...")
     df_with_noise = add_change_vs_baseline_log(df_with_noise)
 
+    # Add Std Pre and CV Pre columns for factor importance analysis
+    df_with_noise["Std Pre"] = df_with_noise["Sample Std"]
+    df_with_noise["CV Pre"] = df_with_noise["Sample Std"] / (
+        df_with_noise["Center"].abs() + eps
+    )
+
     print("Aggregating relative noise across logs...")
     df_long = aggregate_relative_noise(df_with_noise)
 
@@ -2584,7 +2733,7 @@ def main() -> None:
     print("Performing sanity checks...")
     perform_sanity_checks(df_long, n_invalid)
 
-    # Tables 1–3: noise_abs_median, noise_relci, noise_change_due_to_noise (same layout as relative_noise_wide)
+    # Tables 1–5: noise_abs_median, noise_relci, noise_std_pre, noise_cv_pre, noise_change_due_to_noise
     _NOISE_TABLE_CONFIGS = [
         (
             "noise_abs_median",
@@ -2599,6 +2748,20 @@ def main() -> None:
             False,
             f"Relative confidence interval (CI width / {AGGREGATION}).",
             "tab:signal-noise-relci",
+        ),
+        (
+            "noise_std_pre",
+            _aggregate_std_pre,
+            False,
+            "Standard deviation (sample std).",
+            "tab:signal-noise-std-pre",
+        ),
+        (
+            "noise_cv_pre",
+            _aggregate_cv_pre,
+            False,
+            f"Coefficient of variation (std / |{AGGREGATION}|).",
+            "tab:signal-noise-cv-pre",
         ),
         (
             "noise_change_due_to_noise",
@@ -2655,20 +2818,7 @@ def main() -> None:
     print(f"Saved factor importance (relci) long to {PATH_NOISE_FACTOR_LONG}")
     df_factor_wide.to_csv(PATH_NOISE_FACTOR_WIDE)
     print(f"Saved factor importance (relci) wide to {PATH_NOISE_FACTOR_WIDE}")
-    _write_latex_table(
-        df_factor_long.rename(
-            columns={
-                k: v
-                for k, v in FACTOR_IMPORTANCE_PCT_HEADERS.items()
-                if k in df_factor_long.columns
-            }
-        ),
-        Path(PATH_NOISE_FACTOR_LONG).stem,
-        caption="Noise factor importance (relative CI), long format.",
-        label="tab:signal-noise-factor-importance-long",
-        index=False,
-        heatmap_vmax=100,
-    )
+    # Only wide table LaTeX for factor importance
     _write_latex_table(
         df_factor_wide.rename(
             columns={
@@ -2677,15 +2827,79 @@ def main() -> None:
                 if k in df_factor_wide.columns
             }
         ),
-        Path(PATH_NOISE_FACTOR_WIDE).stem,
+        "noise_factor_importance_relci",
         caption="Noise factor importance (relative CI) by metric.",
-        label="tab:signal-noise-factor-importance-wide",
+        label="tab:signal-noise-factor-importance-relci",
         index=True,
         heatmap_vmax=100,
         heatmap_exclude_columns=["N Obs", "R2 Full (%)"],
     )
     print("Factor importance (relative CI) summary:")
     print_factor_importance_summary(df_factor_long, df_factor_wide)
+
+    # Factor importance: standard deviation (Std Pre)
+    print("Computing factor importance for standard deviation (Std Pre)...")
+    df_factor_long_std, df_factor_wide_std = run_noise_factor_importance(
+        df_with_noise,
+        outcome_col="Std Pre",
+        outcome_log_shift=FACTOR_IMPORTANCE_LOG_SHIFT,
+        debug_filtering=DEBUG_R2_FILTERING,
+        debug_max_examples=DEBUG_R2_MAX_EXAMPLES,
+    )
+    df_factor_long_std.to_csv(PATH_NOISE_FACTOR_LONG_STD, index=False)
+    print(f"Saved factor importance (std) long to {PATH_NOISE_FACTOR_LONG_STD}")
+    df_factor_wide_std.to_csv(PATH_NOISE_FACTOR_WIDE_STD)
+    print(f"Saved factor importance (std) wide to {PATH_NOISE_FACTOR_WIDE_STD}")
+    # Only wide table LaTeX for factor importance
+    _write_latex_table(
+        df_factor_wide_std.rename(
+            columns={
+                k: v
+                for k, v in FACTOR_IMPORTANCE_PCT_HEADERS.items()
+                if k in df_factor_wide_std.columns
+            }
+        ),
+        "noise_factor_importance_std",
+        caption="Noise factor importance (standard deviation) by metric.",
+        label="tab:signal-noise-factor-importance-std",
+        index=True,
+        heatmap_vmax=100,
+        heatmap_exclude_columns=["N Obs", "R2 Full (%)"],
+    )
+    print("Factor importance (standard deviation) summary:")
+    print_factor_importance_summary(df_factor_long_std, df_factor_wide_std)
+
+    # Factor importance: coefficient of variation (CV Pre)
+    print("Computing factor importance for coefficient of variation (CV Pre)...")
+    df_factor_long_cv, df_factor_wide_cv = run_noise_factor_importance(
+        df_with_noise,
+        outcome_col="CV Pre",
+        outcome_log_shift=FACTOR_IMPORTANCE_LOG_SHIFT,
+        debug_filtering=DEBUG_R2_FILTERING,
+        debug_max_examples=DEBUG_R2_MAX_EXAMPLES,
+    )
+    df_factor_long_cv.to_csv(PATH_NOISE_FACTOR_LONG_CV, index=False)
+    print(f"Saved factor importance (cv) long to {PATH_NOISE_FACTOR_LONG_CV}")
+    df_factor_wide_cv.to_csv(PATH_NOISE_FACTOR_WIDE_CV)
+    print(f"Saved factor importance (cv) wide to {PATH_NOISE_FACTOR_WIDE_CV}")
+    # Only wide table LaTeX for factor importance
+    _write_latex_table(
+        df_factor_wide_cv.rename(
+            columns={
+                k: v
+                for k, v in FACTOR_IMPORTANCE_PCT_HEADERS.items()
+                if k in df_factor_wide_cv.columns
+            }
+        ),
+        "noise_factor_importance_cv",
+        caption="Noise factor importance (coefficient of variation) by metric.",
+        label="tab:signal-noise-factor-importance-cv",
+        index=True,
+        heatmap_vmax=100,
+        heatmap_exclude_columns=["N Obs", "R2 Full (%)"],
+    )
+    print("Factor importance (coefficient of variation) summary:")
+    print_factor_importance_summary(df_factor_long_cv, df_factor_wide_cv)
 
     # Factor importance: change vs. baseline (exclude noise=None: change is always 0 there)
     print("Computing factor importance for change vs. baseline...")
@@ -2702,20 +2916,7 @@ def main() -> None:
     print(f"Saved factor importance (change) long to {PATH_NOISE_FACTOR_LONG_CHANGE}")
     df_factor_wide_change.to_csv(PATH_NOISE_FACTOR_WIDE_CHANGE)
     print(f"Saved factor importance (change) wide to {PATH_NOISE_FACTOR_WIDE_CHANGE}")
-    _write_latex_table(
-        df_factor_long_change.rename(
-            columns={
-                k: v
-                for k, v in FACTOR_IMPORTANCE_PCT_HEADERS.items()
-                if k in df_factor_long_change.columns
-            }
-        ),
-        Path(PATH_NOISE_FACTOR_LONG_CHANGE).stem,
-        caption="Noise factor importance (change vs. baseline), long format.",
-        label="tab:signal-noise-factor-importance-change-long",
-        index=False,
-        heatmap_vmax=100,
-    )
+    # Only wide table LaTeX for factor importance
     _write_latex_table(
         df_factor_wide_change.rename(
             columns={
@@ -2724,9 +2925,9 @@ def main() -> None:
                 if k in df_factor_wide_change.columns
             }
         ),
-        Path(PATH_NOISE_FACTOR_WIDE_CHANGE).stem,
+        "noise_factor_importance_change",
         caption="Noise factor importance (change vs. baseline) by metric.",
-        label="tab:signal-noise-factor-importance-change-wide",
+        label="tab:signal-noise-factor-importance-change",
         index=True,
         heatmap_vmax=100,
         heatmap_exclude_columns=["N Obs", "R2 Full (%)"],
@@ -2737,6 +2938,7 @@ def main() -> None:
     print("\n" + "=" * 60)
     print("SNR ANALYSIS")
     print("=" * 60)
+    print(f"Using SNR definition: {SNR_DEFINITION}")
     print("Loading and normalizing split names...")
     df_full = load_and_validate_input(PATH_AGG)
     df_normalized = normalize_split_name(df_full)
@@ -2747,7 +2949,9 @@ def main() -> None:
     df_snr_enriched = enrich_with_experimental_factors(df_normalized, gen_info)
 
     print("Computing SNR per log...")
-    df_snr_log = compute_snr_per_log(df_snr_enriched, AGGREGATION)
+    df_snr_log = compute_snr_per_log(
+        df_snr_enriched, AGGREGATION, snr_definition=SNR_DEFINITION
+    )
 
     print("Aggregating SNR across logs...")
     df_snr_cells = aggregate_snr_cells(df_snr_log)
@@ -2908,6 +3112,61 @@ def main() -> None:
         index=True,
         heatmap_vmax=1,
     )
+
+    # Tables: Absolute Cohen's d by operation, evolution_proportion, noise
+    # |Cohen's d| = |mean_post - mean_pre| / pooled_std (effects don't cancel out)
+    _SIGNAL_ABS_COHENS_D_CONFIGS = [
+        (
+            "signal_abs_cohens_d_by_operation",
+            EDIT_OPERATIONS_COL,
+            CHANGE_OPERATION_ORDER,
+            None,
+            None,
+            "Mean absolute Cohen's d pre-to-post by change operation.",
+            "tab:signal-abs-cohens-d-by-operation",
+        ),
+        (
+            "signal_abs_cohens_d_by_evolution_proportion",
+            CHANGE_MAGNITUDE_COL,
+            None,
+            EDIT_OPERATIONS_COL,
+            "mixed",
+            "Mean absolute Cohen's d pre-to-post by evolution proportion (Edit Operations=mixed).",
+            "tab:signal-abs-cohens-d-by-evolution",
+        ),
+        (
+            "signal_abs_cohens_d_by_noise",
+            NOISE_LEVEL_COL,
+            ["None", "Low", "High"],
+            EDIT_OPERATIONS_COL,
+            "mixed",
+            "Mean absolute Cohen's d pre-to-post by noise (Edit Operations=mixed).",
+            "tab:signal-abs-cohens-d-by-noise",
+        ),
+    ]
+    for (
+        stem,
+        group_col,
+        column_order,
+        filter_col,
+        filter_val,
+        caption,
+        label,
+    ) in _SIGNAL_ABS_COHENS_D_CONFIGS:
+        df_abs_d = _aggregate_by_group(
+            df_snr_log,
+            "Abs Cohen D Seed",
+            group_col,
+            column_order,
+            filter_col=filter_col,
+            filter_val=filter_val,
+        )
+        path_csv = f"{DIR_CSV}/{stem}.csv"
+        df_abs_d.to_csv(path_csv)
+        print(f"Saved {stem} to {path_csv}")
+        _write_latex_table(
+            df_abs_d, stem, caption=caption, label=label, index=True, heatmap_vmax=1
+        )
 
     print("Performing SNR sanity checks...")
     perform_snr_sanity_checks(df_snr_log, df_snr_cells)
