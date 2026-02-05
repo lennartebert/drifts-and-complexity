@@ -568,11 +568,11 @@ def main(n_jobs: int | None = None) -> None:
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     os.environ.setdefault("NUMEXPR_MAX_THREADS", "1")
 
-    # Hybrid parallelism: process multiple logs concurrently, each with fewer workers
-    # This overlaps sequential phases (sampling, analysis) of different logs
-    # Aim for ~4 workers per log (sweet spot for pool efficiency)
-    workers_per_log = 4
-    concurrent_logs = max(1, n_jobs // workers_per_log)
+    # Hybrid parallelism: process multiple logs concurrently, each with minimal workers
+    # Maximize outer concurrency to overlap I/O and sequential phases
+    # Inner parallelism has too much overhead, so keep it minimal
+    workers_per_log = 1  # Essentially sequential inner loop (no process pool overhead)
+    concurrent_logs = n_jobs  # All CPUs for concurrent log processing
 
     print(
         f"Processing {len(tasks_to_process)} logs with hybrid parallelism "
