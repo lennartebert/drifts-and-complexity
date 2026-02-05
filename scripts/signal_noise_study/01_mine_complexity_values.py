@@ -292,8 +292,8 @@ def process_loaded_log(
     """
     Process an already-loaded event log (CPU bound operation).
 
-    Processes both pre-drift and post-drift splits for all window sizes.
-    Parallelization happens at the window sample level within compute_metrics_for_samples.
+    Batches all window samples across splits and window sizes, then processes
+    them in a single parallel call to maximize CPU utilization.
 
     Parameters
     ----------
@@ -334,14 +334,17 @@ def process_loaded_log(
         )
         sample_standard_deviation_extractor = SampleStandardDeviationExtractor(ddof=1)
 
-        results = []
+        # =================================================================
+        # Phase 1: Collect ALL samples across splits and window sizes
+        # =================================================================
+        all_samples = []
+        sample_id_to_split: Dict[int, str] = {}  # global_sample_id -> split_name
+        global_sample_id = 0
 
-        # Process both splits
         for split_name, split_log in [
             ("pre_drift", pre_drift_log),
             ("post_drift", post_drift_log),
         ]:
-            # Process all window sizes for this split
             for window_size in WINDOW_SIZES:
                 # Check if split has enough traces for this window size
                 if len(split_log) < window_size:
@@ -351,8 +354,8 @@ def process_loaded_log(
                     )
                     continue
 
-                # Perform sampling
-                window_samples = (
+                # Collect samples and remap to globally unique IDs
+                samples = list(
                     sampling_helper.sample_consecutive_trace_windows_with_replacement(
                         split_log,
                         sizes=[window_size],
@@ -361,50 +364,67 @@ def process_loaded_log(
                     )
                 )
 
-                # Compute raw metrics (parallelized over window samples)
-                metrics_df = compute_metrics_for_samples(
-                    window_samples,
-                    population_extractor=population_extractor,
-                    metric_adapters=metric_adapters,
-                    bootstrap_sampler=bootstrap_sampler,
-                    normalizers=normalizers,
-                    include_metrics=include_metrics,
-                    n_jobs=n_jobs,
+                for ws, _orig_sample_id, window in samples:
+                    all_samples.append((ws, global_sample_id, window))
+                    sample_id_to_split[global_sample_id] = split_name
+                    global_sample_id += 1
+
+        if not all_samples:
+            return None
+
+        # =================================================================
+        # Phase 2: Compute ALL metrics in ONE parallel call
+        # =================================================================
+        metrics_df = compute_metrics_for_samples(
+            all_samples,
+            population_extractor=population_extractor,
+            metric_adapters=metric_adapters,
+            bootstrap_sampler=bootstrap_sampler,
+            normalizers=normalizers,
+            include_metrics=include_metrics,
+            n_jobs=n_jobs,
+        )
+
+        metrics_df = metrics_df.reset_index()
+
+        # Add split_name based on the sample ID mapping
+        metrics_df["split_name"] = metrics_df["Sample ID"].map(sample_id_to_split)
+        metrics_df["log_id"] = task.log_id
+
+        # =================================================================
+        # Phase 3: Group by split/window_size and compute analysis for each
+        # =================================================================
+        results = []
+
+        for (split_name, window_size), group_df in metrics_df.groupby(
+            ["split_name", "Sample Size"]
+        ):
+            # Add window_size column for consistency with original output
+            group_df = group_df.copy()
+            group_df["window_size"] = window_size
+
+            # Compute aggregates (mean values, CIs, std, correlations, plateau)
+            analysis_df = compute_analysis_for_metrics(
+                group_df,
+                sample_confidence_interval_extractor=sample_confidence_interval_extractor,
+                sample_standard_deviation_extractor=sample_standard_deviation_extractor,
+                include_metrics=include_metrics,
+            )
+
+            analysis_df = analysis_df.reset_index()
+            analysis_df["log_id"] = task.log_id
+            analysis_df["split_name"] = split_name
+            analysis_df["window_size"] = window_size
+
+            results.append(
+                SplitResult(
+                    log_id=task.log_id,
+                    split_name=str(split_name),
+                    window_size=int(window_size),
+                    metrics_df=group_df,
+                    analysis_df=analysis_df,
                 )
-
-                # Reset index to access columns
-                metrics_df = metrics_df.reset_index()
-
-                # Add log_id, split_name, and window_size columns
-                metrics_df["log_id"] = task.log_id
-                metrics_df["split_name"] = split_name
-                metrics_df["window_size"] = window_size
-
-                # Compute aggregates (mean values, CIs, std, correlations, plateau)
-                analysis_df = compute_analysis_for_metrics(
-                    metrics_df,
-                    sample_confidence_interval_extractor=sample_confidence_interval_extractor,
-                    sample_standard_deviation_extractor=sample_standard_deviation_extractor,
-                    include_metrics=include_metrics,
-                )
-
-                # Reset index to access columns
-                analysis_df = analysis_df.reset_index()
-
-                # Add log_id, split_name, and window_size columns
-                analysis_df["log_id"] = task.log_id
-                analysis_df["split_name"] = split_name
-                analysis_df["window_size"] = window_size
-
-                results.append(
-                    SplitResult(
-                        log_id=task.log_id,
-                        split_name=split_name,
-                        window_size=window_size,
-                        metrics_df=metrics_df,
-                        analysis_df=analysis_df,
-                    )
-                )
+            )
 
         return results if results else None
 
