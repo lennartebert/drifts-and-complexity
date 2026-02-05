@@ -628,13 +628,13 @@ def main(n_jobs: int | None = None) -> None:
                 task, result, elapsed = future.result()
                 log_times.append(elapsed)
 
-                # Progress info with timing
-                if len(log_times) > 1:
-                    avg_time = sum(log_times) / len(log_times)
+                # Progress info with timing (use wall-clock throughput)
+                wall_clock_elapsed = time.time() - start_time
+                if completed_count > 1:
+                    # Throughput-based average: wall-clock time / logs completed
+                    avg_time = wall_clock_elapsed / completed_count
                     remaining = total_tasks - completed_count
-                    eta_seconds = (
-                        avg_time * remaining / concurrent_logs
-                    )  # Adjust for concurrency
+                    eta_seconds = avg_time * remaining
                     eta_str = _format_duration(eta_seconds)
                     avg_str = _format_duration(avg_time)
                     print(
