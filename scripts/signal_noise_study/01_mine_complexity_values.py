@@ -13,7 +13,7 @@ import argparse
 import os
 import shutil
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -433,6 +433,31 @@ def process_loaded_log(
         return None
 
 
+def load_and_process_log(
+    args: Tuple[ProcessingTask, int],
+) -> Tuple[ProcessingTask, Optional[List[SplitResult]], float]:
+    """
+    Load and process a single log (top-level function for ProcessPoolExecutor).
+
+    Parameters
+    ----------
+    args
+        Tuple of (task, workers_per_log).
+
+    Returns
+    -------
+    Tuple[ProcessingTask, Optional[List[SplitResult]], float]
+        The task, result (or None if failed), and elapsed time.
+    """
+    task, workers = args
+    log_start = time.time()
+    event_log = load_event_log(task)
+    if event_log is None:
+        return task, None, time.time() - log_start
+    result = process_loaded_log(task, event_log, n_jobs=workers)
+    return task, result, time.time() - log_start
+
+
 def write_batch_results(
     results_batch: List[Tuple[ProcessingTask, List[SplitResult]]],
 ) -> None:
@@ -591,23 +616,11 @@ def main(n_jobs: int | None = None) -> None:
     start_time = time.time()
     log_times: List[float] = []
 
-    def load_and_process_log(
-        task: ProcessingTask, workers: int
-    ) -> Tuple[ProcessingTask, Optional[List[SplitResult]], float]:
-        """Load and process a single log, returning task, result, and elapsed time."""
-        log_start = time.time()
-        event_log = load_event_log(task)
-        if event_log is None:
-            return task, None, time.time() - log_start
-        result = process_loaded_log(task, event_log, n_jobs=workers)
-        return task, result, time.time() - log_start
-
-    # Use ThreadPoolExecutor for concurrent log processing
-    # (each log's inner parallelism uses ProcessPoolExecutor)
-    with ThreadPoolExecutor(max_workers=concurrent_logs) as executor:
-        # Submit all tasks
+    # Use ProcessPoolExecutor for concurrent log processing (avoids GIL contention)
+    with ProcessPoolExecutor(max_workers=concurrent_logs) as executor:
+        # Submit all tasks (pass as tuple for top-level function)
         future_to_idx = {
-            executor.submit(load_and_process_log, task, workers_per_log): i
+            executor.submit(load_and_process_log, (task, workers_per_log)): i
             for i, task in enumerate(tasks_to_process)
         }
 
