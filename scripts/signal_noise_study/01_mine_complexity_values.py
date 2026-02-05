@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -22,6 +22,9 @@ from pm4py.objects.log.obj import EventLog
 
 from utils import sampling_helper
 from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetricsAdapter
+from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
+    VidgofMetricsAdapter,
+)
 from utils.parallel import run_parallel
 from utils.pipeline.compute import (
     compute_analysis_for_metrics,
@@ -244,17 +247,21 @@ def check_resume_status(tasks: List[ProcessingTask]) -> List[ProcessingTask]:
 
 def process_single_task(
     task: ProcessingTask,
+    n_jobs: int = 1,
 ) -> Optional[List[SplitResult]]:
     """
-    Process a single task (worker function for parallel execution).
+    Process a single task (one log file).
 
     Loads the log once and processes both pre-drift and post-drift splits
-    for all window sizes.
+    for all window sizes. Parallelization happens at the window sample level
+    within compute_metrics_for_samples.
 
     Parameters
     ----------
     task
         The processing task to execute.
+    n_jobs
+        Number of parallel workers for computing metrics across window samples.
 
     Returns
     -------
@@ -280,7 +287,7 @@ def process_single_task(
 
         # Set up pipeline components (created in worker to avoid pickling issues)
         population_extractor = NaivePopulationExtractor()
-        metric_adapters = [LocalMetricsAdapter()]
+        metric_adapters = [LocalMetricsAdapter(), VidgofMetricsAdapter()]
         bootstrap_sampler = None
         normalizers = None
         include_metrics = None
@@ -316,7 +323,7 @@ def process_single_task(
                     )
                 )
 
-                # Compute raw metrics
+                # Compute raw metrics (parallelized over window samples)
                 metrics_df = compute_metrics_for_samples(
                     window_samples,
                     population_extractor=population_extractor,
@@ -324,6 +331,7 @@ def process_single_task(
                     bootstrap_sampler=bootstrap_sampler,
                     normalizers=normalizers,
                     include_metrics=include_metrics,
+                    n_jobs=n_jobs,
                 )
 
                 # Reset index to access columns
@@ -496,58 +504,49 @@ def main(n_jobs: int | None = None) -> None:
         print("\nDone!")
         return
 
-    print(f"Processing {len(tasks_to_process)} logs in parallel...")
+    print(
+        f"Processing {len(tasks_to_process)} logs sequentially (inner parallelism)..."
+    )
 
-    # Process tasks in parallel and write results as they complete
-    results_batch = []
-    successful_count = 0
-    failed_count = 0
-    total_split_results = 0
-
-    # Create a mapping from future to task for tracking
-    task_future_map = {}
-
-    # Set BLAS safety (prevent oversubscription)
+    # Set BLAS safety (prevent oversubscription from NumPy/SciPy)
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     os.environ.setdefault("NUMEXPR_MAX_THREADS", "1")
 
-    # Use ProcessPoolExecutor to process results as they complete
-    with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-        # Submit all tasks
-        for task in tasks_to_process:
-            future = executor.submit(process_single_task, task)
-            task_future_map[future] = task
+    # Process logs sequentially; parallelization happens inside compute_metrics_for_samples
+    results_batch = []
+    successful_count = 0
+    failed_count = 0
+    total_split_results = 0
 
-        # Process results as they complete
-        for future in as_completed(task_future_map):
-            task = task_future_map[future]
-            try:
-                result = future.result()
-                if result is not None:
-                    split_results = result
-                    results_batch.append((task, split_results))
-                    successful_count += 1
-                    total_split_results += len(split_results)
+    for i, task in enumerate(tasks_to_process, start=1):
+        print(f"  [{i}/{len(tasks_to_process)}] Processing {task.log_id}...")
+        try:
+            result = process_single_task(task, n_jobs=n_jobs)
+            if result is not None:
+                results_batch.append((task, result))
+                successful_count += 1
+                total_split_results += len(result)
 
-                    # Write batch when buffer is full
-                    if len(results_batch) >= BATCH_SIZE:
-                        write_batch_results(results_batch)
-                        print(
-                            f"  Written batch of {len(results_batch)} logs ({total_split_results} split/window combinations)... ({successful_count}/{len(tasks_to_process)} logs completed)"
-                        )
-                        results_batch = []
-                else:
-                    failed_count += 1
-            except Exception as e:
-                print(f"  Error getting result for task {task.log_id}: {e}")
+                # Write batch when buffer is full
+                if len(results_batch) >= BATCH_SIZE:
+                    write_batch_results(results_batch)
+                    print(
+                        f"    Written batch of {len(results_batch)} logs "
+                        f"({total_split_results} split/window combinations)..."
+                    )
+                    results_batch = []
+            else:
                 failed_count += 1
+        except Exception as e:
+            print(f"    Error processing {task.log_id}: {e}")
+            failed_count += 1
 
     # Write remaining results
     if results_batch:
         write_batch_results(results_batch)
-        print(f"  Written final batch of {len(results_batch)} logs...")
+        print(f"    Written final batch of {len(results_batch)} logs...")
 
     print(
         f"\nProcessing complete: {successful_count} logs successful ({total_split_results} split/window combinations), {failed_count} failed"
@@ -572,6 +571,11 @@ def main(n_jobs: int | None = None) -> None:
         print(f"Saved aggregate analysis to: {aggregate_path}")
     else:
         print("No aggregate analysis to save")
+
+    # Clean up intermediary folder to ensure re-computation on next run
+    if INTERMEDIARY_DIR.exists():
+        shutil.rmtree(INTERMEDIARY_DIR)
+        print(f"Deleted intermediary folder: {INTERMEDIARY_DIR}")
 
     print("\nDone!")
 
