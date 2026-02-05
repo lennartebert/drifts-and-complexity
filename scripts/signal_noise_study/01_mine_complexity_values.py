@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -25,7 +27,6 @@ from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetrics
 from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
     VidgofMetricsAdapter,
 )
-from utils.parallel import run_parallel
 from utils.pipeline.compute import (
     compute_analysis_for_metrics,
     compute_metrics_for_samples,
@@ -39,6 +40,21 @@ from utils.sample_confidence_interval_extractor import (
 from utils.sample_standard_deviation_extractor import (
     SampleStandardDeviationExtractor,
 )
+
+
+def _format_duration(seconds: float) -> str:
+    """Format duration in seconds to human-readable string."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    elif seconds < 3600:
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes}m {secs}s"
+    else:
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        return f"{hours}h {minutes}m"
+
 
 # Constants
 PATH_TO_LOGS = Path("data") / "synthetic" / "sudden_drifts"
@@ -245,21 +261,46 @@ def check_resume_status(tasks: List[ProcessingTask]) -> List[ProcessingTask]:
     return remaining_tasks
 
 
-def process_single_task(
-    task: ProcessingTask,
-    n_jobs: int = 1,
-) -> Optional[List[SplitResult]]:
+def load_event_log(task: ProcessingTask) -> Optional[EventLog]:
     """
-    Process a single task (one log file).
+    Load an event log from disk (I/O bound operation).
 
-    Loads the log once and processes both pre-drift and post-drift splits
-    for all window sizes. Parallelization happens at the window sample level
-    within compute_metrics_for_samples.
+    This function is designed to run in a background thread for prefetching.
 
     Parameters
     ----------
     task
-        The processing task to execute.
+        The processing task containing the log file path.
+
+    Returns
+    -------
+    Optional[EventLog]
+        The loaded event log, or None if loading failed.
+    """
+    try:
+        return xes_importer.apply(str(task.log_file_path))
+    except Exception as e:
+        print(f"    Error loading {task.log_id}: {e}")
+        return None
+
+
+def process_loaded_log(
+    task: ProcessingTask,
+    event_log: EventLog,
+    n_jobs: int = 1,
+) -> Optional[List[SplitResult]]:
+    """
+    Process an already-loaded event log (CPU bound operation).
+
+    Processes both pre-drift and post-drift splits for all window sizes.
+    Parallelization happens at the window sample level within compute_metrics_for_samples.
+
+    Parameters
+    ----------
+    task
+        The processing task metadata.
+    event_log
+        The pre-loaded event log.
     n_jobs
         Number of parallel workers for computing metrics across window samples.
 
@@ -269,13 +310,10 @@ def process_single_task(
         List of results for each split/window_size combination if successful, None if failed.
     """
     try:
-        # Load the event log once
-        event_log = xes_importer.apply(str(task.log_file_path))
-
         # Check if log has enough traces
         if len(event_log) < DRIFT_POINT_IN_LOGS:
             print(
-                f"  Warning: Log {task.log_id} has only {len(event_log)} traces, "
+                f"    Warning: Log {task.log_id} has only {len(event_log)} traces, "
                 f"need at least {DRIFT_POINT_IN_LOGS}, skipping..."
             )
             return None
@@ -285,7 +323,7 @@ def process_single_task(
         pre_drift_log = split_logs["pre_drift"]
         post_drift_log = split_logs["post_drift"]
 
-        # Set up pipeline components (created in worker to avoid pickling issues)
+        # Set up pipeline components
         population_extractor = NaivePopulationExtractor()
         metric_adapters = [LocalMetricsAdapter(), VidgofMetricsAdapter()]
         bootstrap_sampler = None
@@ -308,7 +346,7 @@ def process_single_task(
                 # Check if split has enough traces for this window size
                 if len(split_log) < window_size:
                     print(
-                        f"  Warning: Split {split_name} for log {task.log_id} "
+                        f"    Warning: Split {split_name} for log {task.log_id} "
                         f"has only {len(split_log)} traces, need at least {window_size}, skipping..."
                     )
                     continue
@@ -371,7 +409,7 @@ def process_single_task(
         return results if results else None
 
     except Exception as e:
-        print(f"Error processing task {task.log_id}: {e}")
+        print(f"    Error processing {task.log_id}: {e}")
         return None
 
 
@@ -504,8 +542,11 @@ def main(n_jobs: int | None = None) -> None:
         print("\nDone!")
         return
 
+    # Conservative CPU allocation: reserve 1 thread for I/O prefetching
+    processing_jobs = max(1, n_jobs - 1)
     print(
-        f"Processing {len(tasks_to_process)} logs sequentially (inner parallelism)..."
+        f"Processing {len(tasks_to_process)} logs with pipeline loading "
+        f"({processing_jobs} CPUs for compute, 1 for prefetch)..."
     )
 
     # Set BLAS safety (prevent oversubscription from NumPy/SciPy)
@@ -514,43 +555,95 @@ def main(n_jobs: int | None = None) -> None:
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     os.environ.setdefault("NUMEXPR_MAX_THREADS", "1")
 
-    # Process logs sequentially; parallelization happens inside compute_metrics_for_samples
+    # Process logs with prefetching: load next log while processing current
     results_batch = []
     successful_count = 0
     failed_count = 0
     total_split_results = 0
+    total_tasks = len(tasks_to_process)
 
-    for i, task in enumerate(tasks_to_process, start=1):
-        print(f"  [{i}/{len(tasks_to_process)}] Processing {task.log_id}...")
-        try:
-            result = process_single_task(task, n_jobs=n_jobs)
-            if result is not None:
-                results_batch.append((task, result))
-                successful_count += 1
-                total_split_results += len(result)
+    # Timing tracking
+    start_time = time.time()
+    log_times: List[float] = []
 
-                # Write batch when buffer is full
-                if len(results_batch) >= BATCH_SIZE:
-                    write_batch_results(results_batch)
-                    print(
-                        f"    Written batch of {len(results_batch)} logs "
-                        f"({total_split_results} split/window combinations)..."
-                    )
-                    results_batch = []
+    # Single background thread for prefetching logs
+    with ThreadPoolExecutor(max_workers=1) as prefetcher:
+        # Start loading the first log immediately
+        current_future = prefetcher.submit(load_event_log, tasks_to_process[0])
+
+        for i, task in enumerate(tasks_to_process):
+            log_start_time = time.time()
+
+            # Progress info with timing
+            completed = successful_count + failed_count
+            if log_times:
+                avg_time = sum(log_times) / len(log_times)
+                remaining = total_tasks - completed - 1  # -1 for current
+                eta_seconds = avg_time * remaining
+                eta_str = _format_duration(eta_seconds)
+                avg_str = _format_duration(avg_time)
+                print(
+                    f"  [{i + 1}/{total_tasks}] Processing {task.log_id}... "
+                    f"(avg: {avg_str}/log, ETA: {eta_str})"
+                )
+            else:
+                print(f"  [{i + 1}/{total_tasks}] Processing {task.log_id}...")
+
+            # Wait for current log to finish loading (should already be done if prefetch worked)
+            event_log = current_future.result()
+
+            # Start prefetching the next log while we process this one
+            if i + 1 < total_tasks:
+                next_future = prefetcher.submit(load_event_log, tasks_to_process[i + 1])
+
+            # Process the current log (CPU work happens here, overlapped with next load)
+            if event_log is not None:
+                try:
+                    result = process_loaded_log(task, event_log, n_jobs=processing_jobs)
+                    if result is not None:
+                        results_batch.append((task, result))
+                        successful_count += 1
+                        total_split_results += len(result)
+
+                        # Write batch when buffer is full
+                        if len(results_batch) >= BATCH_SIZE:
+                            write_batch_results(results_batch)
+                            print(
+                                f"    Written batch of {len(results_batch)} logs "
+                                f"({total_split_results} split/window combinations)..."
+                            )
+                            results_batch = []
+                    else:
+                        failed_count += 1
+                except Exception as e:
+                    print(f"    Error processing {task.log_id}: {e}")
+                    failed_count += 1
             else:
                 failed_count += 1
-        except Exception as e:
-            print(f"    Error processing {task.log_id}: {e}")
-            failed_count += 1
+
+            # Track time for this log
+            log_times.append(time.time() - log_start_time)
+
+            # Advance to the next prefetch future
+            if i + 1 < total_tasks:
+                current_future = next_future
 
     # Write remaining results
     if results_batch:
         write_batch_results(results_batch)
         print(f"    Written final batch of {len(results_batch)} logs...")
 
-    print(
-        f"\nProcessing complete: {successful_count} logs successful ({total_split_results} split/window combinations), {failed_count} failed"
+    total_elapsed = time.time() - start_time
+    avg_time_str = (
+        _format_duration(sum(log_times) / len(log_times)) if log_times else "N/A"
     )
+    total_time_str = _format_duration(total_elapsed)
+
+    print(
+        f"\nProcessing complete: {successful_count} logs successful "
+        f"({total_split_results} split/window combinations), {failed_count} failed"
+    )
+    print(f"Total time: {total_time_str}, avg: {avg_time_str}/log")
 
     # Aggregate final results
     print("\nAggregating final results...")
