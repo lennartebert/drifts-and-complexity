@@ -1,9 +1,15 @@
 [submodule "drift_characterization"]
-	path = plugins/drift_characterization
-	url = https://github.com/lennartebert/concept-drift-characterization.git
+    path = plugins/drift_characterization
+    url = git@github.com:lennartebert/concept-drift-characterization.git
+
 [submodule "vidgof_complexity"]
-	path = plugins/vidgof_complexity
-	url = https://github.com/lennartebert/process-complexity.git
+    path = plugins/vidgof_complexity
+    url = git@github.com:lennartebert/process-complexity.git
+
 [submodule "cdrift_evaluation"]
-	path = plugins/cdrift_evaluation
-	url = https://github.com/lennartebert/cdrift-evaluation
+    path = plugins/cdrift_evaluation
+    url = git@github.com:lennartebert/cdriftift-evaluation.git
+
+[submodule "plugins/cdlg_tool"]
+    path = plugins/cdlg_tool
+    url = git@github.com:lennartebert/cdlg_tool_extension.git

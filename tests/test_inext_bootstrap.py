@@ -14,25 +14,21 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pytest
 
-# Import the functions under test
-from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import (
-    _draw_inext_bootstrap_sample,
-    _multinomial_draw,
-)
 from utils.population.chao1_helpers import (
-    _build_inext_bootstrap_population_distribution,
-    _compute_inext_unseen_probability_mass,
-    chao1_total_richness_bias_corrected,
-    chao1_unseen_estimation_inext,
-    chao1_unseen_hat_bias_corrected,
+    _chao1_f0_hat_inext,
+    _esti_boot_comm_ind_probs,
+    _freq_of_freqs_basic,
+    create_chao1_population_distribution,
 )
-from utils.population.population_distribution import (
-    PopulationDistribution,
-    get_labels_and_probabilities,
-)
+from utils.population.population_distribution import PopulationDistribution
 
 # Constants
 TOL = 1e-12
+
+
+# ---------------------------------------------------------------------------
+# Local helper functions built on top of the existing API
+# ---------------------------------------------------------------------------
 
 
 def _counts_case(name: str) -> Dict[str, int]:
@@ -47,49 +43,60 @@ def _counts_case(name: str) -> Dict[str, int]:
 
 
 def chao1_unseen_hat_wrapper(counts: Dict[str, int]) -> float:
-    """Compute Chao1 unseen species estimate."""
-    return chao1_unseen_hat_bias_corrected(Counter(counts))
+    """Compute Chao1 unseen species estimate (bias-corrected f0_hat)."""
+    counter = Counter(counts)
+    n, f1, f2 = _freq_of_freqs_basic(counter)
+    return _chao1_f0_hat_inext(n, f1, f2)
 
 
 def chao1_total_S_hat_wrapper(counts: Dict[str, int]) -> float:
-    """Compute Chao1 total richness estimate."""
-    return chao1_total_richness_bias_corrected(Counter(counts))
+    """Compute Chao1 total richness estimate: S_obs + f0_hat."""
+    counter = Counter(counts)
+    s_obs = sum(1 for v in counter.values() if v > 0)
+    n, f1, f2 = _freq_of_freqs_basic(counter)
+    return s_obs + _chao1_f0_hat_inext(n, f1, f2)
+
+
+def get_labels_and_probabilities(
+    pd: PopulationDistribution,
+) -> Tuple[List[str], List[float]]:
+    """Extract labels and bootstrap community probabilities from a PopulationDistribution.
+
+    Uses _esti_boot_comm_ind_probs to reconstruct the estimated bootstrap
+    community (observed + unseen species probabilities).
+    """
+    prob_obs, p0, S0 = _esti_boot_comm_ind_probs(pd.observed, pd.n_reference)
+    labels = list(prob_obs.keys())
+    probs = list(prob_obs.values())
+    if S0 > 0 and p0 > 0:
+        p_each = p0 / S0
+        for i in range(1, S0 + 1):
+            labels.append(f"unseen_{i}")
+            probs.append(p_each)
+    # Normalize to sum to 1
+    s = sum(probs)
+    if s > 0:
+        probs = [p / s for p in probs]
+    return labels, probs
 
 
 def build_inext_bootstrap_community(
     counts: Dict[str, int], n_ref: int = None
 ) -> PopulationDistribution:
-    """Build iNEXT bootstrap community using current API."""
-    from utils.population.chao1_helpers import create_inext_bootstrap_community
-    from utils.population.population_distribution import (
-        create_chao1_population_distribution,
-    )
-
+    """Build iNEXT bootstrap community using the existing Chao1 API."""
     counter = Counter(counts)
-    n = sum(counts.values())
-    if n_ref is None:
-        n_ref = n
-
-    # Create population distribution
-    pop_dist = create_chao1_population_distribution(counter, n)
-
-    # Create bootstrap community
-    return create_inext_bootstrap_community(pop_dist)
+    return create_chao1_population_distribution(counter)
 
 
 def get_community_probs(community: PopulationDistribution) -> List[float]:
     """Helper function to get probabilities from PopulationDistribution."""
-    from utils.population.population_distribution import get_labels_and_probabilities
-
-    labels, probs = get_labels_and_probabilities(community)
+    _, probs = get_labels_and_probabilities(community)
     return probs
 
 
 def get_community_labels(community: PopulationDistribution) -> List[str]:
     """Helper function to get labels from PopulationDistribution."""
-    from utils.population.population_distribution import get_labels_and_probabilities
-
-    labels, probs = get_labels_and_probabilities(community)
+    labels, _ = get_labels_and_probabilities(community)
     return labels
 
 
@@ -99,17 +106,20 @@ def get_observed_labels(community: PopulationDistribution) -> List[str]:
     return [l for l in labels if not l.startswith("unseen_")]
 
 
+def multinomial_draw(rng, m: int, probs: List[float]) -> np.ndarray:
+    """Draw a multinomial sample using a numpy RandomState."""
+    return rng.multinomial(m, probs)
+
+
 def bootstrap_statistic(
     community: PopulationDistribution, B: int, m: int, rng, metric_fn
-) -> Tuple[float, float, float, Tuple[float, float]]:
+) -> Tuple[float, float, Tuple[float, float], Tuple[float, float]]:
     """Run bootstrap and compute statistics."""
-    from utils.population.population_distribution import get_labels_and_probabilities
-
     labels, probs = get_labels_and_probabilities(community)
     values = []
     for _ in range(B):
         # Draw bootstrap sample
-        draws = _multinomial_draw(rng, m, probs)
+        draws = multinomial_draw(rng, m, probs)
 
         # Convert to counts vector
         counts_vec = np.zeros(len(labels))
@@ -146,6 +156,11 @@ def bootstrap_statistic(
 def metric_observed_richness(counts_vec: np.ndarray) -> float:
     """Count distinct species (non-zero counts)."""
     return float(np.sum(counts_vec > 0))
+
+
+# ---------------------------------------------------------------------------
+# Test classes
+# ---------------------------------------------------------------------------
 
 
 class TestChao1Estimators:
@@ -234,7 +249,7 @@ class TestSamplingMath:
 
         m = 1234
         rng = np.random.RandomState(42)
-        draws = _multinomial_draw(rng, m, probs)
+        draws = multinomial_draw(rng, m, probs)
 
         assert sum(draws) == m
 

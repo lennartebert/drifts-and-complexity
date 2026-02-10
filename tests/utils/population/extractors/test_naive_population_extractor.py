@@ -281,7 +281,7 @@ class TestBuildNaiveDistributionFromCounts:
         assert len(result.observed) == 3
         assert result.unseen_count is None
         assert result.p0 is None
-        assert result.n_samples == 6
+        assert result.n_reference == 6
 
         # Check that we have the right number of observed species
         assert len(result.observed) == 3
@@ -296,7 +296,7 @@ class TestBuildNaiveDistributionFromCounts:
         assert result.observed == Counter()
         assert result.unseen_count is None
         assert result.p0 is None
-        assert result.n_samples == 0
+        assert result.n_reference == 0
 
     def test_build_naive_distribution_single_item(self):
         """Test building naive distribution from single item counts."""
@@ -307,7 +307,7 @@ class TestBuildNaiveDistributionFromCounts:
         assert len(result.observed) == 1
         assert result.unseen_count is None
         assert result.p0 is None
-        assert result.n_samples == 5
+        assert result.n_reference == 5
 
     def test_build_naive_distribution_zero_counts(self):
         """Test building naive distribution from counts with zeros."""
@@ -316,7 +316,7 @@ class TestBuildNaiveDistributionFromCounts:
         result = _build_naive_distribution_from_counts(counts)
 
         assert len(result.observed) == 3
-        assert result.n_samples == 5  # Only non-zero counts
+        assert result.n_reference == 5  # Only non-zero counts
 
     def test_build_naive_distribution_complex_labels(self):
         """Test building naive distribution with complex label types."""
@@ -326,7 +326,7 @@ class TestBuildNaiveDistributionFromCounts:
 
         assert isinstance(result, PopulationDistribution)
         assert len(result.observed) == 3
-        assert result.n_samples == 4
+        assert result.n_reference == 4
 
     def test_build_naive_distribution_naive_assumptions(self):
         """Test that naive distribution makes correct assumptions."""

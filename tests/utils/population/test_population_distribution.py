@@ -70,12 +70,12 @@ class TestPopulationDistribution:
             p0=None,
         )
 
-        # Should not be able to modify fields
+        # Should not be able to modify fields (frozen dataclass)
         with pytest.raises(Exception):  # FrozenInstanceError
-            object.__setattr__(dist, "observed", Counter({"C": 1}))
+            dist.observed = Counter({"C": 1})
 
         with pytest.raises(Exception):  # FrozenInstanceError
-            object.__setattr__(dist, "unseen_count", 1)
+            dist.unseen_count = 1
 
     def test_complex_labels(self):
         """Test with complex label types (tuples, strings, etc.)."""

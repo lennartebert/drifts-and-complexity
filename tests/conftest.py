@@ -195,19 +195,19 @@ def standard_test_log() -> List[Trace]:
 def population_distribution() -> PopulationDistributions:
     """Mock population distribution for distribution-based metrics."""
 
-    # This is a simplified mock - in practice, PopulationDistributions would be more complex
+    class MockPopulationDistribution:
+        """Mimics the real PopulationDistribution dataclass attributes."""
+
+        def __init__(self, population_count: int, observed_count: int):
+            self.population_count = population_count
+            self.observed_count = observed_count
+
     class MockPopulationDistributions:
         def __init__(self):
-            self.trace_variants = MockCount(5)  # 5 distinct trace variants
-            self.activities = MockCount(8)  # 8 distinct activities
-            self.activity_transitions = MockCount(12)  # 12 distinct transitions
-            self.dfg_edges = MockCount(
-                12
-            )  # 12 distinct DFG edges (same as transitions)
-
-    class MockCount:
-        def __init__(self, count):
-            self.count = count
+            self.trace_variants = MockPopulationDistribution(5, 5)
+            self.activities = MockPopulationDistribution(8, 8)
+            self.activity_transitions = MockPopulationDistribution(12, 12)
+            self.dfg_edges = MockPopulationDistribution(12, 12)
 
     return MockPopulationDistributions()
 
@@ -216,16 +216,17 @@ def population_distribution() -> PopulationDistributions:
 def empty_population_distribution() -> PopulationDistributions:
     """Empty population distribution for edge case testing."""
 
+    class MockPopulationDistribution:
+        def __init__(self, population_count: int, observed_count: int):
+            self.population_count = population_count
+            self.observed_count = observed_count
+
     class MockEmptyPopulationDistributions:
         def __init__(self):
-            self.trace_variants = MockCount(0)
-            self.activities = MockCount(0)
-            self.activity_transitions = MockCount(0)
-            self.dfg_edges = MockCount(0)
-
-    class MockCount:
-        def __init__(self, count):
-            self.count = count
+            self.trace_variants = MockPopulationDistribution(0, 0)
+            self.activities = MockPopulationDistribution(0, 0)
+            self.activity_transitions = MockPopulationDistribution(0, 0)
+            self.dfg_edges = MockPopulationDistribution(0, 0)
 
     return MockEmptyPopulationDistributions()
 

@@ -56,17 +56,9 @@ class TestVidgofMetricsAdapter:
             population_distributions=None,
         )
 
-        # Empty traces should raise an error or return empty results
-        # The Vidgof library might not handle empty traces well
-        try:
-            store, info = adapter.compute_measures_for_window(window)
-            # If it succeeds, check the results
-            assert isinstance(store, MeasureStore)
-            assert info["adapter"] == "vidgof"
-            assert info["support"] == 0
-        except Exception:
-            # It's acceptable for the Vidgof library to fail on empty traces
-            pytest.skip("Vidgof library cannot handle empty traces")
+        # Empty traces cause the Vidgof library to raise an exception
+        with pytest.raises(Exception):
+            adapter.compute_measures_for_window(window)
 
     def test_compute_measures_for_window_single_trace(self, adapter, single_trace):
         """Test computing measures for single trace."""
@@ -322,8 +314,8 @@ class TestVidgofMetricsAdapter:
             assert "source" in measure.meta
             assert measure.meta["source"] == "vidgof"
 
-            # Number of Partitions should be hidden, others should not be
-            if name == "Number of Partitions":
+            # Number of Partitions and Number of States are internal and should be hidden
+            if name in ("Number of Partitions", "Number of States"):
                 assert measure.hidden
             else:
                 assert not measure.hidden
