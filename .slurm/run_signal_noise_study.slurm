@@ -2,7 +2,7 @@
 #SBATCH --job-name=signal_noise_study
 #SBATCH --output=.slurm/logs/%A/log_%A.out
 #SBATCH --error=.slurm/logs/%A/log_%A.err
-#SBATCH --nodelist=gruenau4
+#SBATCH --nodelist=gruenau5
 #SBATCH --cpus-per-task=50
 #SBATCH --mem=240G
 #SBATCH --nodes=1
