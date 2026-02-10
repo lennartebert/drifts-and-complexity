@@ -64,7 +64,10 @@ PATH_NOISE_RELCI = f"{DIR_CSV}/noise_relci.csv"
 PATH_NOISE_STD_PRE = f"{DIR_CSV}/noise_std_pre.csv"
 PATH_NOISE_CV_PRE = f"{DIR_CSV}/noise_cv_pre.csv"
 PATH_NOISE_CHANGE_DUE_TO_NOISE = f"{DIR_CSV}/noise_change_due_to_noise.csv"
-AGGREGATION: Literal["mean", "median"] = "mean"
+AGGREGATION: Literal["mean", "median"] = "median"
+# Two-stage aggregation: within-seed first, then across-seed
+WITHIN_SEED_AGGREGATION: Literal["mean", "median"] = "median"
+ACROSS_SEED_AGGREGATION: Literal["mean", "median"] = "median"
 eps = 0  # was 1e-9; set to 0 to surface NA when denominator is zero
 MIN_OBS_FOR_FACTOR_ANALYSIS = 30
 # SNR definition:
@@ -77,10 +80,64 @@ SNR_DEFINITION: Literal["pooled_cohens_d", "abs_cohens_d", "iqr"] = "abs_cohens_
 # This MUST NOT be used in the estimands/ratios themselves.
 FACTOR_IMPORTANCE_LOG_SHIFT = 0
 
+# LaTeX table positioning string (e.g., "H", "htbp", "!ht")
+LATEX_TABLE_POSITION = "H"
+
+# Header order for noise tables (column hierarchy in wide format)
+NOISE_TABLE_HEADER_ORDER = ["Noise Level", "Model Complexity", "Window Size"]
+
 # Debugging: set True to print why partial-R² observations are filtered out.
 # This is intentionally noisy; keep False for normal runs.
 DEBUG_R2_FILTERING = True
 DEBUG_R2_MAX_EXAMPLES = 5
+
+
+# --- Strict aggregation helpers (propagate NaN/inf instead of silently dropping) ---
+def _strict_median(x: pd.Series) -> float:
+    """Median that returns NaN if any NaN present, inf if any inf present."""
+    return x.median(skipna=False)
+
+
+def _strict_mean(x: pd.Series) -> float:
+    """Mean that returns NaN if any NaN present, inf if any inf present."""
+    return x.mean(skipna=False)
+
+
+def _strict_std(x: pd.Series) -> float:
+    """Std that returns NaN if any NaN present."""
+    return x.std(skipna=False)
+
+
+def _strict_iqr(x: pd.Series) -> float:
+    """IQR that returns NaN if any NaN present, inf if any inf present."""
+    if x.isna().any():
+        return np.nan
+    if np.isinf(x).any():
+        return np.inf
+    return x.quantile(0.75) - x.quantile(0.25)
+
+
+# --- Tolerant aggregation helpers (skip NaN/inf, report filtering) ---
+def _tolerant_median(x: pd.Series) -> float:
+    """Median that skips NaN and inf values."""
+    clean = x.replace([np.inf, -np.inf], np.nan).dropna()
+    if len(clean) == 0:
+        return np.nan
+    return clean.median()
+
+
+def _tolerant_mean(x: pd.Series) -> float:
+    """Mean that skips NaN and inf values."""
+    clean = x.replace([np.inf, -np.inf], np.nan).dropna()
+    if len(clean) == 0:
+        return np.nan
+    return clean.mean()
+
+
+def _count_nan_inf(x: pd.Series) -> int:
+    """Count NaN and inf values in a series."""
+    return x.isna().sum() + np.isinf(x).sum()
+
 
 # Factor column names used across the analysis (title case, no underscores).
 MODEL_COMPLEXITY_COL = "Model Complexity"
@@ -158,10 +215,11 @@ _METRIC_ORDER = [
 ]
 
 # Grouping keys for noise/relative-noise tables (with and without seed for two-stage aggregation)
+# Order follows NOISE_TABLE_HEADER_ORDER: Noise Level, Model Complexity, Window Size
 NOISE_TABLE_GROUP_KEYS = [
     "Metric",
-    MODEL_COMPLEXITY_COL,
     NOISE_LEVEL_COL,
+    MODEL_COMPLEXITY_COL,
     WINDOW_SIZE_COL,
 ]
 NOISE_TABLE_GROUP_KEYS_WITH_SEED = [*NOISE_TABLE_GROUP_KEYS, SEED_COL]
@@ -217,11 +275,13 @@ def _collapse_within_sigma(
     *,
     group_keys_with_sigma: list[str],
     value_cols: list[str],
+    context: str = "",
 ) -> pd.DataFrame:
     """
-    Collapse potential multiplicity within seed by taking medians per seed-cell.
+    Collapse potential multiplicity within seed using WITHIN_SEED_AGGREGATION.
 
     Aggregate within seed first (e.g. over nuisance multiplicity), then across seeds.
+    Uses tolerant aggregation that skips NaN/inf values and reports filtering stats.
 
     Parameters
     ----------
@@ -230,7 +290,9 @@ def _collapse_within_sigma(
     group_keys_with_sigma
         Grouping keys that MUST include SEED_COL (log_seed).
     value_cols
-        Value columns to aggregate by median.
+        Value columns to aggregate (mean or median per WITHIN_SEED_AGGREGATION).
+    context
+        Optional context string for NaN reporting (e.g. function name).
 
     Returns
     -------
@@ -252,8 +314,20 @@ def _collapse_within_sigma(
             f"Missing required columns for within-seed collapse: {missing_cols}"
         )
 
+    # Report NaN/inf stats before aggregation
+    for col in value_cols:
+        n_total = len(df)
+        n_nan_inf = df[col].isna().sum() + np.isinf(df[col]).sum()
+        if n_nan_inf > 0:
+            pct = 100 * n_nan_inf / n_total
+            ctx = f" [{context}]" if context else ""
+            print(
+                f"  [NaN/inf]{ctx} within-seed {col}: {n_nan_inf}/{n_total} ({pct:.2f}%) filtered"
+            )
+
     grouped = df.groupby(group_keys_with_sigma, dropna=False, sort=False)
-    agg_map = {c: "median" for c in value_cols}
+    agg_func = _tolerant_mean if WITHIN_SEED_AGGREGATION == "mean" else _tolerant_median
+    agg_map = {c: agg_func for c in value_cols}
     out = grouped.agg(agg_map).reset_index()
     return out
 
@@ -265,9 +339,12 @@ def _median_over_sigma(
     value_col: str,
     out_col: str,
     n_col: str = "N Seed",
+    context: str = "",
 ) -> pd.DataFrame:
     """
-    Aggregate across seed as the final step by median.
+    Aggregate across seed as the final step using ACROSS_SEED_AGGREGATION.
+
+    Uses tolerant aggregation that skips NaN/inf values and reports filtering stats.
 
     Parameters
     ----------
@@ -276,11 +353,13 @@ def _median_over_sigma(
     group_keys_without_sigma
         Grouping keys that must NOT include SEED_COL.
     value_col
-        Column to take the median of across seed.
+        Column to aggregate across seed (mean or median per ACROSS_SEED_AGGREGATION).
     out_col
-        Name of the output column containing the median-over-seed value.
+        Name of the output column containing the aggregated value.
     n_col
         Name of the output column containing the number of seed replications.
+    context
+        Optional context string for NaN reporting (e.g. function name).
 
     Returns
     -------
@@ -296,9 +375,20 @@ def _median_over_sigma(
             f"Missing required columns for across-seed aggregation: {missing_cols}"
         )
 
+    # Report NaN/inf stats before aggregation
+    n_total = len(df)
+    n_nan_inf = df[value_col].isna().sum() + np.isinf(df[value_col]).sum()
+    if n_nan_inf > 0:
+        pct = 100 * n_nan_inf / n_total
+        ctx = f" [{context}]" if context else ""
+        print(
+            f"  [NaN/inf]{ctx} across-seed {value_col}: {n_nan_inf}/{n_total} ({pct:.2f}%) filtered"
+        )
+
     grouped = df.groupby(group_keys_without_sigma, dropna=False, sort=False)
+    agg_func = _tolerant_mean if ACROSS_SEED_AGGREGATION == "mean" else _tolerant_median
     out = grouped.agg(
-        **{out_col: (value_col, "median"), n_col: (SEED_COL, "nunique")}
+        **{out_col: (value_col, agg_func), n_col: (SEED_COL, "nunique")}
     ).reset_index()
     return out
 
@@ -669,7 +759,7 @@ def remove_pre_drift_duplicates(df: pd.DataFrame) -> pd.DataFrame:
         for c in df.select_dtypes(include=[np.number]).columns.tolist()
         if c not in keys and c not in {CHANGE_MAGNITUDE_COL}
     ]
-    agg_map: dict[str, str] = {c: "median" for c in numeric_cols}
+    agg_map: dict[str, Any] = {c: _strict_median for c in numeric_cols}
     out = grouped.agg(agg_map).reset_index()
 
     # Keep a representative split_name if present.
@@ -785,7 +875,7 @@ def add_change_vs_baseline_log(df: pd.DataFrame) -> pd.DataFrame:
     baseline = (
         df[df[NOISE_LEVEL_COL] == "None"]
         .groupby(["Metric", MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL, SEED_COL])["Center"]
-        .median()
+        .agg(_strict_median)
         .reset_index()
         .rename(columns={"Center": "Baseline"})
     )
@@ -829,6 +919,7 @@ def aggregate_relative_noise(df: pd.DataFrame) -> pd.DataFrame:
         df,
         group_keys_with_sigma=NOISE_TABLE_GROUP_KEYS_WITH_SEED,
         value_cols=["Relative Noise Log"],
+        context="rel_noise",
     )
 
     # 2) Aggregate across seed last
@@ -838,13 +929,14 @@ def aggregate_relative_noise(df: pd.DataFrame) -> pd.DataFrame:
         value_col="Relative Noise Log",
         out_col="Relative Noise",
         n_col="N Seed",
+        context="rel_noise",
     )
 
     # Optional dispersion across seed (IQR over seed-level values)
     grouped = rel_noise_sigma.groupby(NOISE_TABLE_GROUP_KEYS, dropna=False, sort=False)
     iqr_sigma = (
         grouped["Relative Noise Log"]
-        .apply(lambda x: x.quantile(0.75) - x.quantile(0.25))
+        .apply(_strict_iqr)
         .reset_index(name="Relative Noise IQR Seed")
     )
     agg_result = agg_result.merge(iqr_sigma, on=NOISE_TABLE_GROUP_KEYS, how="left")
@@ -1315,15 +1407,15 @@ def print_factor_importance_summary(
     window_mean = df_wide[WINDOW_SIZE_COL].mean()
     if window_mean < 20:
         print(
-            f"   ⚠ Warning: Average window_size importance ({window_mean:.2f}%) is lower than expected"
+            f"   [!] Warning: Average window_size importance ({window_mean:.2f}%) is lower than expected"
         )
     else:
         print(
-            f"   ✓ Average window_size importance: {window_mean:.2f}% (expected to be high)"
+            f"   [OK] Average window_size importance: {window_mean:.2f}% (expected to be high)"
         )
 
     noise_mean = df_wide[NOISE_LEVEL_COL].mean()
-    print(f"   ✓ Average noise importance: {noise_mean:.2f}%")
+    print(f"   [OK] Average noise importance: {noise_mean:.2f}%")
 
     print("\n" + "=" * 60)
 
@@ -1335,7 +1427,9 @@ def _pivot_noise_wide(
     drop_no_noise_columns: bool = False,
 ) -> pd.DataFrame:
     """
-    Pivot long noise table to wide (dimension, Metric) x (complexity, noise, window_size).
+    Pivot long noise table to wide (dimension, Metric) x (noise, complexity, window_size).
+
+    Column hierarchy follows NOISE_TABLE_HEADER_ORDER: Noise Level, Model Complexity, Window Size.
 
     Parameters
     ----------
@@ -1350,11 +1444,12 @@ def _pivot_noise_wide(
     Returns
     -------
     pd.DataFrame
-        Wide-format DataFrame with MultiIndex columns (complexity, noise, window_size).
+        Wide-format DataFrame with MultiIndex columns (noise, complexity, window_size).
     """
+    # Column order follows NOISE_TABLE_HEADER_ORDER: Noise Level, Model Complexity, Window Size
     df_wide = df_long.pivot_table(
         index=["Dimension", "Metric"],
-        columns=[MODEL_COMPLEXITY_COL, NOISE_LEVEL_COL, WINDOW_SIZE_COL],
+        columns=[NOISE_LEVEL_COL, MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL],
         values=value_column,
         aggfunc="first",
     )
@@ -1370,25 +1465,26 @@ def _pivot_noise_wide(
     df_wide = df_wide.reindex(desired_index)
 
     if drop_no_noise_columns and isinstance(df_wide.columns, pd.MultiIndex):
-        noise_level = df_wide.columns.get_level_values(1)
+        # Noise level is now at index 0 (first level)
+        noise_level = df_wide.columns.get_level_values(0)
         cols_keep = [i for i, n in enumerate(noise_level) if n != "None"]
         df_wide = df_wide.iloc[:, cols_keep]
 
     complexity_order = ["Simple", "Middle", "Complex"]
     noise_order = ["None", "Low", "High"]
     if isinstance(df_wide.columns, pd.MultiIndex):
-        complexity_level = list(df_wide.columns.get_level_values(0).unique())
-        noise_level = list(df_wide.columns.get_level_values(1).unique())
+        noise_level = list(df_wide.columns.get_level_values(0).unique())
+        complexity_level = list(df_wide.columns.get_level_values(1).unique())
         window_sizes = sorted(df_wide.columns.get_level_values(2).unique())
+        noise_sorted = [n for n in noise_order if n in noise_level]
+        noise_sorted.extend([n for n in noise_level if n not in noise_order])
         complexity_sorted = [c for c in complexity_order if c in complexity_level]
         complexity_sorted.extend(
             [c for c in complexity_level if c not in complexity_order]
         )
-        noise_sorted = [n for n in noise_order if n in noise_level]
-        noise_sorted.extend([n for n in noise_level if n not in noise_order])
         sorted_columns = pd.MultiIndex.from_product(
-            [complexity_sorted, noise_sorted, window_sizes],
-            names=[MODEL_COMPLEXITY_COL, NOISE_LEVEL_COL, WINDOW_SIZE_COL],
+            [noise_sorted, complexity_sorted, window_sizes],
+            names=[NOISE_LEVEL_COL, MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL],
         )
         existing_columns = [col for col in sorted_columns if col in df_wide.columns]
         df_wide = df_wide[existing_columns]
@@ -1452,6 +1548,7 @@ def _aggregate_relci(df: pd.DataFrame) -> pd.DataFrame:
             f"_aggregate_relci requires {SEED_COL!r} for seed-last aggregation."
         )
 
+    # Division by zero produces inf when center is 0; these are filtered in aggregation
     d["Rel CI Row"] = (d["Sample CI High"] - d["Sample CI Low"]) / (
         d["Center"].abs() + eps
     )
@@ -1461,6 +1558,7 @@ def _aggregate_relci(df: pd.DataFrame) -> pd.DataFrame:
         d,
         group_keys_with_sigma=NOISE_TABLE_GROUP_KEYS_WITH_SEED,
         value_cols=["Rel CI Row"],
+        context="relci",
     )
 
     # 2) Aggregate across seed last
@@ -1470,6 +1568,7 @@ def _aggregate_relci(df: pd.DataFrame) -> pd.DataFrame:
         value_col="Rel CI Row",
         out_col="Value",
         n_col="N Seed",
+        context="relci",
     )
     return agg
 
@@ -1499,6 +1598,7 @@ def _aggregate_change_due_to_noise(df: pd.DataFrame) -> pd.DataFrame:
         df,
         group_keys_with_sigma=NOISE_TABLE_GROUP_KEYS_WITH_SEED,
         value_cols=["Center"],
+        context="robustness_to_noise",
     )
 
     # 2) Within-seed noise=None baseline for each (Metric, complexity, window_size, seed)
@@ -1513,6 +1613,7 @@ def _aggregate_change_due_to_noise(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # 3) Per-seed robustness deviation (exclude noise=None)
+    # Division by zero produces inf when baseline is 0; these are filtered in aggregation
     merged["R Seed"] = (merged["Center"] - merged["Center No Noise"]).abs() / (
         merged["Center No Noise"].abs() + eps
     )
@@ -1525,6 +1626,7 @@ def _aggregate_change_due_to_noise(df: pd.DataFrame) -> pd.DataFrame:
         value_col="R Seed",
         out_col="Value",
         n_col="N Seed",
+        context="robustness_to_noise",
     )
     return out
 
@@ -1597,7 +1699,7 @@ def _aggregate_cv_pre(df: pd.DataFrame) -> pd.DataFrame:
     if "Center" not in d.columns:
         raise ValueError("_aggregate_cv_pre requires 'Center' column.")
 
-    # Compute CV = std / |mean|
+    # Compute CV = std / |mean|; division by zero produces inf when center is 0
     d["CV Row"] = d["Sample Std"] / (d["Center"].abs() + eps)
 
     # 1) Collapse within seed to a single CV per (Metric, complexity, noise, window_size, seed)
@@ -1605,6 +1707,7 @@ def _aggregate_cv_pre(df: pd.DataFrame) -> pd.DataFrame:
         d,
         group_keys_with_sigma=NOISE_TABLE_GROUP_KEYS_WITH_SEED,
         value_cols=["CV Row"],
+        context="cv_pre",
     )
 
     # 2) Aggregate across seed last
@@ -1614,6 +1717,7 @@ def _aggregate_cv_pre(df: pd.DataFrame) -> pd.DataFrame:
         value_col="CV Row",
         out_col="Value",
         n_col="N Seed",
+        context="cv_pre",
     )
     return agg
 
@@ -1621,6 +1725,8 @@ def _aggregate_cv_pre(df: pd.DataFrame) -> pd.DataFrame:
 def create_wide_format_table(df_long: pd.DataFrame) -> pd.DataFrame:
     """
     Create wide-format table with 3-level column hierarchy (relative noise).
+
+    Column hierarchy follows NOISE_TABLE_HEADER_ORDER: Noise Level, Model Complexity, Window Size.
 
     Parameters
     ----------
@@ -1630,7 +1736,7 @@ def create_wide_format_table(df_long: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Wide-format DataFrame with MultiIndex columns (complexity, noise, window_size).
+        Wide-format DataFrame with MultiIndex columns (noise, complexity, window_size).
     """
     return _pivot_noise_wide(df_long, "Relative Noise", drop_no_noise_columns=False)
 
@@ -1694,7 +1800,7 @@ def perform_sanity_checks(df_long: pd.DataFrame, n_invalid: int) -> None:
                     )
                     if not decreasing:
                         print(
-                            f"   ⚠ Warning: {metric} ({complexity}, {noise}) "
+                            f"   [!] Warning: {metric} ({complexity}, {noise}) "
                             f"does not show clear decrease with window_size"
                         )
 
@@ -1724,7 +1830,7 @@ def perform_sanity_checks(df_long: pd.DataFrame, n_invalid: int) -> None:
                     )
                     if not increasing:
                         print(
-                            f"   ⚠ Warning: {metric} ({complexity}, window_size={window_size}) "
+                            f"   [!] Warning: {metric} ({complexity}, window_size={window_size}) "
                             f"does not show clear increase with noise level"
                         )
 
@@ -1888,24 +1994,37 @@ def compute_snr_per_log(
 
     # Absolute Cohen's d: |mean_post - mean_pre| / pooled_std
     # This prevents effects from canceling out when aggregating across seeds
-    df_sigma["Abs Cohen D Seed"] = (
-        (df_sigma["Center Post"] - df_sigma["Center Pre"]).abs()
-    ) / (pooled_std + eps)
+    # When pooled_std=0: inf if signal>0 (perfect detectability), 0 if signal=0
+    signal_abs = (df_sigma["Center Post"] - df_sigma["Center Pre"]).abs()
+    df_sigma["Abs Cohen D Seed"] = np.where(
+        pooled_std == 0, np.where(signal_abs == 0, 0.0, np.inf), signal_abs / pooled_std
+    )
 
     # Compute SNR based on definition
+    # When denominator is 0: inf if signal>0 (perfect detectability), 0 if signal=0
     if snr_definition == "pooled_cohens_d":
         # Pooled Cohen's d (signed): (mean_post - mean_pre) / sqrt((s_pre² + s_post²) / 2)
-        df_sigma["SNR Seed"] = (df_sigma["Center Post"] - df_sigma["Center Pre"]) / (
-            pooled_std + eps
+        signal_signed = df_sigma["Center Post"] - df_sigma["Center Pre"]
+        df_sigma["SNR Seed"] = np.where(
+            pooled_std == 0,
+            np.where(signal_signed == 0, 0.0, np.inf * np.sign(signal_signed)),
+            signal_signed / pooled_std,
         )
     elif snr_definition == "abs_cohens_d":
         # Absolute Cohen's d: |mean_post - mean_pre| / sqrt((s_pre² + s_post²) / 2)
         # Effects don't cancel out when aggregating across seeds
-        df_sigma["SNR Seed"] = (
-            (df_sigma["Center Post"] - df_sigma["Center Pre"]).abs()
-        ) / (pooled_std + eps)
+        df_sigma["SNR Seed"] = np.where(
+            pooled_std == 0,
+            np.where(signal_abs == 0, 0.0, np.inf),
+            signal_abs / pooled_std,
+        )
     else:  # "iqr" - legacy definition
-        df_sigma["SNR Seed"] = df_sigma["Signal"] / (df_sigma["IQR Pre"] + eps)
+        iqr_pre = df_sigma["IQR Pre"]
+        df_sigma["SNR Seed"] = np.where(
+            iqr_pre == 0,
+            np.where(df_sigma["Signal"] == 0, 0.0, np.inf),
+            df_sigma["Signal"] / iqr_pre,
+        )
 
     # Select final columns
     result_cols = [
@@ -1973,9 +2092,9 @@ def aggregate_snr_cells(df_snr_log: pd.DataFrame) -> pd.DataFrame:
     # Aggregate
     agg_result = grouped.agg(
         **{
-            "SNR": ("SNR Seed", "median"),
+            "SNR": ("SNR Seed", _strict_median),
             "N Seed": ("SNR Seed", "count"),
-            "SNR IQR Seed": ("SNR Seed", lambda x: x.quantile(0.75) - x.quantile(0.25)),
+            "SNR IQR Seed": ("SNR Seed", _strict_iqr),
         }
     ).reset_index()
 
@@ -2252,7 +2371,7 @@ def perform_snr_sanity_checks(
     n_dups = int((dup_counts["N Rows"] > 1).sum())
     if n_dups > 0:
         print(
-            f"   ⚠ Warning: Found {n_dups} duplicated (Metric, {SEED_COL}, window_size) keys in df_snr_log."
+            f"   [!] Warning: Found {n_dups} duplicated (Metric, {SEED_COL}, window_size) keys in df_snr_log."
         )
 
     # Summary statistics
@@ -2365,7 +2484,8 @@ def _latex_header_label(name: str | None) -> str | None:
     if s == LOG_ID_COL:
         return "log\\_id"
     s = s.replace("_", " ")
-    s = s.replace("%", "\\%")
+    # Only escape % that is not already escaped (not preceded by backslash)
+    s = re.sub(r"(?<!\\)%", r"\\%", s)
     return s
 
 
@@ -2583,7 +2703,7 @@ def dataframe_to_latex_table(
     latex_kw: dict = {
         "caption": caption,
         "label": label,
-        "position": "htbp",
+        "position": LATEX_TABLE_POSITION,
         "column_format": col_fmt,
         "escape": not use_latex_metric_names,
         "float_format": f"%.{decimals}f",
