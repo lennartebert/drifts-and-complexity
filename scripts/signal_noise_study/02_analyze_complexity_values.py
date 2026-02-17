@@ -2541,14 +2541,15 @@ def _inject_heatmap_cellcolor(
     df: pd.DataFrame,
     n_index_cols: int,
     *,
+    heatmap_vmin: float = 0.0,
     heatmap_vmax: float | None = None,
     heatmap_exclude_columns: list[str] | None = None,
 ) -> str:
     """
-    Inject \\cellcolor{blue!NN} into numeric data cells (white=0, dark blue=max).
+    Inject \\cellcolor{blue!NN} into numeric data cells (white=vmin, dark blue=vmax).
 
-    Linear scale from 0 to heatmap_vmax; values >= heatmap_vmax get the same
-    darkest color. Inf and NA are excluded from coloring.
+    Linear scale from heatmap_vmin to heatmap_vmax; values >= heatmap_vmax get
+    the same darkest color. Inf and NA are excluded from coloring.
 
     Parameters
     ----------
@@ -2558,9 +2559,13 @@ def _inject_heatmap_cellcolor(
         DataFrame that was used to generate the table (same row/column order).
     n_index_cols
         Number of index columns at the start of each row.
+    heatmap_vmin
+        Min value for the color scale. Values <= heatmap_vmin get the lightest
+        color. Default is 0.
     heatmap_vmax
-        Max value for the color scale (min is 0). Color increases linearly from
-        0 to heatmap_vmax; values >= heatmap_vmax get the darkest color.
+        Max value for the color scale. Color increases linearly from
+        heatmap_vmin to heatmap_vmax; values >= heatmap_vmax get the darkest
+        color.
     heatmap_exclude_columns
         Column names to exclude from coloring (e.g. n_obs, r2_full).
 
@@ -2584,6 +2589,7 @@ def _inject_heatmap_cellcolor(
     if not numeric_cols:
         return latex
     vals = df.iloc[:, numeric_cols].values.astype(float)
+    vmin = heatmap_vmin
     vmax = heatmap_vmax if heatmap_vmax is not None and heatmap_vmax > 0 else 1.0
     col_to_numeric_idx = {j: i for i, j in enumerate(numeric_cols)}
 
@@ -2615,8 +2621,8 @@ def _inject_heatmap_cellcolor(
                         try:
                             v = float(df.iloc[row_idx, j])
                             if np.isfinite(v):
-                                # Linear 0..vmax -> white..dark; values >= vmax same dark
-                                t = min(1.0, max(0.0, v) / vmax)
+                                # Linear vmin..vmax -> white..dark; values >= vmax same dark
+                                t = min(1.0, max(0.0, (v - vmin) / (vmax - vmin)))
                                 pct = int(5 + 95 * t)
                                 pct = max(0, min(100, pct))
                                 cell = f"\\cellcolor{{blue!{pct}}}{{{cell}}}"
@@ -2639,18 +2645,19 @@ def dataframe_to_latex_table(
     index: bool = True,
     use_latex_metric_names: bool = True,
     heatmap: bool = False,
+    heatmap_vmin: float = 0.0,
     heatmap_vmax: float | None = None,
     heatmap_exclude_columns: list[str] | None = None,
 ) -> None:
     """
-    Write a DataFrame to a LaTeX table file with caption, label, and tiny size.
+    Write a DataFrame to a LaTeX table file with caption, label, and scriptsize.
 
     Handles both single-level and MultiIndex column headers. MultiIndex columns
     are rendered with multicolumn so multi-headers are correct. When
     use_latex_metric_names is True, metric names are replaced by
     METRIC_NAMES_TO_LATEX_MAP (and escape=False is used). When heatmap=True,
-    data cells are colored linearly from 0 (white) to heatmap_vmax (dark blue);
-    values >= heatmap_vmax get the same darkest color.
+    data cells are colored linearly from heatmap_vmin (white) to heatmap_vmax
+    (dark blue); values >= heatmap_vmax get the same darkest color.
 
     Parameters
     ----------
@@ -2670,7 +2677,10 @@ def dataframe_to_latex_table(
     use_latex_metric_names
         If True, replace metric names with METRIC_NAMES_TO_LATEX_MAP for LaTeX.
     heatmap
-        If True, color data cells by value (0=white, heatmap_vmax=dark blue).
+        If True, color data cells by value (vmin=white, heatmap_vmax=dark blue).
+    heatmap_vmin
+        Min value for the linear color scale; values <= this get the lightest
+        color. Default is 0.
     heatmap_vmax
         Max value for the linear color scale; values >= this get the darkest color.
         E.g. 1 for noise/SNR tables, 100 for factor importance (percent).
@@ -2727,14 +2737,41 @@ def dataframe_to_latex_table(
             out,
             df,
             n_index_levels,
+            heatmap_vmin=heatmap_vmin,
             heatmap_vmax=heatmap_vmax,
             heatmap_exclude_columns=heatmap_exclude_columns,
         )
-    # Inject \tiny inside the table environment (after \centering) for tiny size
+        # Build color-coding legend with actual vmin/vmax values
+        eff_vmin = heatmap_vmin
+        eff_vmax = heatmap_vmax if heatmap_vmax is not None and heatmap_vmax > 0 else 1.0
+
+        def _fmt_val(v: float) -> str:
+            return str(int(v)) if v == int(v) else f"{v:g}"
+
+        vmin_display = _fmt_val(eff_vmin)
+        vmax_display = _fmt_val(eff_vmax)
+        legend = (
+            "\n\\vspace{2pt}\n"
+            "\\begin{minipage}{\\linewidth}\n"
+            "\\centering\n"
+            "\\tiny\n"
+            "\\textit{Color coding:} \n"
+            f"\\colorbox{{blue!5}}{{\\phantom{{00}}}} indicates {vmin_display}, \n"
+            f"\\colorbox{{blue!100}}{{\\phantom{{00}}}} indicates values $\\geq {vmax_display}$.\n"
+            "\\end{minipage}"
+        )
+        out = out.replace("\\end{tabular}", "\\end{tabular}" + legend)
+    # Inject \scriptsize inside the table environment (after \centering)
     if "\\centering" in out:
-        out = out.replace("\\centering\n", "\\centering\n\\tiny\n")
+        out = out.replace("\\centering\n", "\\centering\n\\scriptsize\n")
     else:
-        out = out.replace("\\begin{table}", "\\begin{table}\n\\tiny\n")
+        out = out.replace("\\begin{table}", "\\begin{table}\n\\scriptsize\n")
+    # Inject reduced column padding after \label
+    out = re.sub(
+        r"(\\label\{[^}]*\})\n",
+        r"\1\n\\setlength{\\tabcolsep}{2pt}  % default is 6pt\n",
+        out,
+    )
     filepath.write_text(out, encoding="utf-8")
 
 
