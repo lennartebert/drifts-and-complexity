@@ -2625,9 +2625,105 @@ def _inject_heatmap_cellcolor(
                                 t = min(1.0, max(0.0, (v - vmin) / (vmax - vmin)))
                                 pct = int(5 + 95 * t)
                                 pct = max(0, min(100, pct))
-                                cell = f"\\cellcolor{{blue!{pct}}}{{{cell}}}"
+                                if pct > 60:
+                                    cell = f"\\cellcolor{{blue!{pct}}}{{\\textcolor{{white}}{{{cell}}}}}"
+                                else:
+                                    cell = f"\\cellcolor{{blue!{pct}}}{{{cell}}}"
                         except (ValueError, TypeError):
                             pass
+                    new_parts.append(cell)
+                line = " & ".join(new_parts) + " \\\\"
+            row_idx += 1
+        out_lines.append(line)
+    return "\n".join(out_lines)
+
+
+def _inject_bold_underline_per_row(
+    latex: str,
+    df: pd.DataFrame,
+    n_index_cols: int,
+    *,
+    exclude_columns: list[str] | None = None,
+) -> str:
+    """Bold the highest and underline the second-highest value per row.
+
+    Parameters
+    ----------
+    latex
+        Full table LaTeX string (with ``\\midrule`` before body).
+    df
+        DataFrame that was used to generate the table (same row/column order).
+    n_index_cols
+        Number of index columns at the start of each row.
+    exclude_columns
+        Column names to exclude from ranking.
+
+    Returns
+    -------
+    str
+        Modified LaTeX with ``\\textbf`` / ``\\underline`` applied.
+    """
+    excl = set(exclude_columns or [])
+
+    def _is_excluded(name: str) -> bool:
+        return name in excl or str(name).replace(" ", "_") in excl
+
+    numeric_cols = [
+        j
+        for j in range(len(df.columns))
+        if pd.api.types.is_numeric_dtype(df.iloc[:, j])
+        and not _is_excluded(df.columns[j])
+    ]
+    if not numeric_cols:
+        return latex
+
+    lines = latex.split("\n")
+    out_lines: list[str] = []
+    body_started = False
+    row_idx = 0
+    for line in lines:
+        if "\\midrule" in line:
+            body_started = True
+            out_lines.append(line)
+            continue
+        if body_started and ("\\bottomrule" in line or "\\end{tabular}" in line):
+            body_started = False
+            out_lines.append(line)
+            continue
+        if body_started and row_idx < len(df):
+            row_vals = {
+                j: float(df.iloc[row_idx, j])
+                for j in numeric_cols
+                if np.isfinite(float(df.iloc[row_idx, j]))
+            }
+            if row_vals:
+                sorted_unique = sorted(set(row_vals.values()), reverse=True)
+                best = sorted_unique[0]
+                second = sorted_unique[1] if len(sorted_unique) > 1 else None
+                best_cols = {j for j, v in row_vals.items() if v == best}
+                second_cols = (
+                    {j for j, v in row_vals.items() if v == second}
+                    if second is not None
+                    else set()
+                )
+            else:
+                best_cols = set()
+                second_cols = set()
+
+            parts = line.split(" & ")
+            if parts:
+                new_parts = list(parts[:n_index_cols])
+                for j in range(len(df.columns)):
+                    idx = n_index_cols + j
+                    cell = (
+                        parts[idx].rstrip().rstrip("\\\\").strip()
+                        if idx < len(parts)
+                        else ""
+                    )
+                    if j in best_cols:
+                        cell = f"\\textbf{{{cell}}}"
+                    elif j in second_cols:
+                        cell = f"\\underline{{{cell}}}"
                     new_parts.append(cell)
                 line = " & ".join(new_parts) + " \\\\"
             row_idx += 1
@@ -2648,6 +2744,7 @@ def dataframe_to_latex_table(
     heatmap_vmin: float = 0.0,
     heatmap_vmax: float | None = None,
     heatmap_exclude_columns: list[str] | None = None,
+    rank_highlight: bool = False,
 ) -> None:
     """
     Write a DataFrame to a LaTeX table file with caption, label, and scriptsize.
@@ -2657,7 +2754,9 @@ def dataframe_to_latex_table(
     use_latex_metric_names is True, metric names are replaced by
     METRIC_NAMES_TO_LATEX_MAP (and escape=False is used). When heatmap=True,
     data cells are colored linearly from heatmap_vmin (white) to heatmap_vmax
-    (dark blue); values >= heatmap_vmax get the same darkest color.
+    (dark blue); values >= heatmap_vmax get the same darkest color. When
+    rank_highlight=True, the highest value per row is bolded and the second
+    highest is underlined instead.
 
     Parameters
     ----------
@@ -2686,6 +2785,9 @@ def dataframe_to_latex_table(
         E.g. 1 for noise/SNR tables, 100 for factor importance (percent).
     heatmap_exclude_columns
         Column names to exclude from heatmap coloring (e.g. n_obs, r2_full).
+    rank_highlight
+        If True, bold the highest value and underline the second highest value
+        per row. Mutually exclusive with heatmap.
     """
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -2732,7 +2834,25 @@ def dataframe_to_latex_table(
             message=".*DataFrame.to_latex.*",
         )
         out = df.to_latex(**latex_kw)
-    if heatmap and len(df) > 0 and len(df.columns) > 0:
+    if rank_highlight and len(df) > 0 and len(df.columns) > 0:
+        out = _inject_bold_underline_per_row(
+            out,
+            df,
+            n_index_levels,
+            exclude_columns=heatmap_exclude_columns,
+        )
+        legend = (
+            "\n\\vspace{2pt}\n"
+            "\\begin{minipage}{\\linewidth}\n"
+            "\\centering\n"
+            "\\tiny\n"
+            "\\textit{Formatting:} "
+            "\\textbf{Bold} = highest per row, "
+            "\\underline{underlined} = second highest.\n"
+            "\\end{minipage}"
+        )
+        out = out.replace("\\end{tabular}", "\\end{tabular}" + legend)
+    elif heatmap and len(df) > 0 and len(df.columns) > 0:
         out = _inject_heatmap_cellcolor(
             out,
             df,
@@ -2741,7 +2861,6 @@ def dataframe_to_latex_table(
             heatmap_vmax=heatmap_vmax,
             heatmap_exclude_columns=heatmap_exclude_columns,
         )
-        # Build color-coding legend with actual vmin/vmax values
         eff_vmin = heatmap_vmin
         eff_vmax = heatmap_vmax if heatmap_vmax is not None and heatmap_vmax > 0 else 1.0
 
@@ -2869,22 +2988,24 @@ def main() -> None:
     print("Saving outputs...")
     save_outputs(df_long, df_wide)
 
-    # LaTeX tables for relative noise (heatmap scale 0..1)
+    # LaTeX tables for relative noise (percentage, heatmap scale 0..100)
     _write_latex_table(
-        df_long,
+        df_long * 100,
         Path(PATH_OUT_LONG).stem,
-        caption="Relative noise (long format).",
+        caption="Relative noise (long format). Values in \\%.",
         label="tab:signal-noise-relative-long",
         index=False,
-        heatmap_vmax=1,
+        heatmap_vmax=100,
+        decimals=1,
     )
     _write_latex_table(
-        df_wide,
+        df_wide * 100,
         Path(PATH_OUT_WIDE).stem,
-        caption="Relative noise by complexity, noise, and window size.",
+        caption="Relative noise by complexity, noise, and window size. Values in \\%.",
         label="tab:signal-noise-relative-wide",
         index=True,
-        heatmap_vmax=1,
+        heatmap_vmax=100,
+        decimals=1,
     )
 
     print("Performing sanity checks...")
@@ -2896,35 +3017,35 @@ def main() -> None:
             "noise_abs_median",
             _aggregate_abs_median,
             False,
-            f"Absolute {AGGREGATION} metric value.",
+            f"Absolute {AGGREGATION} metric value. Values in \\%.",
             "tab:signal-noise-abs-median",
         ),
         (
             "noise_relci",
             _aggregate_relci,
             False,
-            f"Relative confidence interval (CI width / {AGGREGATION}).",
+            f"Relative confidence interval (CI width / {AGGREGATION}). Values in \\%.",
             "tab:signal-noise-relci",
         ),
         (
             "noise_std_pre",
             _aggregate_std_pre,
             False,
-            "Standard deviation (sample std).",
+            "Standard deviation (sample std). Values in \\%.",
             "tab:signal-noise-std-pre",
         ),
         (
             "noise_cv_pre",
             _aggregate_cv_pre,
             False,
-            f"Coefficient of variation (std / |{AGGREGATION}|).",
+            f"Coefficient of variation (std / |{AGGREGATION}|). Values in \\%.",
             "tab:signal-noise-cv-pre",
         ),
         (
             "noise_change_due_to_noise",
             _aggregate_change_due_to_noise,
             True,
-            "Robustness to noise (change vs. no-noise baseline).",
+            "Robustness to noise (change vs. no-noise baseline). Values in \\%.",
             "tab:signal-noise-change-due-to-noise",
         ),
     ]
@@ -2939,7 +3060,7 @@ def main() -> None:
         path_csv = f"{DIR_CSV}/{stem}.csv"
         df_noise_wide.to_csv(path_csv)
         print(f"Saved {stem} to {path_csv}")
-        # LaTeX: only window sizes 50 and 200; linear color scale 0..1
+        # LaTeX: only window sizes 50 and 200; percentage scale 0..100
         df_noise_wide_latex = df_noise_wide.loc[
             :,
             df_noise_wide.columns.get_level_values(WINDOW_SIZE_COL).isin(
@@ -2947,12 +3068,13 @@ def main() -> None:
             ),
         ]
         _write_latex_table(
-            df_noise_wide_latex,
+            df_noise_wide_latex * 100,
             stem,
             caption=caption,
             label=label,
             index=True,
-            heatmap_vmax=1,
+            heatmap_vmax=100,
+            decimals=1,
         )
 
     print("\n" + "=" * 60)
@@ -3189,7 +3311,8 @@ def main() -> None:
         df_rel.to_csv(path_csv)
         print(f"Saved {stem} to {path_csv}")
         _write_latex_table(
-            df_rel, stem, caption=caption, label=label, index=True, heatmap_vmax=1
+            df_rel, stem, caption=caption, label=label, index=True,
+            heatmap=False, rank_highlight=True,
         )
 
     # Tables 7–9: signal_snr (same DataFrames as snr_by_*; write to signal_snr_by_* paths)
@@ -3225,17 +3348,19 @@ def main() -> None:
             caption=caption,
             label=label,
             index=True,
-            heatmap_vmax=1,
+            heatmap=False,
+            rank_highlight=True,
         )
 
-    # LaTeX tables for SNR (heatmap scale 0..1)
+    # LaTeX tables for SNR (bold highest, underline second highest)
     _write_latex_table(
         df_snr_cells,
         Path(PATH_SNR_LONG).stem,
         caption="SNR per cell (long format).",
         label="tab:signal-noise-snr-long",
         index=False,
-        heatmap_vmax=1,
+        heatmap=False,
+        rank_highlight=True,
     )
     _write_latex_table(
         df_snr_wide,
@@ -3243,7 +3368,8 @@ def main() -> None:
         caption="SNR by evolution proportion, change operation, complexity, noise, and window size.",
         label="tab:signal-noise-snr-wide",
         index=True,
-        heatmap_vmax=1,
+        heatmap=False,
+        rank_highlight=True,
     )
     _write_latex_table(
         df_snr_by_op,
@@ -3251,7 +3377,8 @@ def main() -> None:
         caption="SNR by change operation.",
         label="tab:signal-noise-snr-by-operation",
         index=True,
-        heatmap_vmax=1,
+        heatmap=False,
+        rank_highlight=True,
     )
     _write_latex_table(
         df_snr_by_evol,
@@ -3259,7 +3386,8 @@ def main() -> None:
         caption="SNR by evolution proportion (Edit Operations=mixed).",
         label="tab:signal-noise-snr-by-evolution",
         index=True,
-        heatmap_vmax=1,
+        heatmap=False,
+        rank_highlight=True,
     )
     _write_latex_table(
         df_snr_by_noise,
@@ -3267,7 +3395,8 @@ def main() -> None:
         caption="SNR by noise level (Edit Operations=mixed).",
         label="tab:signal-noise-snr-by-noise",
         index=True,
-        heatmap_vmax=1,
+        heatmap=False,
+        rank_highlight=True,
     )
 
     # Tables: Absolute Cohen's d by operation, evolution_proportion, noise
@@ -3322,7 +3451,8 @@ def main() -> None:
         df_abs_d.to_csv(path_csv)
         print(f"Saved {stem} to {path_csv}")
         _write_latex_table(
-            df_abs_d, stem, caption=caption, label=label, index=True, heatmap_vmax=1
+            df_abs_d, stem, caption=caption, label=label, index=True,
+            heatmap=False, rank_highlight=True,
         )
 
     print("Performing SNR sanity checks...")

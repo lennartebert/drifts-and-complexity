@@ -465,8 +465,8 @@ def main() -> None:
             caption=caption,
             label=label,
             index=True,
-            heatmap_vmin=0.5,
-            heatmap_vmax=1,
+            heatmap=False,
+            rank_highlight=True,
         )
         print(f"  Wrote LaTeX: {DIR_LATEX}/{stem}.tex")
 
