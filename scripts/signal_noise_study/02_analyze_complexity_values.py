@@ -1201,17 +1201,20 @@ def _plot_median_scatter(median_df: pd.DataFrame) -> None:
     label_position_map = {
         "A1": "left",
         "A2": "right",
-        "A3": "left",
+        "A3": "top",
         "A4": "left",
-        "A5": "left",
+        "A5": "top",
         "A6": "right",
         "A7": "left",
         "B1": "right",
+        "B2": "bottom",
         "B3": "left",
-        "B5": "bottom",
+        "B4": "right",
+        "B5": "right",
         "B6": "top",
-        "D1": "right",
+        "D1": "bottom",
         "D2": "bottom",
+        "D4": "left",
     }
     position_to_style = {
         "top": (0, 10, "center", "bottom"),
@@ -1292,6 +1295,7 @@ def run(
     across_seed_aggregation: Literal["mean", "median"] = "median",
     test_mode: bool = False,
     test_seeds: list[int] | None = None,
+    only_median_overview: bool = False,
 ) -> None:
     if test_mode:
         seeds = test_seeds if test_seeds is not None else DEFAULT_TEST_SEEDS
@@ -1348,6 +1352,24 @@ def run(
     stability_seed["stability_CV"] = _safe_ratio(stability_seed["Sample Std"], stability_seed["Mean Value"].abs())
     stability_seed["stability_inverse_CV"] = _safe_ratio(stability_seed["Mean Value"].abs(), stability_seed["Sample Std"])
     setting_seed_no_none = setting_seed[setting_seed[NOISE_LEVEL_COL] != "None"].copy()
+
+    median_df = _build_median_across_all_obs(
+        stability_seed=stability_seed,
+        setting_seed=setting_seed,
+        process_seed=process_seed,
+    )
+    median_counts_df = _build_median_across_all_obs_counts(
+        stability_seed=stability_seed,
+        setting_seed=setting_seed,
+        process_seed=process_seed,
+    )
+    _save_median_across_all_obs_bundle(median_df, median_counts_df)
+    _plot_median_scatter(median_df)
+
+    if only_median_overview:
+        print("Only median overview requested; skipping all other aggregate tables.")
+        print("\nAnalysis complete.")
+        return
 
     noise_order = ["None", "Low", "High"]
     complexity_order = ["Simple", "Middle", "Complex"]
@@ -1529,19 +1551,6 @@ def run(
                 label=f"tab:{metric_spec['label_prefix']}-{view['label_suffix']}",
             )
 
-    median_df = _build_median_across_all_obs(
-        stability_seed=stability_seed,
-        setting_seed=setting_seed,
-        process_seed=process_seed,
-    )
-    median_counts_df = _build_median_across_all_obs_counts(
-        stability_seed=stability_seed,
-        setting_seed=setting_seed,
-        process_seed=process_seed,
-    )
-    _save_median_across_all_obs_bundle(median_df, median_counts_df)
-    _plot_median_scatter(median_df)
-
     print("\nAnalysis complete.")
 
 
@@ -1558,6 +1567,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable test mode: exactly 2 seeds + one metric per dimension.",
     )
+    parser.add_argument(
+        "--only-median-overview",
+        action="store_true",
+        help="Generate only median_across_all_obs (+counts) and median_scatter outputs.",
+    )
     return parser.parse_args()
 
 
@@ -1569,6 +1583,7 @@ if __name__ == "__main__":
             across_seed_aggregation=args.across_seed_aggregation,
             test_mode=args.test,
             test_seeds=DEFAULT_TEST_SEEDS,
+            only_median_overview=args.only_median_overview,
         )
     if caught_warnings:
         print(f"\n  {len(caught_warnings)} runtime warning(s) captured.")
