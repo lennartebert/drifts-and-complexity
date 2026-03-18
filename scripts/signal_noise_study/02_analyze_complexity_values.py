@@ -71,6 +71,15 @@ AGG_COL_MAP = {
     "window_size": WINDOW_SIZE_COL,
 }
 
+# Metric order: by configured dimension order, then by insertion order in
+# METRIC_DIMENSION_MAP (same strategy as the previous analysis script).
+_METRIC_ORDER = [
+    metric
+    for dim in DIMENSIONS_ORDER
+    for metric, metric_dim in METRIC_DIMENSION_MAP.items()
+    if metric_dim == dim
+]
+
 
 # ---------------------------------------------------------------------------
 # Input + preparation
@@ -226,20 +235,33 @@ def _add_dimension_and_sort_long(df: pd.DataFrame) -> pd.DataFrame:
     d["Dimension"] = d["Metric"].map(METRIC_DIMENSION_MAP).fillna("Other")
     dim_order = list(DIMENSIONS_ORDER) + ["Other"]
     d["_dim_ord"] = d["Dimension"].map(lambda x: dim_order.index(x) if x in dim_order else len(dim_order))
-    d = d.sort_values(["_dim_ord", "Metric"]).drop(columns=["_dim_ord"])
+    metric_order = {m: i for i, m in enumerate(_METRIC_ORDER)}
+    d["_met_ord"] = d["Metric"].map(lambda m: metric_order.get(m, len(metric_order)))
+    d = d.sort_values(["_dim_ord", "_met_ord"]).drop(columns=["_dim_ord", "_met_ord"])
     cols = ["Dimension", "Metric"] + [c for c in d.columns if c not in {"Dimension", "Metric"}]
     return d[cols]
 
 
 def _add_dimension_and_sort_wide(df: pd.DataFrame) -> pd.DataFrame:
     d = df.copy()
-    dimension = d.index.map(lambda m: METRIC_DIMENSION_MAP.get(m, "Other"))
-    d.index = pd.MultiIndex.from_arrays([dimension, d.index], names=["Dimension", "Metric"])
+    if isinstance(d.index, pd.MultiIndex):
+        if d.index.nlevels < 2:
+            raise ValueError("Expected at least 2 index levels for MultiIndex row sorting.")
+        # Normalize to the expected two-level row index.
+        d.index = pd.MultiIndex.from_arrays(
+            [d.index.get_level_values(0), d.index.get_level_values(1)],
+            names=["Dimension", "Metric"],
+        )
+    else:
+        dimension = d.index.map(lambda m: METRIC_DIMENSION_MAP.get(m, "Other"))
+        d.index = pd.MultiIndex.from_arrays([dimension, d.index], names=["Dimension", "Metric"])
     dim_order = list(DIMENSIONS_ORDER) + ["Other"]
     desired = []
     for dim in dim_order:
-        in_dim = sorted([idx for idx in d.index if idx[0] == dim], key=lambda x: x[1])
-        desired.extend(in_dim)
+        for metric in _METRIC_ORDER:
+            idx = (dim, metric)
+            if idx in d.index:
+                desired.append(idx)
     for idx in d.index:
         if idx not in desired:
             desired.append(idx)
@@ -304,8 +326,15 @@ def _pivot_value_and_counts(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     long = _add_dimension_and_sort_long(df_agg.copy())
     idx = ["Dimension", "Metric"]
-    value_wide = long.pivot_table(index=idx, columns=column_levels, values="Value", aggfunc="first")
-    count_wide = long.pivot_table(index=idx, columns=column_levels, values="N Used", aggfunc="first").astype("Int64")
+    value_wide = long.pivot_table(
+        index=idx, columns=column_levels, values="Value", aggfunc="first", sort=False
+    )
+    count_wide = long.pivot_table(
+        index=idx, columns=column_levels, values="N Used", aggfunc="first", sort=False
+    ).astype("Int64")
+    # Enforce configured dimension/metric row order after pivoting.
+    value_wide = _add_dimension_and_sort_wide(value_wide)
+    count_wide = _add_dimension_and_sort_wide(count_wide)
     if order_map:
         value_wide = _reorder_columns(value_wide, order_map)
         count_wide = _reorder_columns(count_wide, order_map)
