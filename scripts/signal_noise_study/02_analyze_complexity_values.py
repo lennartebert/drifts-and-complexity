@@ -30,7 +30,7 @@ PATH_GEN_INFO = "data/synthetic/sudden_drifts/generation_info.csv"
 DIR_CSV = "results/signal_noise_study/csvs"
 DIR_LATEX = "results/signal_noise_study/latex"
 
-DEFAULT_TEST_SEEDS = [1, 2] # only used if in test mode (flag --test is set)
+DEFAULT_TEST_SEEDS = [43, 44] # only used if in test mode (flag --test is set)
 
 MODEL_COMPLEXITY_COL = "Model Complexity"
 NOISE_LEVEL_COL = "Noise Level"
@@ -79,15 +79,20 @@ def _finite(x: pd.Series) -> pd.Series:
     return pd.to_numeric(x, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
 
 
+def _non_nan(x: pd.Series) -> pd.Series:
+    """Numeric coercion + drop NaN, but keep +/-inf values."""
+    return pd.to_numeric(x, errors="coerce").dropna()
+
+
 def _robust_mean(x: pd.Series) -> float:
-    vals = _finite(x)
+    vals = _non_nan(x)
     if len(vals) == 0:
         return np.nan
     return float(vals.mean())
 
 
 def _robust_median(x: pd.Series) -> float:
-    vals = _finite(x)
+    vals = _non_nan(x)
     if len(vals) == 0:
         return np.nan
     return float(vals.median())
@@ -263,7 +268,8 @@ def _aggregate_across_seed_with_counts(
     across_seed_aggregation: Literal["mean", "median"],
 ) -> pd.DataFrame:
     def _agg(g: pd.DataFrame) -> pd.Series:
-        vals = _finite(g[value_col])
+        # Keep infinities; exclude only NaNs.
+        vals = _non_nan(g[value_col])
         value = _robust_mean(vals) if across_seed_aggregation == "mean" else _robust_median(vals)
         return pd.Series({"Value": value, "N Used": int(len(vals))})
 
@@ -357,6 +363,32 @@ def _inject_rank_highlight(latex: str, df: pd.DataFrame, n_index_cols: int) -> s
     if not numeric_cols:
         return latex
 
+    # Determine highest and second-highest per numeric column (ties included).
+    best_rows_by_col: dict[int, set[int]] = {}
+    second_rows_by_col: dict[int, set[int]] = {}
+    for j in numeric_cols:
+        col_vals: dict[int, float] = {}
+        for i in range(len(df)):
+            try:
+                v = float(df.iloc[i, j])
+            except (ValueError, TypeError):
+                continue
+            if np.isfinite(v):
+                col_vals[i] = v
+        if not col_vals:
+            best_rows_by_col[j] = set()
+            second_rows_by_col[j] = set()
+            continue
+        uniq = sorted(set(col_vals.values()), reverse=True)
+        best = uniq[0]
+        second = uniq[1] if len(uniq) > 1 else None
+        best_rows_by_col[j] = {i for i, v in col_vals.items() if v == best}
+        second_rows_by_col[j] = (
+            {i for i, v in col_vals.items() if second is not None and v == second}
+            if second is not None
+            else set()
+        )
+
     lines = latex.split("\n")
     out_lines: list[str] = []
     body = False
@@ -371,27 +403,14 @@ def _inject_rank_highlight(latex: str, df: pd.DataFrame, n_index_cols: int) -> s
             out_lines.append(line)
             continue
         if body and row_i < len(df):
-            vals = {
-                j: float(df.iloc[row_i, j]) for j in numeric_cols if np.isfinite(float(df.iloc[row_i, j]))
-            }
-            if vals:
-                uniq = sorted(set(vals.values()), reverse=True)
-                best = uniq[0]
-                second = uniq[1] if len(uniq) > 1 else None
-                best_cols = {j for j, v in vals.items() if v == best}
-                second_cols = {j for j, v in vals.items() if second is not None and v == second}
-            else:
-                best_cols = set()
-                second_cols = set()
-
             parts = line.split(" & ")
             new_parts = list(parts[:n_index_cols])
             for j in range(len(df.columns)):
                 idx = n_index_cols + j
                 cell = parts[idx].rstrip().rstrip("\\\\").strip() if idx < len(parts) else ""
-                if j in best_cols:
+                if row_i in best_rows_by_col.get(j, set()):
                     cell = f"\\textbf{{{cell}}}"
-                elif j in second_cols:
+                elif row_i in second_rows_by_col.get(j, set()):
                     cell = f"\\underline{{{cell}}}"
                 new_parts.append(cell)
             line = " & ".join(new_parts) + " \\\\"
@@ -432,8 +451,8 @@ def _write_latex_table(df: pd.DataFrame, stem: str, caption: str, label: str, *,
             "\\begin{minipage}{\\linewidth}\n"
             "\\centering\n"
             "\\tiny\n"
-            "\\textit{Formatting:} \\textbf{Bold} = highest per row, "
-            "\\underline{underlined} = second highest.\n"
+            "\\textit{Formatting:} \\textbf{Bold} = highest per column, "
+            "\\underline{underlined} = second highest per column.\n"
             "\\end{minipage}"
         )
         latex = latex.replace("\\end{tabular}", "\\end{tabular}" + legend)
@@ -543,8 +562,9 @@ def _build_process_change_seed(df_enriched: pd.DataFrame) -> pd.DataFrame:
     seed["processChange_mean_invRelChange"] = _safe_ratio(seed["Mean Pre"].abs(), amean)
 
     pooled_sd = np.sqrt((seed["Var Pre"] + seed["Var Post"]) / 2)
-    seed["processChange_median_cohensD"] = _safe_ratio(dm, pooled_sd)
-    seed["processChange_mean_cohensD"] = _safe_ratio(dmean, pooled_sd)
+    # Consistent with other within-seed median/mean comparisons: use absolute change.
+    seed["processChange_median_cohensD"] = _safe_ratio(am, pooled_sd)
+    seed["processChange_mean_cohensD"] = _safe_ratio(amean, pooled_sd)
     return seed
 
 
@@ -786,55 +806,72 @@ def run(
             label=spec["label"],
         )
 
-    grouped_specs = [
+    grouped_views = [
         {
-            "stem": "processChange_mean_cohensD_byChangeOperation",
+            "stem_suffix": "byChangeOperation",
             "group_col": EDIT_OPERATIONS_COL,
             "order": CHANGE_OPERATION_ORDER,
             "filter_col": None,
             "filter_val": None,
-            "caption": "processChange_mean_cohensD by change operation.",
-            "label": "tab:processchange-mean-cohensd-by-changeoperation",
+            "caption_suffix": "by change operation.",
+            "label_suffix": "by-changeoperation",
         },
         {
-            "stem": "processChange_mean_cohensD_byNoise",
+            "stem_suffix": "byNoise",
             "group_col": NOISE_LEVEL_COL,
             "order": noise_order,
             "filter_col": EDIT_OPERATIONS_COL,
             "filter_val": "mixed",
-            "caption": "processChange_mean_cohensD by noise (Edit Operations=mixed).",
-            "label": "tab:processchange-mean-cohensd-by-noise",
+            "caption_suffix": "by noise (Edit Operations=mixed).",
+            "label_suffix": "by-noise",
         },
         {
-            "stem": "processChange_mean_cohensD_byEvolutionProportion",
+            "stem_suffix": "byEvolutionProportion",
             "group_col": CHANGE_MAGNITUDE_COL,
             "order": None,
             "filter_col": EDIT_OPERATIONS_COL,
             "filter_val": "mixed",
-            "caption": "processChange_mean_cohensD by evolution proportion (Edit Operations=mixed).",
-            "label": "tab:processchange-mean-cohensd-by-evolutionproportion",
+            "caption_suffix": "by evolution proportion (Edit Operations=mixed).",
+            "label_suffix": "by-evolutionproportion",
         },
     ]
-    for i, spec in enumerate(grouped_specs, start=1):
-        print(
-            f"[extra {i}/{len(grouped_specs)}] Aggregating {spec['stem']}..."
-        )
-        value_wide, count_wide = _aggregate_grouped_single_level(
-            df_seed=process_seed,
-            measure_col="processChange_mean_cohensD",
-            group_col=spec["group_col"],
-            column_order=spec["order"],
-            filter_col=spec["filter_col"],
-            filter_val=spec["filter_val"],
-            across_seed_aggregation=across_seed_aggregation,
-        )
-        _save_bundle(
-            stem=spec["stem"],
-            value_wide=value_wide,
-            count_wide=count_wide,
-            caption=spec["caption"],
-            label=spec["label"],
-        )
+    grouped_metrics = [
+        {
+            "measure_col": "processChange_mean_cohensD",
+            "stem_prefix": "processChange_mean_cohensD",
+            "caption_prefix": "processChange_mean_cohensD",
+            "label_prefix": "processchange-mean-cohensd",
+        },
+        {
+            "measure_col": "processChange_median_cohensD",
+            "stem_prefix": "processChange_median_cohensD",
+            "caption_prefix": "processChange_median_cohensD",
+            "label_prefix": "processchange-median-cohensd",
+        },
+    ]
+    total_extra = len(grouped_views) * len(grouped_metrics)
+    extra_i = 0
+    for metric_spec in grouped_metrics:
+        for view in grouped_views:
+            extra_i += 1
+            stem = f"{metric_spec['stem_prefix']}_{view['stem_suffix']}"
+            print(f"[extra {extra_i}/{total_extra}] Aggregating {stem}...")
+            value_wide, count_wide = _aggregate_grouped_single_level(
+                df_seed=process_seed,
+                measure_col=metric_spec["measure_col"],
+                group_col=view["group_col"],
+                column_order=view["order"],
+                filter_col=view["filter_col"],
+                filter_val=view["filter_val"],
+                across_seed_aggregation=across_seed_aggregation,
+            )
+            _save_bundle(
+                stem=stem,
+                value_wide=value_wide,
+                count_wide=count_wide,
+                caption=f"{metric_spec['caption_prefix']} {view['caption_suffix']}",
+                label=f"tab:{metric_spec['label_prefix']}-{view['label_suffix']}",
+            )
 
     print("\nAnalysis complete.")
 
