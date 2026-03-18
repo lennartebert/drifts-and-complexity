@@ -12,6 +12,7 @@ containing the number of finite values used in each aggregated cell.
 from __future__ import annotations
 
 import argparse
+import importlib
 import re
 import warnings
 from pathlib import Path
@@ -448,6 +449,29 @@ def _inject_rank_highlight(latex: str, df: pd.DataFrame, n_index_cols: int) -> s
     return "\n".join(out_lines)
 
 
+def _fix_flat_table_midrule_position(latex: str, *, index: bool) -> str:
+    """
+    Pandas may emit \\midrule after the first data row for some flat tables.
+    Move it right below the header row when index=False.
+    """
+    if index:
+        return latex
+    lines = latex.split("\n")
+    top_i = next((i for i, ln in enumerate(lines) if "\\toprule" in ln), -1)
+    mid_i = next((i for i, ln in enumerate(lines) if "\\midrule" in ln), -1)
+    if top_i == -1 or mid_i == -1:
+        return latex
+    # Expected header row directly after \toprule.
+    header_i = top_i + 1
+    desired_mid_i = header_i + 1
+    if mid_i == desired_mid_i:
+        return latex
+    if mid_i > desired_mid_i:
+        mid_line = lines.pop(mid_i)
+        lines.insert(desired_mid_i, mid_line)
+    return "\n".join(lines)
+
+
 def _write_latex_table(df: pd.DataFrame, stem: str, caption: str, label: str, *, index: bool = True, decimals: int = 2) -> None:
     out_path = Path(DIR_LATEX) / f"{stem}.tex"
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -473,6 +497,7 @@ def _write_latex_table(df: pd.DataFrame, stem: str, caption: str, label: str, *,
         multicolumn_format="c",
         sparsify=True,
     )
+    latex = _fix_flat_table_midrule_position(latex, index=index)
     if len(table) > 0 and len(table.columns) > 0:
         latex = _inject_rank_highlight(latex, table, n_idx)
         legend = (
@@ -661,6 +686,607 @@ def _save_bundle(*, stem: str, value_wide: pd.DataFrame, count_wide: pd.DataFram
     print(f"Saved {Path(DIR_LATEX) / (stem + '.tex')}")
 
 
+def _robust_median_inf_aware(x: pd.Series) -> float:
+    """
+    Median where finite values dominate infinities.
+    If finite values exist, +/-inf are ignored for the median.
+    """
+    arr = _non_nan(x).to_numpy(dtype=float)
+    if arr.size == 0:
+        return np.nan
+    finite = arr[np.isfinite(arr)]
+    if finite.size > 0:
+        return float(np.median(finite))
+    pos_inf_count = np.isposinf(arr).sum()
+    neg_inf_count = np.isneginf(arr).sum()
+    if pos_inf_count and not neg_inf_count:
+        return float(np.inf)
+    if neg_inf_count and not pos_inf_count:
+        return float(-np.inf)
+    return np.nan
+
+
+def _metric_median_from_observations(
+    *,
+    df: pd.DataFrame,
+    value_col: str,
+    out_col: str,
+) -> pd.DataFrame:
+    d = df[df["Metric"] != "Number of Traces"].copy()
+    agg = (
+        d.groupby("Metric", dropna=False, sort=False)[value_col]
+        .apply(_robust_median_inf_aware)
+        .reset_index()
+        .rename(columns={value_col: out_col})
+    )
+    agg["Dimension"] = agg["Metric"].map(METRIC_DIMENSION_MAP).fillna("Other")
+    # Keep legacy compatibility in case older data still carries "Length".
+    agg["Dimension"] = agg["Dimension"].replace({"Length": "Size"})
+    return agg[["Dimension", "Metric", out_col]]
+
+
+def _metric_count_from_observations(
+    *,
+    df: pd.DataFrame,
+    value_col: str,
+    out_col: str,
+) -> pd.DataFrame:
+    d = df[df["Metric"] != "Number of Traces"].copy()
+    counts = (
+        d.groupby("Metric", dropna=False, sort=False)[value_col]
+        .apply(lambda s: int(len(_non_nan(s))))
+        .reset_index()
+        .rename(columns={value_col: out_col})
+    )
+    counts["Dimension"] = counts["Metric"].map(METRIC_DIMENSION_MAP).fillna("Other")
+    counts["Dimension"] = counts["Dimension"].replace({"Length": "Size"})
+    return counts[["Dimension", "Metric", out_col]]
+
+
+def _build_median_across_all_obs(
+    *,
+    stability_seed: pd.DataFrame,
+    setting_seed: pd.DataFrame,
+    process_seed: pd.DataFrame,
+) -> pd.DataFrame:
+    reliability = _metric_median_from_observations(
+        df=stability_seed,
+        value_col="stability_inverse_CV",
+        out_col="Reliability",
+    )
+    robustness = _metric_median_from_observations(
+        df=setting_seed[setting_seed[NOISE_LEVEL_COL] != "None"].copy(),
+        value_col="settingChange_median_invRelChange",
+        out_col="Robustness",
+    )
+    responsiveness = _metric_median_from_observations(
+        df=process_seed[process_seed[EDIT_OPERATIONS_COL] == "mixed"].copy(),
+        value_col="processChange_median_cohensD",
+        out_col="Responsiveness",
+    )
+
+    merged = (
+        reliability.merge(robustness, on=["Dimension", "Metric"], how="outer")
+        .merge(responsiveness, on=["Dimension", "Metric"], how="outer")
+        .copy()
+    )
+    merged = _add_dimension_and_sort_long(merged)
+
+    label_prefix_by_dimension = {
+        "Size": "A",
+        "Variation": "B",
+        "Distance": "C",
+        "Graph Entropy": "D",
+    }
+    label_counts = {k: 0 for k in label_prefix_by_dimension}
+    labels: list[str] = []
+    for dim in merged["Dimension"].astype(str):
+        prefix = label_prefix_by_dimension.get(dim)
+        if prefix is None:
+            labels.append("")
+            continue
+        label_counts[dim] += 1
+        labels.append(f"{prefix}{label_counts[dim]}")
+    merged.insert(2, "Label", labels)
+    return merged[["Dimension", "Metric", "Label", "Reliability", "Robustness", "Responsiveness"]]
+
+
+def _build_median_across_all_obs_counts(
+    *,
+    stability_seed: pd.DataFrame,
+    setting_seed: pd.DataFrame,
+    process_seed: pd.DataFrame,
+) -> pd.DataFrame:
+    reliability = _metric_count_from_observations(
+        df=stability_seed,
+        value_col="stability_inverse_CV",
+        out_col="Reliability",
+    )
+    robustness = _metric_count_from_observations(
+        df=setting_seed[setting_seed[NOISE_LEVEL_COL] != "None"].copy(),
+        value_col="settingChange_median_invRelChange",
+        out_col="Robustness",
+    )
+    responsiveness = _metric_count_from_observations(
+        df=process_seed[process_seed[EDIT_OPERATIONS_COL] == "mixed"].copy(),
+        value_col="processChange_median_cohensD",
+        out_col="Responsiveness",
+    )
+
+    merged = (
+        reliability.merge(robustness, on=["Dimension", "Metric"], how="outer")
+        .merge(responsiveness, on=["Dimension", "Metric"], how="outer")
+        .copy()
+    )
+    merged = _add_dimension_and_sort_long(merged)
+
+    label_prefix_by_dimension = {
+        "Size": "A",
+        "Variation": "B",
+        "Distance": "C",
+        "Graph Entropy": "D",
+    }
+    label_counts = {k: 0 for k in label_prefix_by_dimension}
+    labels: list[str] = []
+    for dim in merged["Dimension"].astype(str):
+        prefix = label_prefix_by_dimension.get(dim)
+        if prefix is None:
+            labels.append("")
+            continue
+        label_counts[dim] += 1
+        labels.append(f"{prefix}{label_counts[dim]}")
+    merged.insert(2, "Label", labels)
+    merged["Reliability"] = pd.to_numeric(merged["Reliability"], errors="coerce").astype("Int64")
+    merged["Robustness"] = pd.to_numeric(merged["Robustness"], errors="coerce").astype("Int64")
+    merged["Responsiveness"] = pd.to_numeric(merged["Responsiveness"], errors="coerce").astype("Int64")
+    return merged[["Dimension", "Metric", "Label", "Reliability", "Robustness", "Responsiveness"]]
+
+
+def _save_median_across_all_obs_bundle(median_df: pd.DataFrame, count_df: pd.DataFrame) -> None:
+    Path(DIR_CSV).mkdir(parents=True, exist_ok=True)
+    value_csv = Path(DIR_CSV) / "median_across_all_obs.csv"
+    count_csv = Path(DIR_CSV) / "median_across_all_obs_counts.csv"
+    median_df.to_csv(value_csv, index=False)
+    count_df.to_csv(count_csv, index=False)
+    _write_latex_table(
+        median_df,
+        "median_across_all_obs",
+        caption="Observation-level medians of reliability, robustness, and responsiveness.",
+        label="tab:median-across-all-obs",
+        index=False,
+        decimals=2,
+    )
+    _write_latex_table(
+        count_df,
+        "median_across_all_obs_counts",
+        caption="Non-NaN observation counts used for median_across_all_obs.",
+        label="tab:median-across-all-obs-counts",
+        index=False,
+        decimals=0,
+    )
+    print(f"Saved {value_csv}")
+    print(f"Saved {count_csv}")
+    print(f"Saved {Path(DIR_LATEX) / 'median_across_all_obs.tex'}")
+    print(f"Saved {Path(DIR_LATEX) / 'median_across_all_obs_counts.tex'}")
+
+
+def _plot_median_scatter(median_df: pd.DataFrame) -> None:
+    try:
+        matplotlib = importlib.import_module("matplotlib")
+        matplotlib.use("Agg")
+        plt = importlib.import_module("matplotlib.pyplot")
+        lines_mod = importlib.import_module("matplotlib.lines")
+        Line2D = lines_mod.Line2D
+    except ModuleNotFoundError:
+        print("Skipping median scatter plot: matplotlib is not installed.")
+        return
+
+    plots_dir = Path("results/signal_noise_study/plots")
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    plot_path = plots_dir / "median_scatter.png"
+    plot_pdf_path = plots_dir / "median_scatter.pdf"
+
+    plot_df = median_df.copy()
+    x_col = "Robustness"
+    y_col = "Responsiveness"
+    for col in ["Reliability", x_col, y_col]:
+        plot_df[col] = pd.to_numeric(plot_df[col], errors="coerce")
+    plot_df = plot_df.dropna(subset=[x_col, y_col]).copy()
+    if len(plot_df) == 0:
+        print("Skipping median scatter plot: no finite Robustness/Responsiveness rows.")
+        return
+
+    x = pd.to_numeric(plot_df[x_col], errors="coerce")
+    y = pd.to_numeric(plot_df[y_col], errors="coerce")
+    x_finite = x[np.isfinite(x)]
+    y_finite = y[np.isfinite(y)]
+
+    if x_finite.empty:
+        x_min, x_max = 0.0, 1.0
+    else:
+        x_min, x_max = float(x_finite.min()), float(x_finite.max())
+    if y_finite.empty:
+        y_min, y_max = 0.0, 1.0
+    else:
+        y_min, y_max = float(y_finite.min()), float(y_finite.max())
+
+    x_pad = max((x_max - x_min) * 0.05, 1e-9)
+    y_pad = max((y_max - y_min) * 0.05, 1e-9)
+    x_left, x_right = x_min - x_pad, x_max + x_pad
+    y_bottom, y_top = y_min - y_pad, y_max + y_pad
+
+    plot_df["x_plot"] = x.replace(np.inf, x_right).replace(-np.inf, x_left)
+    plot_df["y_plot"] = y.replace(np.inf, y_top).replace(-np.inf, y_bottom)
+    plot_df["x_inf_dir"] = np.where(np.isposinf(x), 1, np.where(np.isneginf(x), -1, 0))
+    plot_df["y_inf_dir"] = np.where(np.isposinf(y), 1, np.where(np.isneginf(y), -1, 0))
+
+    rel = pd.to_numeric(plot_df["Reliability"], errors="coerce")
+    rel_finite = rel[np.isfinite(rel)]
+    min_marker_size = 40.0
+    max_marker_size = 240.0
+    if rel_finite.empty or float(rel_finite.max()) == float(rel_finite.min()):
+        plot_df["marker_size"] = (min_marker_size + max_marker_size) / 2
+    else:
+        lo = float(rel_finite.min())
+        hi = float(rel_finite.max())
+        rel_for_scale = rel.copy().replace(np.inf, hi).replace(-np.inf, lo)
+        rel_norm = (rel_for_scale - lo) / (hi - lo)
+        plot_df["marker_size"] = min_marker_size + rel_norm * (max_marker_size - min_marker_size)
+        plot_df["marker_size"] = plot_df["marker_size"].fillna(min_marker_size)
+
+    overlap_decimals = 6
+    plot_df["x_group"] = plot_df["x_plot"].round(overlap_decimals)
+    plot_df["y_group"] = plot_df["y_plot"].round(overlap_decimals)
+
+    dimensions = list(dict.fromkeys(plot_df["Dimension"].astype(str).tolist()))
+    cmap = plt.get_cmap("tab10")
+    color_map = {d: cmap(i % 10) for i, d in enumerate(dimensions)}
+
+    FONT_AXIS_LABEL = 13
+    FONT_TICKS = 11
+    FONT_LEGEND = 10
+    FONT_LEGEND_TITLE = 11
+    FONT_ANNOT = 9
+    FONT_INF_NOTE = 10
+
+    inf_notes = []
+    for _, row in plot_df.iterrows():
+        flags = []
+        if np.isposinf(row[x_col]):
+            flags.append("x=+inf")
+        elif np.isneginf(row[x_col]):
+            flags.append("x=-inf")
+        if np.isposinf(row[y_col]):
+            flags.append("y=+inf")
+        elif np.isneginf(row[y_col]):
+            flags.append("y=-inf")
+        if flags:
+            inf_notes.append(f"{row['Metric']} ({', '.join(flags)})")
+
+    def _add_inf_note_box(ax: Any) -> None:
+        if not inf_notes:
+            return
+        max_notes = 16
+        shown = inf_notes[:max_notes]
+        more = len(inf_notes) - len(shown)
+        note_text = "Infs shown with border arrows:\n" + "\n".join(f"- {n}" for n in shown)
+        if more > 0:
+            note_text += f"\n- ... and {more} more"
+        ax.text(
+            1.02,
+            0.02,
+            note_text,
+            transform=ax.transAxes,
+            va="bottom",
+            ha="left",
+            fontsize=FONT_INF_NOTE,
+            bbox={"boxstyle": "round", "alpha": 0.15},
+        )
+
+    def _add_dimension_legend(ax: Any) -> Any:
+        handles = [
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                linestyle="None",
+                markerfacecolor=color_map[d],
+                markeredgecolor="black",
+                markeredgewidth=0.6,
+                markersize=7,
+                label=d,
+            )
+            for d in dimensions
+        ]
+        return ax.legend(
+            handles=handles,
+            title="Complexity dimension",
+            bbox_to_anchor=(1.02, 0.74, 0.28, 0.22),
+            loc="upper left",
+            mode="expand",
+            borderaxespad=0.0,
+            fontsize=FONT_LEGEND,
+            title_fontsize=FONT_LEGEND_TITLE,
+        )
+
+    def _size_from_reliability(v: float) -> float:
+        if rel_finite.empty:
+            return (min_marker_size + max_marker_size) / 2
+        lo = float(rel_finite.min())
+        hi = float(rel_finite.max())
+        if hi == lo:
+            return (min_marker_size + max_marker_size) / 2
+        if pd.isna(v):
+            vv = lo
+        elif np.isposinf(v):
+            vv = hi
+        elif np.isneginf(v):
+            vv = lo
+        else:
+            vv = float(v)
+        vv = min(max(vv, lo), hi)
+        t = (vv - lo) / (hi - lo)
+        return min_marker_size + t * (max_marker_size - min_marker_size)
+
+    def _add_size_legend(ax: Any, dim_legend: Any = None) -> Any:
+        if rel_finite.empty:
+            if dim_legend is not None:
+                ax.add_artist(dim_legend)
+            return None
+        raw_vals = [float(rel_finite.min()), float(rel_finite.median()), float(rel_finite.max())]
+        rel_vals: list[float] = []
+        for v in raw_vals:
+            if not any(np.isclose(v, u, rtol=0.0, atol=1e-12) for u in rel_vals):
+                rel_vals.append(v)
+
+        size_handles = [
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                linestyle="None",
+                markerfacecolor="white",
+                markeredgecolor="black",
+                markeredgewidth=0.8,
+                markersize=np.sqrt(_size_from_reliability(v)),
+                label=f"{v:.2f}",
+            )
+            for v in rel_vals
+        ]
+        size_legend = ax.legend(
+            handles=size_handles,
+            title="Reliability",
+            bbox_to_anchor=(1.02, 0.50, 0.28, 0.2),
+            loc="upper left",
+            mode="expand",
+            borderaxespad=0.0,
+            frameon=True,
+            fontsize=FONT_LEGEND,
+            title_fontsize=FONT_LEGEND_TITLE,
+        )
+        if dim_legend is not None:
+            ax.add_artist(dim_legend)
+        return size_legend
+
+    def _add_inf_boundary_arrows(ax: Any) -> None:
+        per_key_count: dict[tuple[Any, Any], int] = {}
+        for r in plot_df.itertuples(index=False):
+            if int(r.x_inf_dir) == 0 and int(r.y_inf_dir) == 0:
+                continue
+            key = (r.x_group, r.y_group)
+            k = per_key_count.get(key, 0)
+            per_key_count[key] = k + 1
+            spread = ((k % 5) - 2) * 4
+
+            if int(r.x_inf_dir) == 1:
+                ax.annotate(
+                    "",
+                    xy=(r.x_plot, r.y_plot),
+                    xytext=(20, 0),
+                    textcoords="offset points",
+                    arrowprops={"arrowstyle": "<-", "lw": 0.8, "alpha": 0.8},
+                    annotation_clip=False,
+                )
+                ax.annotate(
+                    "inf",
+                    xy=(r.x_plot, r.y_plot),
+                    xytext=(10, 12 + spread),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=FONT_ANNOT,
+                    bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none", "alpha": 0.8},
+                    annotation_clip=False,
+                )
+            elif int(r.x_inf_dir) == -1:
+                ax.annotate(
+                    "",
+                    xy=(r.x_plot, r.y_plot),
+                    xytext=(-20, 0),
+                    textcoords="offset points",
+                    arrowprops={"arrowstyle": "<-", "lw": 0.8, "alpha": 0.8},
+                    annotation_clip=False,
+                )
+                ax.annotate(
+                    "-inf",
+                    xy=(r.x_plot, r.y_plot),
+                    xytext=(-10, 12 + spread),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=FONT_ANNOT,
+                    bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none", "alpha": 0.8},
+                    annotation_clip=False,
+                )
+            if int(r.y_inf_dir) == 1:
+                ax.annotate(
+                    "inf",
+                    xy=(r.x_plot, r.y_plot),
+                    xytext=(spread, 14),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=FONT_ANNOT,
+                    bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none", "alpha": 0.75},
+                    arrowprops={"arrowstyle": "->", "lw": 0.65, "alpha": 0.7},
+                    annotation_clip=False,
+                )
+            elif int(r.y_inf_dir) == -1:
+                ax.annotate(
+                    "-inf",
+                    xy=(r.x_plot, r.y_plot),
+                    xytext=(spread, -14),
+                    textcoords="offset points",
+                    ha="center",
+                    va="top",
+                    fontsize=FONT_ANNOT,
+                    bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none", "alpha": 0.75},
+                    arrowprops={"arrowstyle": "->", "lw": 0.65, "alpha": 0.7},
+                    annotation_clip=False,
+                )
+
+    def _draw_points_with_overlap_styles(ax: Any) -> None:
+        xy_groups = plot_df.groupby(["x_group", "y_group"], sort=False, dropna=False)
+        xr = max(x_right - x_left, 1e-9)
+        yr = max(y_top - y_bottom, 1e-9)
+        for _, g in xy_groups:
+            rows = list(g.itertuples(index=False))
+            xp = float(np.mean([r.x_plot for r in rows]))
+            yp = float(np.mean([r.y_plot for r in rows]))
+            if len(rows) == 1:
+                r = rows[0]
+                ax.scatter(
+                    [xp],
+                    [yp],
+                    s=float(r.marker_size),
+                    color=color_map[str(r.Dimension)],
+                    alpha=0.9,
+                    edgecolors="black",
+                    linewidths=0.5,
+                    zorder=3,
+                )
+            elif len(rows) == 2:
+                r1, r2 = rows
+                mean_size = (float(r1.marker_size) + float(r2.marker_size)) / 2.0
+                ax.plot(
+                    [xp],
+                    [yp],
+                    marker="o",
+                    linestyle="None",
+                    markersize=np.sqrt(mean_size) * 1.05,
+                    markerfacecolor=color_map[str(r1.Dimension)],
+                    markerfacecoloralt=color_map[str(r2.Dimension)],
+                    fillstyle="left",
+                    markeredgecolor="black",
+                    markeredgewidth=0.8,
+                    alpha=1.0,
+                    zorder=5,
+                )
+            else:
+                for i, r in enumerate(rows):
+                    theta = 2 * np.pi * i / len(rows)
+                    jx = xp + 0.008 * xr * np.cos(theta)
+                    jy = yp + 0.012 * yr * np.sin(theta)
+                    ax.scatter(
+                        [jx],
+                        [jy],
+                        s=max(float(r.marker_size) * 0.55, 18),
+                        color=color_map[str(r.Dimension)],
+                        alpha=0.95,
+                        edgecolors="black",
+                        linewidths=0.45,
+                        zorder=5,
+                    )
+
+    label_position_map = {
+        "A1": "left",
+        "A2": "right",
+        "A3": "left",
+        "A4": "left",
+        "A5": "left",
+        "A6": "right",
+        "A7": "left",
+        "B1": "right",
+        "B3": "left",
+        "B5": "bottom",
+        "B6": "top",
+        "D1": "right",
+        "D2": "bottom",
+    }
+    position_to_style = {
+        "top": (0, 10, "center", "bottom"),
+        "bottom": (0, -10, "center", "top"),
+        "left": (-10, 0, "right", "center"),
+        "right": (10, 0, "left", "center"),
+    }
+
+    def _annotate_overlap_labels(
+        ax: Any,
+        text_col: str,
+        *,
+        position_map: dict[str, str] | None = None,
+        default_position: str = "top",
+        fontsize: int = FONT_ANNOT,
+    ) -> None:
+        grouped = plot_df.groupby(["x_group", "y_group"], dropna=False, sort=False)
+        dup_idx = grouped.cumcount()
+        group_sizes = grouped[text_col].transform("size")
+        for i, row in plot_df.iterrows():
+            k = int(dup_idx.loc[i])
+            n = int(group_sizes.loc[i])
+            label_txt = str(row[text_col])
+            pos = (position_map or {}).get(label_txt, default_position)
+            if pos not in position_to_style:
+                pos = default_position
+            ox, oy, ha, va = position_to_style[pos]
+
+            if n > 1:
+                spread_step = 4
+                centered_k = k - (n - 1) / 2.0
+                if pos in {"top", "bottom"}:
+                    ox += int(round(centered_k * spread_step))
+                else:
+                    oy += int(round(centered_k * spread_step))
+
+            arrow = {"arrowstyle": "-", "lw": 1.0, "alpha": 0.9, "color": "gray"}
+            ax.annotate(
+                label_txt,
+                (row["x_plot"], row["y_plot"]),
+                textcoords="offset points",
+                xytext=(ox, oy),
+                fontsize=fontsize,
+                alpha=0.97,
+                ha=ha,
+                va=va,
+                bbox={"boxstyle": "round,pad=0.15", "fc": "none", "ec": "none", "alpha": 0.0},
+                arrowprops=arrow,
+            )
+
+    fig, ax = plt.subplots(figsize=(12, 6.5))
+    _draw_points_with_overlap_styles(ax)
+    _annotate_overlap_labels(
+        ax,
+        "Label",
+        position_map=label_position_map,
+        default_position="top",
+        fontsize=FONT_ANNOT,
+    )
+    ax.set_xlabel("Robustness to log noise change", fontsize=FONT_AXIS_LABEL)
+    ax.set_ylabel("Responsiveness", fontsize=FONT_AXIS_LABEL)
+    ax.tick_params(axis="both", labelsize=FONT_TICKS)
+    ax.grid(True, alpha=0.25)
+    dim_leg = _add_dimension_legend(ax)
+    _add_size_legend(ax, dim_leg)
+    _add_inf_boundary_arrows(ax)
+    _add_inf_note_box(ax)
+    fig.tight_layout(rect=(0.0, 0.0, 0.76, 1.0))
+    fig.savefig(plot_path, dpi=200, bbox_inches="tight", pad_inches=0.25)
+    fig.savefig(plot_pdf_path, bbox_inches="tight", pad_inches=0.25)
+    plt.close(fig)
+    print(f"Saved scatter plot to: {plot_path}")
+    print(f"Saved scatter plot PDF to: {plot_pdf_path}")
+
+
 def run(
     *,
     across_seed_aggregation: Literal["mean", "median"] = "median",
@@ -721,6 +1347,7 @@ def run(
     stability_seed["stability_variance"] = stability_seed["Variance Pre"]
     stability_seed["stability_CV"] = _safe_ratio(stability_seed["Sample Std"], stability_seed["Mean Value"].abs())
     stability_seed["stability_inverse_CV"] = _safe_ratio(stability_seed["Mean Value"].abs(), stability_seed["Sample Std"])
+    setting_seed_no_none = setting_seed[setting_seed[NOISE_LEVEL_COL] != "None"].copy()
 
     noise_order = ["None", "Low", "High"]
     complexity_order = ["Simple", "Middle", "Complex"]
@@ -772,7 +1399,7 @@ def run(
         specs.append(
             {
                 "name": name,
-                "seed_df": setting_seed,
+                "seed_df": setting_seed_no_none,
                 "group_keys": ["Metric", NOISE_LEVEL_COL, MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL],
                 "column_levels": [NOISE_LEVEL_COL, MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL],
                 "order_map": order_map_noise,
@@ -901,6 +1528,19 @@ def run(
                 caption=f"{metric_spec['caption_prefix']} {view['caption_suffix']}",
                 label=f"tab:{metric_spec['label_prefix']}-{view['label_suffix']}",
             )
+
+    median_df = _build_median_across_all_obs(
+        stability_seed=stability_seed,
+        setting_seed=setting_seed,
+        process_seed=process_seed,
+    )
+    median_counts_df = _build_median_across_all_obs_counts(
+        stability_seed=stability_seed,
+        setting_seed=setting_seed,
+        process_seed=process_seed,
+    )
+    _save_median_across_all_obs_bundle(median_df, median_counts_df)
+    _plot_median_scatter(median_df)
 
     print("\nAnalysis complete.")
 
