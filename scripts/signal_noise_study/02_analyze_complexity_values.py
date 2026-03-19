@@ -532,7 +532,26 @@ def _build_pre_seed_table(df_enriched: pd.DataFrame) -> pd.DataFrame:
     return _collapse_within_seed(pre, group_keys_with_seed=keys, value_cols=values, agg_mode="median")
 
 
-def _build_setting_change_seed(pre_seed: pd.DataFrame) -> pd.DataFrame:
+def _compute_setting_change_deltas(d: pd.DataFrame, *, prefix: str) -> pd.DataFrame:
+    out = d.copy()
+    out[f"{prefix}_median_absChange"] = (out["Median Value"] - out["Baseline Median"]).abs()
+    out[f"{prefix}_mean_absChange"] = (out["Mean Value"] - out["Baseline Mean"]).abs()
+    out[f"{prefix}_median_relChange"] = _safe_ratio(
+        out[f"{prefix}_median_absChange"], out["Baseline Median"].abs()
+    )
+    out[f"{prefix}_mean_relChange"] = _safe_ratio(
+        out[f"{prefix}_mean_absChange"], out["Baseline Mean"].abs()
+    )
+    out[f"{prefix}_median_invRelChange"] = _safe_ratio(
+        out["Baseline Median"].abs(), out[f"{prefix}_median_absChange"]
+    )
+    out[f"{prefix}_mean_invRelChange"] = _safe_ratio(
+        out["Baseline Mean"].abs(), out[f"{prefix}_mean_absChange"]
+    )
+    return out
+
+
+def _build_setting_change_noise_to_baseline_seed(pre_seed: pd.DataFrame) -> pd.DataFrame:
     base_keys = ["Metric", SEED_COL, MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL]
     baseline = (
         pre_seed[pre_seed[NOISE_LEVEL_COL] == "None"]
@@ -542,13 +561,20 @@ def _build_setting_change_seed(pre_seed: pd.DataFrame) -> pd.DataFrame:
         .rename(columns={"Median Value": "Baseline Median", "Mean Value": "Baseline Mean"})
     )
     d = pre_seed.merge(baseline, on=base_keys, how="left")
-    d["settingChange_median_absChange"] = (d["Median Value"] - d["Baseline Median"]).abs()
-    d["settingChange_mean_absChange"] = (d["Mean Value"] - d["Baseline Mean"]).abs()
-    d["settingChange_median_relChange"] = _safe_ratio(d["settingChange_median_absChange"], d["Baseline Median"].abs())
-    d["settingChange_mean_relChange"] = _safe_ratio(d["settingChange_mean_absChange"], d["Baseline Mean"].abs())
-    d["settingChange_median_invRelChange"] = _safe_ratio(d["Baseline Median"].abs(), d["settingChange_median_absChange"])
-    d["settingChange_mean_invRelChange"] = _safe_ratio(d["Baseline Mean"].abs(), d["settingChange_mean_absChange"])
-    return d
+    return _compute_setting_change_deltas(d, prefix="settingChange_noiseToBaseline")
+
+
+def _build_setting_change_window_size_to_baseline_seed(pre_seed: pd.DataFrame) -> pd.DataFrame:
+    base_keys = ["Metric", SEED_COL, MODEL_COMPLEXITY_COL, NOISE_LEVEL_COL]
+    baseline = (
+        pre_seed[pre_seed[WINDOW_SIZE_COL] == 50]
+        .groupby(base_keys, dropna=False, sort=False)[["Median Value", "Mean Value"]]
+        .agg(_robust_median)
+        .reset_index()
+        .rename(columns={"Median Value": "Baseline Median", "Mean Value": "Baseline Mean"})
+    )
+    d = pre_seed.merge(baseline, on=base_keys, how="left")
+    return _compute_setting_change_deltas(d, prefix="settingChange_windowSizeToBaseline")
 
 
 def _build_process_change_seed(df_enriched: pd.DataFrame) -> pd.DataFrame:
@@ -746,7 +772,8 @@ def _metric_count_from_observations(
 def _build_median_across_all_obs(
     *,
     stability_seed: pd.DataFrame,
-    setting_seed: pd.DataFrame,
+    setting_noise_seed: pd.DataFrame,
+    setting_window_seed: pd.DataFrame,
     process_seed: pd.DataFrame,
 ) -> pd.DataFrame:
     reliability = _metric_median_from_observations(
@@ -754,9 +781,29 @@ def _build_median_across_all_obs(
         value_col="stability_inverse_CV",
         out_col="Reliability",
     )
+    robustness_obs = pd.concat(
+        [
+            setting_noise_seed[
+                setting_noise_seed[NOISE_LEVEL_COL] != "None"
+            ][["Metric", "settingChange_noiseToBaseline_median_invRelChange"]].rename(
+                columns={
+                    "settingChange_noiseToBaseline_median_invRelChange": "Robustness Source"
+                }
+            ),
+            setting_window_seed[
+                setting_window_seed[WINDOW_SIZE_COL] != 50
+            ][["Metric", "settingChange_windowSizeToBaseline_median_invRelChange"]].rename(
+                columns={
+                    "settingChange_windowSizeToBaseline_median_invRelChange": "Robustness Source"
+                }
+            ),
+        ],
+        axis=0,
+        ignore_index=True,
+    )
     robustness = _metric_median_from_observations(
-        df=setting_seed[setting_seed[NOISE_LEVEL_COL] != "None"].copy(),
-        value_col="settingChange_median_invRelChange",
+        df=robustness_obs,
+        value_col="Robustness Source",
         out_col="Robustness",
     )
     responsiveness = _metric_median_from_observations(
@@ -794,7 +841,8 @@ def _build_median_across_all_obs(
 def _build_median_across_all_obs_counts(
     *,
     stability_seed: pd.DataFrame,
-    setting_seed: pd.DataFrame,
+    setting_noise_seed: pd.DataFrame,
+    setting_window_seed: pd.DataFrame,
     process_seed: pd.DataFrame,
 ) -> pd.DataFrame:
     reliability = _metric_count_from_observations(
@@ -802,9 +850,29 @@ def _build_median_across_all_obs_counts(
         value_col="stability_inverse_CV",
         out_col="Reliability",
     )
+    robustness_obs = pd.concat(
+        [
+            setting_noise_seed[
+                setting_noise_seed[NOISE_LEVEL_COL] != "None"
+            ][["Metric", "settingChange_noiseToBaseline_median_invRelChange"]].rename(
+                columns={
+                    "settingChange_noiseToBaseline_median_invRelChange": "Robustness Source"
+                }
+            ),
+            setting_window_seed[
+                setting_window_seed[WINDOW_SIZE_COL] != 50
+            ][["Metric", "settingChange_windowSizeToBaseline_median_invRelChange"]].rename(
+                columns={
+                    "settingChange_windowSizeToBaseline_median_invRelChange": "Robustness Source"
+                }
+            ),
+        ],
+        axis=0,
+        ignore_index=True,
+    )
     robustness = _metric_count_from_observations(
-        df=setting_seed[setting_seed[NOISE_LEVEL_COL] != "None"].copy(),
-        value_col="settingChange_median_invRelChange",
+        df=robustness_obs,
+        value_col="Robustness Source",
         out_col="Robustness",
     )
     responsiveness = _metric_count_from_observations(
@@ -1340,27 +1408,36 @@ def run(
 
     print("Building per-seed tables (pre, setting-change, process-change)...")
     pre_seed = _build_pre_seed_table(df_enriched)
-    setting_seed = _build_setting_change_seed(pre_seed)
+    setting_noise_seed = _build_setting_change_noise_to_baseline_seed(pre_seed)
+    setting_window_seed = _build_setting_change_window_size_to_baseline_seed(pre_seed)
     process_seed = _build_process_change_seed(df_enriched)
     print(
         f"  Seed tables: pre={len(pre_seed):,}, "
-        f"setting={len(setting_seed):,}, process={len(process_seed):,}"
+        f"setting_noise={len(setting_noise_seed):,}, "
+        f"setting_window={len(setting_window_seed):,}, process={len(process_seed):,}"
     )
 
     stability_seed = pre_seed.copy()
     stability_seed["stability_variance"] = stability_seed["Variance Pre"]
     stability_seed["stability_CV"] = _safe_ratio(stability_seed["Sample Std"], stability_seed["Mean Value"].abs())
     stability_seed["stability_inverse_CV"] = _safe_ratio(stability_seed["Mean Value"].abs(), stability_seed["Sample Std"])
-    setting_seed_no_none = setting_seed[setting_seed[NOISE_LEVEL_COL] != "None"].copy()
+    setting_noise_seed_no_baseline = setting_noise_seed[
+        setting_noise_seed[NOISE_LEVEL_COL] != "None"
+    ].copy()
+    setting_window_seed_no_baseline = setting_window_seed[
+        setting_window_seed[WINDOW_SIZE_COL] != 50
+    ].copy()
 
     median_df = _build_median_across_all_obs(
         stability_seed=stability_seed,
-        setting_seed=setting_seed,
+        setting_noise_seed=setting_noise_seed,
+        setting_window_seed=setting_window_seed,
         process_seed=process_seed,
     )
     median_counts_df = _build_median_across_all_obs_counts(
         stability_seed=stability_seed,
-        setting_seed=setting_seed,
+        setting_noise_seed=setting_noise_seed,
+        setting_window_seed=setting_window_seed,
         process_seed=process_seed,
     )
     _save_median_across_all_obs_bundle(median_df, median_counts_df)
@@ -1411,17 +1488,37 @@ def run(
     ]
 
     for name in [
-        "settingChange_median_absChange",
-        "settingChange_mean_absChange",
-        "settingChange_median_relChange",
-        "settingChange_mean_relChange",
-        "settingChange_median_invRelChange",
-        "settingChange_mean_invRelChange",
+        "settingChange_noiseToBaseline_median_absChange",
+        "settingChange_noiseToBaseline_mean_absChange",
+        "settingChange_noiseToBaseline_median_relChange",
+        "settingChange_noiseToBaseline_mean_relChange",
+        "settingChange_noiseToBaseline_median_invRelChange",
+        "settingChange_noiseToBaseline_mean_invRelChange",
     ]:
         specs.append(
             {
                 "name": name,
-                "seed_df": setting_seed_no_none,
+                "seed_df": setting_noise_seed_no_baseline,
+                "group_keys": ["Metric", NOISE_LEVEL_COL, MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL],
+                "column_levels": [NOISE_LEVEL_COL, MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL],
+                "order_map": order_map_noise,
+                "caption": f"{name} aggregated across seeds.",
+                "label": f"tab:{name.replace('_', '-')}",
+            }
+        )
+
+    for name in [
+        "settingChange_windowSizeToBaseline_median_absChange",
+        "settingChange_windowSizeToBaseline_mean_absChange",
+        "settingChange_windowSizeToBaseline_median_relChange",
+        "settingChange_windowSizeToBaseline_mean_relChange",
+        "settingChange_windowSizeToBaseline_median_invRelChange",
+        "settingChange_windowSizeToBaseline_mean_invRelChange",
+    ]:
+        specs.append(
+            {
+                "name": name,
+                "seed_df": setting_window_seed_no_baseline,
                 "group_keys": ["Metric", NOISE_LEVEL_COL, MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL],
                 "column_levels": [NOISE_LEVEL_COL, MODEL_COMPLEXITY_COL, WINDOW_SIZE_COL],
                 "order_map": order_map_noise,
