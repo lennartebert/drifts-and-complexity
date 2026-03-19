@@ -1,0 +1,25 @@
+Noise Level,,None,None,None,None,None,None,None,None,None,Low,Low,Low,Low,Low,Low,Low,Low,Low,High,High,High,High,High,High,High,High,High
+Model Complexity,,Simple,Simple,Simple,Middle,Middle,Middle,Complex,Complex,Complex,Simple,Simple,Simple,Middle,Middle,Middle,Complex,Complex,Complex,Simple,Simple,Simple,Middle,Middle,Middle,Complex,Complex,Complex
+Window Size,,100,150,200,100,150,200,100,150,200,100,150,200,100,150,200,100,150,200,100,150,200,100,150,200,100,150,200
+Dimension,Metric,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Size,Number of Events,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Size,Number of Traces,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Size,Number of Distinct Activities,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Size,Number of Distinct Traces,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Size,Number of Distinct Directly-Follows Relations,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Size,Min. Trace Length,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Size,Avg. Trace Length,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Size,Max. Trace Length,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Variation,Percentage of Distinct Traces,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Variation,Average Distinct Activities per Trace,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Variation,Structure,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Variation,Estimated Number of Acyclic Paths,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Variation,Number of Ties in Paths to Goal,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Variation,Lempel-Ziv Complexity,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Distance,Average Affinity,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Distance,Deviation from Random,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Distance,Average Edit Distance,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Graph Entropy,Sequence Entropy,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Graph Entropy,Normalized Sequence Entropy,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Graph Entropy,Variant Entropy,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+Graph Entropy,Normalized Variant Entropy,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30

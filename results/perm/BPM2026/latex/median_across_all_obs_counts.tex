@@ -1,0 +1,40 @@
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Non-NaN observation counts used for median_across_all_obs.}
+\label{tab:median-across-all-obs-counts}
+\setlength{\tabcolsep}{2pt}  % default is 6pt
+\begin{tabular}{cccccc}
+\toprule
+    Dimension &                                        Metric & Label &  Reliability &  Robustness &  Responsiveness \\
+\midrule
+Size & Number of Events & A1 & \textbf{1080} & \textbf{1530} & 3236 \\
+Size & Number of Distinct Activities & A2 & \textbf{1080} & \textbf{1530} & 3057 \\
+Size & Number of Distinct Traces & A3 & \textbf{1080} & \textbf{1530} & 3149 \\
+Size & Number of Distinct Directly-Follows Relations & A4 & \textbf{1080} & \textbf{1530} & 3225 \\
+Size & Min. Trace Length & A5 & \textbf{1080} & \textbf{1530} & 2409 \\
+Size & Avg. Trace Length & A6 & \textbf{1080} & \textbf{1530} & 3236 \\
+Size & Max. Trace Length & A7 & \textbf{1080} & \textbf{1530} & 3202 \\
+Variation & Percentage of Distinct Traces & B1 & \textbf{1080} & \textbf{1530} & 3149 \\
+Variation & Average Distinct Activities per Trace & B2 & \textbf{1080} & \textbf{1530} & 3236 \\
+Variation & Structure & B3 & \textbf{1080} & \textbf{1530} & 3228 \\
+Variation & Estimated Number of Acyclic Paths & B4 & \textbf{1080} & \textbf{1530} & 3056 \\
+Variation & Number of Ties in Paths to Goal & B5 & \textbf{1080} & \textbf{1530} & \underline{3237} \\
+Variation & Lempel-Ziv Complexity & B6 & \textbf{1080} & \textbf{1530} & \textbf{3238} \\
+Distance & Average Affinity & C1 & \textbf{1080} & \textbf{1530} & 3160 \\
+Distance & Deviation from Random & C2 & \textbf{1080} & \textbf{1530} & \textbf{3238} \\
+Distance & Average Edit Distance & C3 & \underline{1060} & \underline{1515} & 3210 \\
+Graph Entropy & Sequence Entropy & D1 & \underline{1060} & \underline{1515} & 3198 \\
+Graph Entropy & Normalized Sequence Entropy & D2 & \underline{1060} & \underline{1515} & 3198 \\
+Graph Entropy & Variant Entropy & D3 & \underline{1060} & \underline{1515} & 3198 \\
+Graph Entropy & Normalized Variant Entropy & D4 & \underline{1060} & \underline{1515} & 3198 \\
+\bottomrule
+\end{tabular}
+\vspace{2pt}
+\begin{minipage}{\linewidth}
+\centering
+\scriptsize
+\tiny
+\textit{Formatting:} \textbf{Bold} = highest per column, \underline{underlined} = second highest per column.
+\end{minipage}
+\end{table}

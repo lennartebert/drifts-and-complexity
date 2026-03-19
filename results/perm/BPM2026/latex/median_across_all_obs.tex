@@ -1,0 +1,40 @@
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Observation-level medians of reliability, robustness, and responsiveness.}
+\label{tab:median-across-all-obs}
+\setlength{\tabcolsep}{2pt}  % default is 6pt
+\begin{tabular}{cccccc}
+\toprule
+    Dimension &                                        Metric & Label &  Reliability &  Robustness &  Responsiveness \\
+\midrule
+Size & Number of Events & A1 & 19.23 & 1.01 & 0.89 \\
+Size & Number of Distinct Activities & A2 & 20.74 & 46.26 & 1.03 \\
+Size & Number of Distinct Traces & A3 & 11.16 & 2.30 & 0.26 \\
+Size & Number of Distinct Directly-Follows Relations & A4 & 8.99 & 6.04 & 0.69 \\
+Size & Min. Trace Length & A5 & 10.38 & 26.00 & 0.91 \\
+Size & Avg. Trace Length & A6 & 19.23 & \textbf{2245.35} & 0.89 \\
+Size & Max. Trace Length & A7 & 5.52 & 9.40 & 0.36 \\
+Variation & Percentage of Distinct Traces & B1 & 11.16 & 7.20 & 0.26 \\
+Variation & Average Distinct Activities per Trace & B2 & 41.63 & \underline{1043.43} & \textbf{1.29} \\
+Variation & Structure & B3 & 23.59 & 30.21 & 0.49 \\
+Variation & Estimated Number of Acyclic Paths & B4 & 1.48 & 0.93 & 0.31 \\
+Variation & Number of Ties in Paths to Goal & B5 & 7.53 & 2.14 & 0.52 \\
+Variation & Lempel-Ziv Complexity & B6 & 17.91 & 1.60 & 0.71 \\
+Distance & Average Affinity & C1 & \underline{80.30} & 459.56 & 0.68 \\
+Distance & Deviation from Random & C2 & \textbf{125.74} & 555.03 & \underline{1.12} \\
+Distance & Average Edit Distance & C3 & 12.37 & 276.53 & 0.39 \\
+Graph Entropy & Sequence Entropy & D1 & 11.16 & 0.88 & 0.67 \\
+Graph Entropy & Normalized Sequence Entropy & D2 & 32.54 & 28.73 & 0.36 \\
+Graph Entropy & Variant Entropy & D3 & 6.45 & 1.48 & 0.54 \\
+Graph Entropy & Normalized Variant Entropy & D4 & 34.83 & 15.75 & 0.38 \\
+\bottomrule
+\end{tabular}
+\vspace{2pt}
+\begin{minipage}{\linewidth}
+\centering
+\scriptsize
+\tiny
+\textit{Formatting:} \textbf{Bold} = highest per column, \underline{underlined} = second highest per column.
+\end{minipage}
+\end{table}

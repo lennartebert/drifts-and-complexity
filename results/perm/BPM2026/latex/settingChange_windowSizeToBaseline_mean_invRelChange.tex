@@ -1,0 +1,44 @@
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{settingChange_windowSizeToBaseline_mean_invRelChange aggregated across seeds.}
+\label{tab:settingChange-windowSizeToBaseline-mean-invRelChange}
+\setlength{\tabcolsep}{2pt}  % default is 6pt
+\begin{tabular}{llccccccccccccccccccccccccccc}
+\toprule
+              & Noise Level & \multicolumn{9}{c}{None} & \multicolumn{9}{c}{Low} & \multicolumn{9}{c}{High} \\
+              & Model Complexity & \multicolumn{3}{c}{Simple} & \multicolumn{3}{c}{Middle} & \multicolumn{3}{c}{Complex} & \multicolumn{3}{c}{Simple} & \multicolumn{3}{c}{Middle} & \multicolumn{3}{c}{Complex} & \multicolumn{3}{c}{Simple} & \multicolumn{3}{c}{Middle} & \multicolumn{3}{c}{Complex} \\
+              & Window Size &      100 &      150 &     200 &    100 &    150 &    200 &     100 &    150 &    200 &     100 &     150 &     200 &    100 &    150 &    200 &     100 &    150 &    200 &     100 &     150 &     200 &    100 &    150 &    200 &     100 &    150 &    200 \\
+Dimension & Metric &          &          &         &        &        &        &         &        &        &         &         &         &        &        &        &         &        &        &         &         &         &        &        &        &         &        &        \\
+\midrule
+Size & Number of Events & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 \\
+              & Number of Traces & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 & 1.00 & 0.50 & 0.33 \\
+              & Number of Distinct Activities & inf & inf & inf & inf & inf & inf & inf & inf & inf & 120.70 & 57.50 & 37.69 & 164.68 & 85.83 & 55.89 & 131.62 & 67.89 & 45.09 & 53.43 & 26.29 & 17.60 & 59.59 & 32.65 & 23.23 & 75.96 & 42.40 & 26.11 \\
+              & Number of Distinct Traces & inf & inf & inf & 1.38 & 0.74 & 0.53 & 1.22 & 0.63 & 0.44 & 4.58 & 2.38 & 1.68 & 1.37 & 0.73 & 0.52 & 1.22 & 0.63 & 0.43 & 2.93 & 1.48 & 1.02 & 1.36 & 0.73 & 0.51 & 1.22 & 0.63 & 0.43 \\
+              & Number of Distinct Directly-Follows Relations & inf & inf & inf & 35.08 & 33.82 & 33.76 & 19.53 & 15.81 & 14.58 & 9.97 & 4.91 & 3.26 & 10.23 & 6.24 & 4.46 & 9.81 & 5.60 & 3.89 & 4.88 & 2.74 & 1.91 & 7.45 & 4.28 & 3.18 & 6.68 & 3.92 & 2.79 \\
+              & Min. Trace Length & inf & inf & inf & inf & inf & inf & inf & inf & inf & 42.62 & 23.45 & 15.96 & 179.40 & 91.08 & 59.13 & 135.60 & 68.71 & 52.48 & 24.12 & 13.36 & 10.00 & 68.07 & 33.92 & 23.21 & 83.23 & 46.21 & 33.86 \\
+              & Avg. Trace Length & inf & inf & inf & 275.45 & 337.55 & 374.24 & 162.01 & 209.50 & 202.63 & \underline{7016.59} & \underline{5799.85} & \underline{6663.96} & 273.76 & 329.36 & 355.12 & 163.50 & 213.13 & 200.95 & \textbf{6316.37} & \textbf{5610.41} & \textbf{5634.84} & 276.50 & 342.08 & 365.36 & 164.95 & 212.88 & 209.06 \\
+              & Max. Trace Length & inf & inf & inf & 7.31 & 4.55 & 3.75 & 7.08 & 4.61 & 3.51 & 35.30 & 20.62 & 14.69 & 7.31 & 4.54 & 3.75 & 7.08 & 4.62 & 3.52 & 22.93 & 12.74 & 9.40 & 7.28 & 4.54 & 3.75 & 7.06 & 4.61 & 3.51 \\
+Variation & Percentage of Distinct Traces & 2.00 & 1.50 & 1.33 & 7.22 & 4.61 & 3.62 & 10.93 & 7.13 & 5.63 & 2.56 & 1.90 & 1.66 & 7.39 & 4.73 & 3.70 & 11.11 & 7.26 & 5.74 & 3.04 & 2.27 & 1.98 & 7.51 & 4.79 & 3.84 & 11.28 & 7.40 & 5.79 \\
+              & Average Distinct Activities per Trace & inf & inf & inf & \underline{668.40} & \underline{575.07} & \textbf{686.30} & \underline{316.10} & \underline{462.81} & \underline{468.63} & \textbf{7637.65} & \textbf{7754.34} & \textbf{8109.05} & \underline{699.09} & \underline{592.07} & \textbf{664.62} & \underline{325.37} & \underline{486.97} & \underline{472.85} & \underline{6236.19} & \underline{4631.15} & \underline{4515.06} & \underline{656.03} & \underline{546.65} & \underline{596.06} & \underline{330.39} & \underline{455.16} & \underline{462.44} \\
+              & Structure & inf & inf & inf & 276.19 & 262.64 & 261.96 & 123.50 & 100.28 & 95.59 & 38.11 & 20.54 & 14.61 & 58.10 & 33.42 & 25.17 & 69.14 & 43.16 & 31.35 & 20.03 & 12.71 & 9.39 & 38.29 & 21.70 & 16.05 & 47.25 & 27.77 & 19.90 \\
+              & Estimated Number of Acyclic Paths & inf & inf & inf & 16.51 & 15.92 & 15.89 & 4.02 & 3.11 & 2.74 & 4.64 & 2.42 & 1.47 & 1.39 & 0.59 & 0.36 & 0.53 & 0.30 & 0.13 & 2.16 & 1.19 & 0.73 & 0.82 & 0.32 & 0.18 & 0.38 & 0.12 & 0.04 \\
+              & Number of Ties in Paths to Goal & inf & inf & inf & 1.15 & 0.59 & 0.40 & 1.05 & 0.54 & 0.36 & 4.01 & 2.21 & 1.60 & 1.15 & 0.59 & 0.40 & 1.05 & 0.54 & 0.36 & 2.84 & 1.49 & 1.01 & 1.15 & 0.59 & 0.40 & 1.04 & 0.54 & 0.36 \\
+              & Lempel-Ziv Complexity & 1.64 & 0.89 & 0.63 & 1.40 & 0.73 & 0.51 & 1.42 & 0.75 & 0.52 & 1.56 & 0.84 & 0.59 & 1.39 & 0.73 & 0.51 & 1.42 & 0.75 & 0.52 & 1.52 & 0.82 & 0.57 & 1.39 & 0.73 & 0.51 & 1.42 & 0.75 & 0.52 \\
+Distance & Average Affinity & \textbf{35139.80} & \textbf{13788.47} & \textbf{4652.14} & \textbf{872.96} & \textbf{653.69} & \underline{566.55} & \textbf{697.06} & \textbf{546.83} & \textbf{649.78} & 3071.83 & 2967.89 & 2979.87 & \textbf{944.21} & \textbf{606.93} & \underline{509.87} & \textbf{644.41} & \textbf{566.55} & \textbf{691.84} & 2976.44 & 1901.98 & 2271.78 & \textbf{765.03} & \textbf{731.76} & \textbf{641.60} & \textbf{780.27} & \textbf{588.27} & \textbf{652.74} \\
+              & Deviation from Random & \underline{717.35} & \underline{516.36} & 423.03 & 276.22 & 216.65 & 187.80 & 308.47 & 211.35 & 189.39 & 1160.80 & 1217.37 & 743.79 & 297.74 & 246.27 & 218.63 & 311.93 & 230.58 & 210.45 & 1341.88 & 675.57 & 448.09 & 331.28 & 292.98 & 269.44 & 325.26 & 240.06 & 231.73 \\
+              & Average Edit Distance & 543.53 & 308.26 & \underline{435.04} & 286.65 & 269.17 & 273.69 & 124.46 & 158.58 & 137.99 & 418.08 & 245.33 & 244.07 & 270.14 & 286.08 & 265.37 & 123.74 & 152.76 & 139.00 & 308.36 & 213.19 & 260.96 & 276.86 & 278.73 & 275.99 & 127.28 & 165.01 & 140.15 \\
+Graph Entropy & Sequence Entropy & 0.95 & 0.47 & 0.32 & 0.80 & 0.38 & 0.25 & 0.76 & 0.36 & 0.23 & 0.93 & 0.47 & 0.31 & 0.80 & 0.38 & 0.25 & 0.76 & 0.36 & 0.23 & 0.92 & 0.46 & 0.30 & 0.80 & 0.38 & 0.25 & 0.76 & 0.36 & 0.23 \\
+              & Normalized Sequence Entropy & 11.07 & 7.42 & 5.86 & 30.15 & 19.72 & 15.86 & 20.88 & 15.32 & 13.28 & 11.39 & 7.72 & 6.48 & 30.45 & 20.26 & 15.92 & 20.62 & 15.15 & 13.15 & 11.70 & 8.12 & 6.38 & 30.66 & 20.24 & 16.16 & 20.76 & 15.19 & 13.08 \\
+              & Variant Entropy & 23.78 & 23.78 & 23.78 & 0.99 & 0.50 & 0.33 & 0.85 & 0.42 & 0.28 & 2.66 & 1.50 & 0.98 & 0.99 & 0.49 & 0.33 & 0.85 & 0.42 & 0.28 & 1.78 & 0.92 & 0.62 & 0.98 & 0.49 & 0.33 & 0.85 & 0.42 & 0.28 \\
+              & Normalized Variant Entropy & 62.03 & 51.96 & 29.75 & 15.43 & 10.24 & 8.37 & 13.87 & 9.18 & 7.51 & 14.82 & 9.31 & 6.98 & 15.41 & 10.22 & 8.36 & 13.87 & 9.19 & 7.51 & 12.06 & 7.52 & 5.75 & 15.40 & 10.22 & 8.36 & 13.89 & 9.18 & 7.50 \\
+\bottomrule
+\end{tabular}
+\vspace{2pt}
+\begin{minipage}{\linewidth}
+\centering
+\scriptsize
+\tiny
+\textit{Formatting:} \textbf{Bold} = highest per column, \underline{underlined} = second highest per column.
+\end{minipage}
+\end{table}

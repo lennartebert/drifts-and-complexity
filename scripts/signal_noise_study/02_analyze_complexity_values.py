@@ -30,6 +30,8 @@ PATH_AGG = "results/signal_noise_study/aggregate_analysis.csv"
 PATH_GEN_INFO = "data/synthetic/sudden_drifts/generation_info.csv"
 DIR_CSV = "results/signal_noise_study/csvs"
 DIR_LATEX = "results/signal_noise_study/latex"
+PATH_MEDIAN_ACROSS_ALL_OBS = f"{DIR_CSV}/median_across_all_obs.csv"
+MEDIAN_OVERVIEW_SAME_SEED_STAT: Literal["mean", "median"] = "mean"
 
 DEFAULT_TEST_SEEDS = [43, 44] # only used if in test mode (flag --test is set)
 
@@ -376,16 +378,7 @@ def _headers_underscores_to_spaces(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _apply_latex_metric_names(df: pd.DataFrame, index: bool) -> pd.DataFrame:
-    out = df.copy()
-    if index and isinstance(out.index, pd.MultiIndex) and "Metric" in out.index.names:
-        p = out.index.names.index("Metric")
-        vals = out.index.levels[p]
-        out.index = out.index.set_levels([METRIC_NAMES_TO_LATEX_MAP.get(v, str(v)) for v in vals], level=p)
-    elif index and out.index.name == "Metric":
-        out.index = pd.Index([METRIC_NAMES_TO_LATEX_MAP.get(v, str(v)) for v in out.index], name=out.index.name)
-    elif "Metric" in out.columns:
-        out["Metric"] = out["Metric"].map(lambda v: METRIC_NAMES_TO_LATEX_MAP.get(v, str(v)))
-    return out
+    return df.copy()
 
 
 def _inject_rank_highlight(latex: str, df: pd.DataFrame, n_index_cols: int) -> str:
@@ -769,6 +762,15 @@ def _metric_count_from_observations(
     return counts[["Dimension", "Metric", out_col]]
 
 
+def _median_overview_same_seed_measure_cols() -> dict[str, str]:
+    stat = MEDIAN_OVERVIEW_SAME_SEED_STAT
+    return {
+        "noise_robustness": f"settingChange_noiseToBaseline_{stat}_invRelChange",
+        "window_robustness": f"settingChange_windowSizeToBaseline_{stat}_invRelChange",
+        "responsiveness": f"processChange_{stat}_cohensD",
+    }
+
+
 def _build_median_across_all_obs(
     *,
     stability_seed: pd.DataFrame,
@@ -776,6 +778,7 @@ def _build_median_across_all_obs(
     setting_window_seed: pd.DataFrame,
     process_seed: pd.DataFrame,
 ) -> pd.DataFrame:
+    measure_cols = _median_overview_same_seed_measure_cols()
     reliability = _metric_median_from_observations(
         df=stability_seed,
         value_col="stability_inverse_CV",
@@ -785,16 +788,16 @@ def _build_median_across_all_obs(
         [
             setting_noise_seed[
                 setting_noise_seed[NOISE_LEVEL_COL] != "None"
-            ][["Metric", "settingChange_noiseToBaseline_median_invRelChange"]].rename(
+            ][["Metric", measure_cols["noise_robustness"]]].rename(
                 columns={
-                    "settingChange_noiseToBaseline_median_invRelChange": "Robustness Source"
+                    measure_cols["noise_robustness"]: "Robustness Source"
                 }
             ),
             setting_window_seed[
                 setting_window_seed[WINDOW_SIZE_COL] != 50
-            ][["Metric", "settingChange_windowSizeToBaseline_median_invRelChange"]].rename(
+            ][["Metric", measure_cols["window_robustness"]]].rename(
                 columns={
-                    "settingChange_windowSizeToBaseline_median_invRelChange": "Robustness Source"
+                    measure_cols["window_robustness"]: "Robustness Source"
                 }
             ),
         ],
@@ -808,7 +811,7 @@ def _build_median_across_all_obs(
     )
     responsiveness = _metric_median_from_observations(
         df=process_seed[process_seed[EDIT_OPERATIONS_COL] == "mixed"].copy(),
-        value_col="processChange_median_cohensD",
+        value_col=measure_cols["responsiveness"],
         out_col="Responsiveness",
     )
 
@@ -845,6 +848,7 @@ def _build_median_across_all_obs_counts(
     setting_window_seed: pd.DataFrame,
     process_seed: pd.DataFrame,
 ) -> pd.DataFrame:
+    measure_cols = _median_overview_same_seed_measure_cols()
     reliability = _metric_count_from_observations(
         df=stability_seed,
         value_col="stability_inverse_CV",
@@ -854,16 +858,16 @@ def _build_median_across_all_obs_counts(
         [
             setting_noise_seed[
                 setting_noise_seed[NOISE_LEVEL_COL] != "None"
-            ][["Metric", "settingChange_noiseToBaseline_median_invRelChange"]].rename(
+            ][["Metric", measure_cols["noise_robustness"]]].rename(
                 columns={
-                    "settingChange_noiseToBaseline_median_invRelChange": "Robustness Source"
+                    measure_cols["noise_robustness"]: "Robustness Source"
                 }
             ),
             setting_window_seed[
                 setting_window_seed[WINDOW_SIZE_COL] != 50
-            ][["Metric", "settingChange_windowSizeToBaseline_median_invRelChange"]].rename(
+            ][["Metric", measure_cols["window_robustness"]]].rename(
                 columns={
-                    "settingChange_windowSizeToBaseline_median_invRelChange": "Robustness Source"
+                    measure_cols["window_robustness"]: "Robustness Source"
                 }
             ),
         ],
@@ -877,7 +881,7 @@ def _build_median_across_all_obs_counts(
     )
     responsiveness = _metric_count_from_observations(
         df=process_seed[process_seed[EDIT_OPERATIONS_COL] == "mixed"].copy(),
-        value_col="processChange_median_cohensD",
+        value_col=measure_cols["responsiveness"],
         out_col="Responsiveness",
     )
 
@@ -912,7 +916,7 @@ def _build_median_across_all_obs_counts(
 
 def _save_median_across_all_obs_bundle(median_df: pd.DataFrame, count_df: pd.DataFrame) -> None:
     Path(DIR_CSV).mkdir(parents=True, exist_ok=True)
-    value_csv = Path(DIR_CSV) / "median_across_all_obs.csv"
+    value_csv = Path(PATH_MEDIAN_ACROSS_ALL_OBS)
     count_csv = Path(DIR_CSV) / "median_across_all_obs_counts.csv"
     median_df.to_csv(value_csv, index=False)
     count_df.to_csv(count_csv, index=False)
@@ -938,7 +942,21 @@ def _save_median_across_all_obs_bundle(median_df: pd.DataFrame, count_df: pd.Dat
     print(f"Saved {Path(DIR_LATEX) / 'median_across_all_obs_counts.tex'}")
 
 
-def _plot_median_scatter(median_df: pd.DataFrame) -> None:
+def _load_saved_median_across_all_obs() -> pd.DataFrame:
+    path = Path(PATH_MEDIAN_ACROSS_ALL_OBS)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Cannot create scatter plots from saved overview: missing file {path}"
+        )
+    out = pd.read_csv(path)
+    required = ["Dimension", "Metric", "Label", "Reliability", "Robustness", "Responsiveness"]
+    missing = [c for c in required if c not in out.columns]
+    if missing:
+        raise ValueError(f"Missing required columns in {path}: {missing}")
+    return out[required].copy()
+
+
+def _plot_median_scatter_variant(median_df: pd.DataFrame, *, log_x: bool) -> None:
     try:
         matplotlib = importlib.import_module("matplotlib")
         matplotlib.use("Agg")
@@ -951,14 +969,24 @@ def _plot_median_scatter(median_df: pd.DataFrame) -> None:
 
     plots_dir = Path("results/signal_noise_study/plots")
     plots_dir.mkdir(parents=True, exist_ok=True)
-    plot_path = plots_dir / "median_scatter.png"
-    plot_pdf_path = plots_dir / "median_scatter.pdf"
+    stem = "median_scatter_logx" if log_x else "median_scatter"
+    plot_path = plots_dir / f"{stem}.png"
+    plot_pdf_path = plots_dir / f"{stem}.pdf"
 
     plot_df = median_df.copy()
     x_col = "Robustness"
     y_col = "Responsiveness"
     for col in ["Reliability", x_col, y_col]:
         plot_df[col] = pd.to_numeric(plot_df[col], errors="coerce")
+    if log_x:
+        non_positive = (plot_df[x_col] <= 0) & plot_df[x_col].notna()
+        if non_positive.any():
+            skipped = int(non_positive.sum())
+            print(
+                f"Skipping {skipped} rows in log-x median scatter because "
+                f"{x_col} <= 0 cannot be shown on a log axis."
+            )
+            plot_df = plot_df[~non_positive].copy()
     plot_df = plot_df.dropna(subset=[x_col, y_col]).copy()
     if len(plot_df) == 0:
         print("Skipping median scatter plot: no finite Robustness/Responsiveness rows.")
@@ -978,9 +1006,15 @@ def _plot_median_scatter(median_df: pd.DataFrame) -> None:
     else:
         y_min, y_max = float(y_finite.min()), float(y_finite.max())
 
-    x_pad = max((x_max - x_min) * 0.05, 1e-9)
+    if log_x:
+        if x_min <= 0:
+            raise ValueError("Log-x median scatter requires positive finite robustness values.")
+        x_pad_factor = 1.05
+        x_left, x_right = x_min / x_pad_factor, x_max * x_pad_factor
+    else:
+        x_pad = max((x_max - x_min) * 0.05, 1e-9)
+        x_left, x_right = x_min - x_pad, x_max + x_pad
     y_pad = max((y_max - y_min) * 0.05, 1e-9)
-    x_left, x_right = x_min - x_pad, x_max + x_pad
     y_bottom, y_top = y_min - y_pad, y_max + y_pad
 
     plot_df["x_plot"] = x.replace(np.inf, x_right).replace(-np.inf, x_left)
@@ -1342,7 +1376,9 @@ def _plot_median_scatter(median_df: pd.DataFrame) -> None:
         default_position="top",
         fontsize=FONT_ANNOT,
     )
-    ax.set_xlabel("Robustness to log noise change", fontsize=FONT_AXIS_LABEL)
+    if log_x:
+        ax.set_xscale("log")
+    ax.set_xlabel("Robustness", fontsize=FONT_AXIS_LABEL)
     ax.set_ylabel("Responsiveness", fontsize=FONT_AXIS_LABEL)
     ax.tick_params(axis="both", labelsize=FONT_TICKS)
     ax.grid(True, alpha=0.25)
@@ -1354,8 +1390,14 @@ def _plot_median_scatter(median_df: pd.DataFrame) -> None:
     fig.savefig(plot_path, dpi=200, bbox_inches="tight", pad_inches=0.25)
     fig.savefig(plot_pdf_path, bbox_inches="tight", pad_inches=0.25)
     plt.close(fig)
-    print(f"Saved scatter plot to: {plot_path}")
-    print(f"Saved scatter plot PDF to: {plot_pdf_path}")
+    scale_label = "log-x" if log_x else "linear"
+    print(f"Saved {scale_label} scatter plot to: {plot_path}")
+    print(f"Saved {scale_label} scatter plot PDF to: {plot_pdf_path}")
+
+
+def _plot_median_scatters(median_df: pd.DataFrame) -> None:
+    _plot_median_scatter_variant(median_df, log_x=False)
+    _plot_median_scatter_variant(median_df, log_x=True)
 
 
 def run(
@@ -1364,7 +1406,15 @@ def run(
     test_mode: bool = False,
     test_seeds: list[int] | None = None,
     only_median_overview: bool = False,
+    plot_from_median_overview_csv: bool = False,
 ) -> None:
+    if plot_from_median_overview_csv:
+        print("Loading median_across_all_obs.csv for scatter plot generation...")
+        median_df = _load_saved_median_across_all_obs()
+        _plot_median_scatters(median_df)
+        print("\nScatter plot generation complete.")
+        return
+
     if test_mode:
         seeds = test_seeds if test_seeds is not None else DEFAULT_TEST_SEEDS
         if len(seeds) != 2:
@@ -1441,7 +1491,7 @@ def run(
         process_seed=process_seed,
     )
     _save_median_across_all_obs_bundle(median_df, median_counts_df)
-    _plot_median_scatter(median_df)
+    _plot_median_scatters(median_df)
 
     if only_median_overview:
         print("Only median overview requested; skipping all other aggregate tables.")
@@ -1669,6 +1719,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Generate only median_across_all_obs (+counts) and median_scatter outputs.",
     )
+    parser.add_argument(
+        "--plot-from-median-overview-csv",
+        action="store_true",
+        help="Generate median scatter plot variants directly from median_across_all_obs.csv.",
+    )
     return parser.parse_args()
 
 
@@ -1681,6 +1736,7 @@ if __name__ == "__main__":
             test_mode=args.test,
             test_seeds=DEFAULT_TEST_SEEDS,
             only_median_overview=args.only_median_overview,
+            plot_from_median_overview_csv=args.plot_from_median_overview_csv,
         )
     if caught_warnings:
         print(f"\n  {len(caught_warnings)} runtime warning(s) captured.")

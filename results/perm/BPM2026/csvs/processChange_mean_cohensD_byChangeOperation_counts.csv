@@ -1,0 +1,22 @@
+Dimension,Metric,deletion,insertion,activity_replacement,resequentialization,operator_replacement,mixed
+Size,Number of Events,3240,3228,2976,2988,3192,3236
+Size,Number of Traces,0,0,0,0,0,0
+Size,Number of Distinct Activities,3240,3240,2649,2202,2194,3057
+Size,Number of Distinct Traces,3149,3150,3138,3143,3237,3149
+Size,Number of Distinct Directly-Follows Relations,3234,3236,3011,3068,3201,3225
+Size,Min. Trace Length,2518,2479,1903,2083,2245,2409
+Size,Avg. Trace Length,3240,3228,2976,2988,3192,3236
+Size,Max. Trace Length,3201,3219,2919,2943,3159,3202
+Variation,Percentage of Distinct Traces,3149,3150,3138,3143,3237,3149
+Variation,Average Distinct Activities per Trace,3240,3228,2976,2988,3192,3236
+Variation,Structure,3240,3240,3012,3068,3201,3228
+Variation,Estimated Number of Acyclic Paths,3071,3049,2964,3068,3201,3056
+Variation,Number of Ties in Paths to Goal,3240,3237,3138,3142,3240,3237
+Variation,Lempel-Ziv Complexity,3240,3240,3207,3204,3240,3238
+Distance,Average Affinity,3162,3162,3162,3084,3204,3160
+Distance,Deviation from Random,3240,3240,3210,3204,3240,3238
+Distance,Average Edit Distance,3210,3210,3210,3204,3240,3210
+Graph Entropy,Sequence Entropy,3210,3192,3210,3204,3240,3198
+Graph Entropy,Normalized Sequence Entropy,3210,3192,3210,3204,3240,3198
+Graph Entropy,Variant Entropy,3210,3192,3156,3172,3240,3198
+Graph Entropy,Normalized Variant Entropy,3210,3192,3156,3172,3240,3198

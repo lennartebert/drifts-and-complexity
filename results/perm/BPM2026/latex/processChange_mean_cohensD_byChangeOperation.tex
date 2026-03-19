@@ -1,0 +1,41 @@
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{processChange_mean_cohensD by change operation.}
+\label{tab:processchange-mean-cohensd-by-changeoperation}
+\setlength{\tabcolsep}{2pt}  % default is 6pt
+\begin{tabular}{llcccccc}
+\toprule
+              & Edit Operations &  deletion &  insertion &  activity replacement &  resequentialization &  operator replacement &  mixed \\
+Dimension & Metric &           &            &                       &                      &                       &        \\
+\midrule
+Size & Number of Events & 1.26 & 0.98 & 0.12 & 0.18 & 0.82 & 0.89 \\
+              & Number of Distinct Activities & 1.30 & \underline{1.31} & \textbf{0.14} & 0.15 & 0.15 & 1.03 \\
+              & Number of Distinct Traces & 0.46 & 0.26 & 0.12 & 0.21 & 0.61 & 0.26 \\
+              & Number of Distinct Directly-Follows Relations & 1.11 & 0.84 & 0.10 & 0.23 & 0.42 & 0.69 \\
+              & Min. Trace Length & 1.06 & 1.00 & 0.13 & 0.21 & 0.43 & 0.91 \\
+              & Avg. Trace Length & 1.26 & 0.98 & 0.12 & 0.18 & 0.82 & 0.89 \\
+              & Max. Trace Length & 0.56 & 0.33 & 0.13 & 0.18 & 0.42 & 0.36 \\
+Variation & Percentage of Distinct Traces & 0.46 & 0.26 & 0.12 & 0.21 & 0.61 & 0.26 \\
+              & Average Distinct Activities per Trace & \textbf{1.51} & \textbf{1.42} & 0.13 & 0.21 & 0.75 & \textbf{1.29} \\
+              & Structure & 0.61 & 0.56 & 0.11 & 0.21 & 0.43 & 0.49 \\
+              & Estimated Number of Acyclic Paths & 0.40 & 0.38 & 0.11 & 0.19 & 0.32 & 0.31 \\
+              & Number of Ties in Paths to Goal & 0.92 & 0.59 & 0.12 & 0.20 & 0.67 & 0.52 \\
+              & Lempel-Ziv Complexity & 1.06 & 0.76 & 0.12 & 0.23 & 0.71 & 0.71 \\
+Distance & Average Affinity & 1.05 & 0.95 & 0.11 & 0.18 & 0.80 & 0.68 \\
+              & Deviation from Random & \underline{1.35} & 1.10 & 0.12 & \textbf{0.24} & \textbf{1.14} & \underline{1.12} \\
+              & Average Edit Distance & 0.85 & 0.39 & \underline{0.14} & 0.21 & \underline{0.91} & 0.39 \\
+Graph Entropy & Sequence Entropy & 1.01 & 0.76 & 0.11 & 0.22 & 0.83 & 0.67 \\
+              & Normalized Sequence Entropy & 0.54 & 0.31 & 0.11 & 0.23 & 0.85 & 0.36 \\
+              & Variant Entropy & 0.86 & 0.60 & 0.12 & \underline{0.24} & 0.72 & 0.54 \\
+              & Normalized Variant Entropy & 0.56 & 0.37 & 0.12 & 0.23 & 0.65 & 0.38 \\
+\bottomrule
+\end{tabular}
+\vspace{2pt}
+\begin{minipage}{\linewidth}
+\centering
+\scriptsize
+\tiny
+\textit{Formatting:} \textbf{Bold} = highest per column, \underline{underlined} = second highest per column.
+\end{minipage}
+\end{table}

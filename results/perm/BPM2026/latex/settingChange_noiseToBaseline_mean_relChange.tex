@@ -1,0 +1,44 @@
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{settingChange_noiseToBaseline_mean_relChange aggregated across seeds.}
+\label{tab:settingChange-noiseToBaseline-mean-relChange}
+\setlength{\tabcolsep}{2pt}  % default is 6pt
+\begin{tabular}{llcccccccccccccccccccccccc}
+\toprule
+              & Noise Level & \multicolumn{12}{c}{Low} & \multicolumn{12}{c}{High} \\
+              & Model Complexity & \multicolumn{4}{c}{Simple} & \multicolumn{4}{c}{Middle} & \multicolumn{4}{c}{Complex} & \multicolumn{4}{c}{Simple} & \multicolumn{4}{c}{Middle} & \multicolumn{4}{c}{Complex} \\
+              & Window Size &     50 &  100 &  150 &  200 &     50 &  100 &  150 &  200 &      50 &  100 &  150 &  200 &     50 &  100 &  150 &  200 &     50 &  100 &  150 &  200 &      50 &  100 &  150 &   200 \\
+Dimension & Metric &        &      &      &      &        &      &      &      &         &      &      &      &        &      &      &      &        &      &      &      &         &      &      &       \\
+\midrule
+Size & Number of Events & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+              & Number of Traces & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+              & Number of Distinct Activities & 0.01 & 0.02 & 0.03 & 0.03 & 0.01 & 0.01 & 0.02 & 0.02 & 0.01 & 0.01 & 0.02 & 0.03 & 0.02 & 0.04 & 0.05 & 0.07 & 0.01 & 0.03 & 0.04 & 0.05 & 0.01 & 0.02 & 0.04 & 0.05 \\
+              & Number of Distinct Traces & 0.14 & 0.27 & 0.39 & 0.49 & 0.01 & 0.01 & 0.02 & 0.02 & 0.00 & 0.01 & 0.01 & 0.01 & 0.31 & 0.52 & 0.75 & 0.97 & 0.02 & 0.03 & 0.03 & 0.04 & 0.01 & 0.02 & 0.02 & 0.02 \\
+              & Number of Distinct Directly-Follows Relations & 0.11 & 0.21 & 0.30 & 0.39 & \underline{0.05} & \underline{0.08} & \underline{0.12} & \underline{0.17} & \underline{0.04} & \underline{0.07} & \underline{0.12} & \underline{0.15} & 0.22 & 0.41 & 0.56 & 0.72 & \underline{0.09} & \underline{0.18} & \underline{0.26} & \underline{0.34} & \underline{0.08} & \underline{0.16} & \underline{0.23} & \underline{0.31} \\
+              & Min. Trace Length & 0.03 & 0.05 & 0.07 & 0.09 & 0.01 & 0.01 & 0.02 & 0.02 & 0.00 & 0.01 & 0.02 & 0.02 & 0.05 & 0.09 & 0.12 & 0.14 & 0.02 & 0.03 & 0.04 & 0.06 & 0.01 & 0.02 & 0.03 & 0.03 \\
+              & Avg. Trace Length & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+              & Max. Trace Length & 0.02 & 0.05 & 0.07 & 0.08 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.05 & 0.09 & 0.11 & 0.14 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+Variation & Percentage of Distinct Traces & 0.14 & 0.27 & 0.39 & 0.49 & 0.01 & 0.01 & 0.02 & 0.02 & 0.00 & 0.01 & 0.01 & 0.01 & 0.31 & 0.52 & 0.75 & 0.97 & 0.02 & 0.03 & 0.03 & 0.04 & 0.01 & 0.02 & 0.02 & 0.02 \\
+              & Average Distinct Activities per Trace & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+              & Structure & 0.02 & 0.04 & 0.06 & 0.08 & 0.01 & 0.01 & 0.02 & 0.03 & 0.00 & 0.01 & 0.02 & 0.03 & 0.05 & 0.09 & 0.12 & 0.14 & 0.01 & 0.03 & 0.05 & 0.06 & 0.01 & 0.02 & 0.03 & 0.04 \\
+              & Estimated Number of Acyclic Paths & \underline{0.18} & \underline{0.39} & \underline{0.59} & \underline{0.82} & \textbf{0.25} & \textbf{0.57} & \textbf{0.90} & \textbf{1.25} & \textbf{0.47} & \textbf{1.31} & \textbf{2.90} & \textbf{4.11} & \underline{0.42} & \textbf{0.97} & \textbf{1.55} & \textbf{2.23} & \textbf{0.62} & \textbf{1.48} & \textbf{2.64} & \textbf{4.12} & \textbf{1.13} & \textbf{2.86} & \textbf{6.21} & \textbf{12.46} \\
+              & Number of Ties in Paths to Goal & 0.12 & 0.25 & 0.37 & 0.49 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.31 & 0.54 & 0.78 & 1.00 & 0.00 & 0.01 & 0.01 & 0.01 & 0.00 & 0.00 & 0.00 & 0.00 \\
+              & Lempel-Ziv Complexity & 0.02 & 0.05 & 0.06 & 0.07 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.05 & 0.09 & 0.11 & 0.13 & 0.00 & 0.00 & 0.01 & 0.01 & 0.00 & 0.00 & 0.01 & 0.01 \\
+Distance & Average Affinity & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.01 & 0.01 & 0.01 & 0.01 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+              & Deviation from Random & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+              & Average Edit Distance & 0.01 & 0.01 & 0.01 & 0.01 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.03 & 0.03 & 0.03 & 0.03 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+Graph Entropy & Sequence Entropy & 0.03 & 0.04 & 0.04 & 0.04 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.07 & 0.08 & 0.08 & 0.09 & 0.01 & 0.01 & 0.01 & 0.01 & 0.00 & 0.00 & 0.00 & 0.00 \\
+              & Normalized Sequence Entropy & 0.03 & 0.04 & 0.04 & 0.04 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.07 & 0.08 & 0.09 & 0.09 & 0.00 & 0.01 & 0.01 & 0.01 & 0.00 & 0.00 & 0.00 & 0.00 \\
+              & Variant Entropy & \textbf{0.26} & \textbf{0.46} & \textbf{0.65} & \textbf{0.84} & 0.01 & 0.01 & 0.01 & 0.01 & 0.00 & 0.01 & 0.01 & 0.01 & \textbf{0.54} & \underline{0.94} & \underline{1.35} & \underline{1.75} & 0.02 & 0.02 & 0.03 & 0.03 & 0.01 & 0.01 & 0.01 & 0.02 \\
+              & Normalized Variant Entropy & 0.04 & 0.07 & 0.08 & 0.09 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.08 & 0.11 & 0.13 & 0.14 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+\bottomrule
+\end{tabular}
+\vspace{2pt}
+\begin{minipage}{\linewidth}
+\centering
+\scriptsize
+\tiny
+\textit{Formatting:} \textbf{Bold} = highest per column, \underline{underlined} = second highest per column.
+\end{minipage}
+\end{table}

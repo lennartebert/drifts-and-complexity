@@ -1,0 +1,21 @@
+Dimension,Metric,Label,Reliability,Robustness,Responsiveness
+Size,Number of Events,A1,1080,1530,3236
+Size,Number of Distinct Activities,A2,1080,1530,3057
+Size,Number of Distinct Traces,A3,1080,1530,3149
+Size,Number of Distinct Directly-Follows Relations,A4,1080,1530,3225
+Size,Min. Trace Length,A5,1080,1530,2409
+Size,Avg. Trace Length,A6,1080,1530,3236
+Size,Max. Trace Length,A7,1080,1530,3202
+Variation,Percentage of Distinct Traces,B1,1080,1530,3149
+Variation,Average Distinct Activities per Trace,B2,1080,1530,3236
+Variation,Structure,B3,1080,1530,3228
+Variation,Estimated Number of Acyclic Paths,B4,1080,1530,3056
+Variation,Number of Ties in Paths to Goal,B5,1080,1530,3237
+Variation,Lempel-Ziv Complexity,B6,1080,1530,3238
+Distance,Average Affinity,C1,1080,1530,3160
+Distance,Deviation from Random,C2,1080,1530,3238
+Distance,Average Edit Distance,C3,1060,1515,3210
+Graph Entropy,Sequence Entropy,D1,1060,1515,3198
+Graph Entropy,Normalized Sequence Entropy,D2,1060,1515,3198
+Graph Entropy,Variant Entropy,D3,1060,1515,3198
+Graph Entropy,Normalized Variant Entropy,D4,1060,1515,3198
