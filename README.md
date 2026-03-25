@@ -92,6 +92,13 @@ The main analysis pipeline consists of two steps:
 - `--mode {all,detection-only,complexity-only}`: Control which steps to run
 - `--plot-coverage-curves`: Generate iNEXT coverage curves
 
+Windowing is configured in `scripts/change_study/window_config.yml` via the `approaches:` list.
+Supported approach `type`s are:
+- `change_point_windows`
+- `fixed_trace_windows` (trace-index based; renamed from `fixed_size_windows`)
+- `fixed_time_windows` (time-based; params: `window_size`, `offset`, `unit`, `align_first_window`)
+- `window_comparison`
+
 **Output locations:**
 - Complexity results: `results/complexity_assessment/<dataset_name>/`
 - Combined results: `results/combined_results/`

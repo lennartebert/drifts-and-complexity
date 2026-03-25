@@ -7,7 +7,9 @@ from typing import Any, Dict, List
 
 from ..helpers import load_yaml
 
-_ALLOWED = {"change_point_windows", "fixed_size_windows", "window_comparison"}
+# Window approach types accepted from window_config.yml.
+# Note: `fixed_size_windows` was renamed to `fixed_trace_windows` (strict rename).
+_ALLOWED = {"change_point_windows", "fixed_trace_windows", "fixed_time_windows", "window_comparison"}
 
 
 def _req_int(params: Dict[str, Any], key: str, min_val: int) -> int:
@@ -58,9 +60,24 @@ def validate_window_approaches(approaches: List[Dict[str, Any]]) -> None:
         seen.add(name)
         if typ not in _ALLOWED:
             raise ValueError(f"Unknown approach type: {typ}")
-        if typ == "fixed_size_windows":
+        if typ == "fixed_trace_windows":
             _req_int(params, "window_size", 1)
             _req_int(params, "offset", 1)
+        elif typ == "fixed_time_windows":
+            _req_int(params, "window_size", 1)
+            _req_int(params, "offset", 1)
+
+            unit = params.get("unit", None)
+            if unit not in {"day", "month", "year"}:
+                raise ValueError(
+                    "fixed_time_windows requires params.unit in {'day','month','year'}."
+                )
+
+            align = params.get("align_first_window", None)
+            if not isinstance(align, bool):
+                raise ValueError(
+                    "fixed_time_windows requires params.align_first_window to be a boolean."
+                )
         elif typ == "window_comparison":
             _req_int(params, "window_1_size", 1)
             _req_int(params, "window_2_size", 1)

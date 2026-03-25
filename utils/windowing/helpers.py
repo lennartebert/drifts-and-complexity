@@ -1,6 +1,9 @@
 """Windowing helper functions for creating windows from event logs."""
 
+import bisect
 from typing import Any, List, Optional, Tuple
+
+import pandas as pd
 
 from pm4py.objects.log.obj import Trace
 
@@ -128,6 +131,132 @@ def split_log_into_fixed_windows(
         wid += 1
         i0 += offset
     return out
+
+
+def split_log_into_fixed_time_windows(
+    log: List[Trace],
+    window_size: int,
+    offset: int,
+    unit: str,
+    align_first_window: bool,
+) -> List[Window]:
+    """
+    Split log into fixed time windows (sliding by time).
+
+    Semantics:
+    - The input log is assumed to be sorted by trace start timestamp.
+    - A trace is assigned to a time window iff its start timestamp is in
+      [window_start, window_end) (start inclusive, end exclusive).
+    - Because windows are defined over trace start times, each window's
+      assigned traces form a contiguous slice in the start-sorted log.
+
+    Args:
+        log: List of PM4Py Trace objects, sorted by trace start time.
+        window_size: Window length in `unit` (int, >= 1).
+        offset: Step between consecutive windows in `unit` (int, >= 1).
+        unit: 'day', 'month', or 'year'.
+        align_first_window: If True, align the first window start to the
+            beginning of the corresponding day/month/year in the first event's
+            timestamp.
+
+    Returns:
+        List of Window objects. Empty windows (with zero assigned traces) are
+        omitted.
+    """
+    if not log:
+        return []
+    if window_size <= 0 or offset <= 0:
+        return []
+
+    unit = str(unit).lower().strip()
+    if unit not in {"day", "month", "year"}:
+        raise ValueError("unit must be one of {'day','month','year'}")
+
+    start_times: List[pd.Timestamp] = []
+    for tr in log:
+        ts = _trace_start_time(tr)
+        if ts is None:
+            raise ValueError("All traces must have a non-empty time:timestamp")
+        start_times.append(pd.to_datetime(ts))
+
+    # Ensure stable ordering for bisect.
+    # (We rely on the pipeline load_xes_log sort, but tests may provide
+    # unsorted logs, so be defensive.)
+    starts = sorted(start_times)
+    # If we sorted timestamps but not traces, we would break slice indices.
+    # Therefore, we only sort timestamps when the caller already provided a
+    # correctly sorted log. We check monotonicity to enforce that.
+    if start_times != starts:
+        raise ValueError(
+            "split_log_into_fixed_time_windows expects log traces sorted by trace start timestamp"
+        )
+
+    first_start = start_times[0]
+    last_start = start_times[-1]
+
+    # Align first window start if requested.
+    if align_first_window:
+        if unit == "day":
+            window_start = first_start.normalize()
+        elif unit == "month":
+            window_start = pd.Timestamp(first_start.year, first_start.month, 1)
+            if first_start.tz is not None:
+                window_start = window_start.tz_localize(first_start.tz)
+        else:  # year
+            window_start = pd.Timestamp(first_start.year, 1, 1)
+            if first_start.tz is not None:
+                window_start = window_start.tz_localize(first_start.tz)
+    else:
+        window_start = first_start
+
+    if unit == "day":
+        window_delta = pd.Timedelta(days=window_size)
+        step_delta = pd.Timedelta(days=offset)
+    elif unit == "month":
+        window_delta = pd.DateOffset(months=window_size)
+        step_delta = pd.DateOffset(months=offset)
+    else:  # year
+        window_delta = pd.DateOffset(years=window_size)
+        step_delta = pd.DateOffset(years=offset)
+
+    windows: List[Window] = []
+    wid = 0
+    cur_start = window_start
+
+    # Step until the window start moves beyond the last trace start.
+    while cur_start <= last_start:
+        cur_end = cur_start + window_delta
+
+        # Find the contiguous trace slice whose start times are in
+        # [cur_start, cur_end).
+        i0 = bisect.bisect_left(start_times, cur_start)
+        i1 = bisect.bisect_left(start_times, cur_end)
+
+        if i0 < i1:
+            center_moment = cur_start + (cur_end - cur_start) / 2
+            windows.append(
+                Window(
+                    id=str(wid),
+                    first_index=i0,
+                    last_index=i1 - 1,
+                    size=i1 - i0,
+                    start_moment=cur_start.to_pydatetime()
+                    if hasattr(cur_start, "to_pydatetime")
+                    else cur_start,
+                    end_moment=cur_end.to_pydatetime()
+                    if hasattr(cur_end, "to_pydatetime")
+                    else cur_end,
+                    center_moment=center_moment.to_pydatetime()
+                    if hasattr(center_moment, "to_pydatetime")
+                    else center_moment,
+                    traces=log[i0:i1],
+                )
+            )
+            wid += 1
+
+        cur_start = cur_start + step_delta
+
+    return windows
 
 
 def split_log_into_fixed_comparable_windows(

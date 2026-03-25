@@ -26,6 +26,7 @@ WINDOW_CONFIG_FILE_PATH = Path(__file__).parent.parent / "window_config.yml"
 from utils.complexity.assessors import (
     assess_complexity_via_change_point_split,
     assess_complexity_via_fixed_sized_windows,
+    assess_complexity_via_fixed_time_windows,
     assess_complexity_via_window_comparison,
 )
 from utils.drift_io import drift_info_to_dict, load_xes_log
@@ -355,17 +356,17 @@ def concept_drift_complexity_assessment(
             f"## Filtered to {len(approaches)} approach(es) of type(s): {', '.join(filter_approach_types)} ##"
         )
 
-    # In test mode, use the first change_point_windows and first fixed_size_windows approach
+    # In test mode, use the first change_point_windows and first fixed_trace_windows approach
     if test_mode:
         cp_approaches = [
             apc for apc in approaches if apc["type"] == "change_point_windows"
         ][:1]
         fixed_approaches = [
-            apc for apc in approaches if apc["type"] == "fixed_size_windows"
+            apc for apc in approaches if apc["type"] == "fixed_trace_windows"
         ][:1]
         approaches = cp_approaches + fixed_approaches
         print(
-            f"## Test mode: Using {len(approaches)} approach(es) (1 change_point_windows, 1 fixed_size_windows) ##"
+            f"## Test mode: Using {len(approaches)} approach(es) (1 change_point_windows, 1 fixed_trace_windows) ##"
         )
 
     drift_df = pd.read_csv(concept_drift_info_path)
@@ -433,7 +434,7 @@ def concept_drift_complexity_assessment(
                 title=None,
             )
 
-        elif typ == "fixed_size_windows":
+        elif typ == "fixed_trace_windows":
             window_size = int(p["window_size"])
             offset = int(p["offset"])
 
@@ -509,6 +510,100 @@ def concept_drift_complexity_assessment(
                 )
             else:
                 # Fallback: plot fixed windows only if no change-point approach available
+                print(f"  Plotting...")
+                run_with_error_handling(
+                    f"plotting for {name}",
+                    plot_complexity_via_fixed_sized_windows,
+                    dataset_key,
+                    cfg_with_approach,
+                    fixed_df,
+                    drift_info_by_id,
+                    window_size=window_size,
+                    offset=offset,
+                    y_log=y_log,
+                    fig_format=fig_format,
+                    headroom=headroom,
+                    title=None,
+                )
+
+        elif typ == "fixed_time_windows":
+            window_size = int(p["window_size"])
+            offset = int(p["offset"])
+            unit = str(p["unit"])
+            align_first_window = bool(p["align_first_window"])
+
+            print(
+                f"  Computing complexity for approach: {name} with adapters: {adapter_names}"
+            )
+            fixed_df = run_with_error_handling(
+                "complexity computation",
+                assess_complexity_via_fixed_time_windows,
+                traces_sorted,
+                window_size,
+                offset,
+                unit,
+                align_first_window,
+                dataset_key,
+                configuration_name,
+                name,
+                adapter_names,
+                drift_info_by_id=drift_info_by_id,
+            )
+
+            # Plot both combined and non-combined fixed-window plots
+            # (time windows reuse the existing fixed-window plotting code)
+            cp_approach = next(
+                (apc for apc in approaches if apc["type"] == "change_point_windows"),
+                None,
+            )
+
+            if cp_approach:
+                cp_name = cp_approach["name"]
+                print(
+                    f"  Computing change-point complexity for combined plot with adapters: {adapter_names}"
+                )
+                cp_df = run_with_error_handling(
+                    "complexity computation (change-point for combined plot)",
+                    assess_complexity_via_change_point_split,
+                    traces_sorted,
+                    drift_info_by_id,
+                    dataset_key,
+                    configuration_name,
+                    cp_name,
+                    adapter_names,
+                )
+
+                print(f"  Plotting combined (change-point + fixed-window)...")
+                run_with_error_handling(
+                    f"combined plotting for {name}",
+                    plot_combined_complexity,
+                    dataset_key,
+                    cfg_with_approach,
+                    cp_df,
+                    fixed_df,
+                    drift_info_by_id,
+                    y_log=y_log,
+                    fig_format=fig_format,
+                    headroom=headroom,
+                    title=None,
+                )
+
+                print(f"  Plotting non-combined fixed-window plots...")
+                run_with_error_handling(
+                    f"plotting for {name}",
+                    plot_complexity_via_fixed_sized_windows,
+                    dataset_key,
+                    cfg_with_approach,
+                    fixed_df,
+                    drift_info_by_id,
+                    window_size=window_size,
+                    offset=offset,
+                    y_log=y_log,
+                    fig_format=fig_format,
+                    headroom=headroom,
+                    title=None,
+                )
+            else:
                 print(f"  Plotting...")
                 run_with_error_handling(
                     f"plotting for {name}",
@@ -721,8 +816,13 @@ if __name__ == "__main__":
         "--filter-approach-types",
         nargs="+",
         default=None,
-        choices=["change_point_windows", "fixed_size_windows", "window_comparison"],
-        help="Filter window approaches by type. Options: change_point_windows, fixed_size_windows, window_comparison.",
+        choices=[
+            "change_point_windows",
+            "fixed_trace_windows",
+            "fixed_time_windows",
+            "window_comparison",
+        ],
+        help="Filter window approaches by type. Options: change_point_windows, fixed_trace_windows, fixed_time_windows, window_comparison.",
     )
     args = parser.parse_args()
 

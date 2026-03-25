@@ -11,6 +11,7 @@ from utils.complexity.metrics_adapters.metrics_adapter import get_adapters
 from utils.helpers import save_complexity_csv
 from utils.windowing.helpers import (
     split_log_into_fixed_comparable_windows,
+    split_log_into_fixed_time_windows,
     split_log_into_fixed_windows,
     split_log_into_windows_by_change_points,
 )
@@ -213,6 +214,43 @@ def assess_complexity_via_fixed_sized_windows(
         DataFrame with complexity assessment results.
     """
     windows = split_log_into_fixed_windows(pm4py_log, window_size, offset)
+    merged = run_metric_adapters(
+        windows,
+        adapter_names,
+        add_prefix=add_prefix,
+        include_adapter_name=include_adapter_name,
+    )
+    df = _materialize_rows(windows, merged)
+    save_complexity_csv(dataset_key, _cfg_name(configuration_name, approach_name), df)
+    return df
+
+
+def assess_complexity_via_fixed_time_windows(
+    pm4py_log: EventLog,
+    window_size: int,
+    offset: int,
+    unit: str,
+    align_first_window: bool,
+    dataset_key: str,
+    configuration_name: str,
+    approach_name: str,
+    adapter_names: Iterable[str],
+    drift_info_by_id: Optional[Dict[str, Any]] = None,
+    add_prefix: bool = True,
+    include_adapter_name: bool = False,
+) -> pd.DataFrame:
+    """Assess complexity using fixed time windows.
+
+    This is the time-based analogue of `assess_complexity_via_fixed_sized_windows`,
+    reusing the same metric computation + plotting pipeline.
+    """
+    windows = split_log_into_fixed_time_windows(
+        pm4py_log,
+        window_size=window_size,
+        offset=offset,
+        unit=unit,
+        align_first_window=align_first_window,
+    )
     merged = run_metric_adapters(
         windows,
         adapter_names,
