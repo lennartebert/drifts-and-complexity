@@ -331,7 +331,8 @@ def concept_drift_complexity_assessment(
     dataset_key
         Dataset identifier.
     dataset_info
-        Dataset metadata dictionary.
+        Dataset metadata dictionary (supports optional "activity_key", defaults to
+        "concept:name").
     concept_drift_info_path
         Path to drift detection results CSV.
     test_mode
@@ -375,7 +376,9 @@ def concept_drift_complexity_assessment(
     configuration_name = concept_drift_info_path.stem.rsplit("_", 1)[-1]
 
     # Load and sort the log once
-    traces_sorted = load_xes_log(dataset_path)
+    activity_key = dataset_info.get("activity_key", "concept:name")
+    print(f"## Using activity key: {activity_key} ##")
+    traces_sorted = load_xes_log(dataset_path, activity_key=activity_key)
 
     # In test mode, limit to first 1000 traces for faster processing
     if test_mode and len(traces_sorted) > 1000:

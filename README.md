@@ -181,6 +181,21 @@ To add custom datasets:
    - `short_name`: Abbreviated name for displays
    - `type`: `"real"` or `"synthetic"`
    - `path`: Relative path to the XES file
+   - `activity_key` (optional): Event attribute containing the activity label. Defaults to `concept:name`.
+
+Example with a custom activity attribute:
+```json
+{
+  "P2P_CASE_AUSTRIA": {
+    "name": "P2P Case Austria",
+    "short_name": "P2P_CASE_AUSTRIA",
+    "type": "real",
+    "path": "data/real/P2P_CASE/Austria_log.xes",
+    "ground_truth": "data/real/P2P_CASE/ground_truth_empty.csv",
+    "activity_key": "ACTIVITY_EN"
+  }
+}
+```
 
 The code automatically uses `data/data_dictionary.json` if it exists, otherwise it falls back to `data/default_data_dictionary.json`.
 

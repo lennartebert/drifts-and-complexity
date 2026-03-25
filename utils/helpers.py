@@ -142,7 +142,16 @@ def load_data_dictionary(
         return {}
 
     # Keep only entries whose 'type' is in the allowed set
-    return {k: v for k, v in data_dictionary.items() if v.get("type") in allowed_types}
+    filtered = {
+        k: v for k, v in data_dictionary.items() if v.get("type") in allowed_types
+    }
+
+    # Ensure optional fields have consistent defaults used by the pipeline.
+    # Activity names default to the XES standard key unless overwritten per dataset.
+    for dataset_info in filtered.values():
+        dataset_info.setdefault("activity_key", "concept:name")
+
+    return filtered
 
 
 def load_yaml(path: Path) -> Dict[str, Any]:
