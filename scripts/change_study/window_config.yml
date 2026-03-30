@@ -17,19 +17,41 @@
 #    - Params:
 #        window_size: int   # number of traces per window (>=1)
 #        offset:      int   # step size in traces between successive windows (>=1)
+#        include_incomplete_windows: bool  # optional, default true.
+#            If true, trailing partial windows are included and truncated to log end.
+#            If false, only complete windows of exactly `window_size` are emitted.
 #    - Examples:
 #        - name: fixed_w200_o100
 #          type: fixed_trace_windows
 #          params:
 #            window_size: 200
 #            offset: 100
+#            include_incomplete_windows: true
 #        - name: fixed_w500_o500   # non-overlapping
 #          type: fixed_trace_windows
 #          params:
 #            window_size: 500
 #            offset: 500
+#            include_incomplete_windows: false
 #
-# 3) window_comparison
+# 3) growing_prefix_trace_windows
+#    - Description: Prefix windows from a fixed start trace; each window grows by
+#      increment traces (first window: increment traces, second: 2*increment, …).
+#    - Params:
+#        increment:   int  # added traces per step (>=1); window sizes are k*increment
+#        start_index: int  # optional; index of first trace in every window (>=0), default 0
+#    - Example (also listed under `approaches:` in this file if you enable it):
+#        - name: grow_prefix_inc500
+#          type: growing_prefix_trace_windows
+#          params:
+#            increment: 500
+#
+#    The BPIC12/RTFMP prefix-growth bias analysis does not use this YAML; it keeps
+#    its window parameters in scripts/bias_study/run_prefix_growth_complexity.py
+#    (see PREFIX_GROWTH_WINDOW_CONFIG there). Wire growing_prefix_trace_windows into
+#    assess_datasets.py when you want SLURM/change-study runs from YAML.
+#
+# 4) window_comparison
 #    - Description: Produce PAIRS of windows for comparison.
 #    - Params:
 #        window_1_size: int  # length of first window (>=1)
@@ -54,7 +76,7 @@
 # -----------------------------------------------------------------------------
 
 
-# 3) fixed_time_windows
+# 5) fixed_time_windows
 #    - Description: Slide fixed-length windows across the log by time.
 #      A trace is assigned to a window if its trace start timestamp is in
 #      [window_start, window_end) (start inclusive, end exclusive).
@@ -63,6 +85,10 @@
 #        offset:      int  # step between consecutive windows in `unit` (>=1)
 #        unit:        day | month | year
 #        align_first_window: bool
+#        include_incomplete_windows: bool
+#            Optional, default true.
+#            If true, trailing partial day/month/year window can be included.
+#            If false, trailing partial period is excluded.
 #            If true, align the first window start to the beginning of the
 #            corresponding day/month/year of the first trace's start timestamp.
 #            If false, start the first window at the exact timestamp of the
@@ -75,6 +101,7 @@
 #            offset: 1
 #            unit: month
 #            align_first_window: true
+#            include_incomplete_windows: true
 
 approaches:
   - name: cp_default
@@ -104,6 +131,14 @@ approaches:
       offset: 1
       unit: month
       align_first_window: true
+
+  # Prefix-growth bias study uses in-script config instead; see
+  # scripts/bias_study/run_prefix_growth_complexity.py (PREFIX_GROWTH_WINDOW_CONFIG).
+  # - name: grow_prefix_inc500
+  #   title: Growing Prefix Trace Windows (increment 500 from trace 0)
+  #   type: growing_prefix_trace_windows
+  #   params:
+  #     increment: 500
 
   # - name: compare_w100_vs_150_o20_s10
   #   type: window_comparison

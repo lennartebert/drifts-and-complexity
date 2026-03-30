@@ -14,6 +14,10 @@
 source /usr/local/anaconda3-2024.06/etc/profile.d/conda.sh
 conda activate drifts-and-complexity
 
-scenarios=(0 3)
+# One array task per scenario (match --array upper bound to last index).
+scenarios=(
+    synthetic_base
+    real_base
+)
 
-python -m scripts.bias_study.run_bias_study ${scenarios[$SLURM_ARRAY_TASK_ID]}
+python -m scripts.bias_study.run_bias_study --scenarios "${scenarios[$SLURM_ARRAY_TASK_ID]}"

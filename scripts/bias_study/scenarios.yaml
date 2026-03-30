@@ -15,19 +15,19 @@ synthetic_base:
   normalizers: null
   base_scenario_name: null
 
-synthetic_normalized:
-  logs: [O2C_S, CLAIM_S, LOAN_S, CREDIT_S]
-  clear_name: "Synthetic (Normalized)"
-  population_extractor: naive
-  normalizers: default
-  base_scenario_name: synthetic_base
+# synthetic_normalized:
+#   logs: [O2C_S, CLAIM_S, LOAN_S, CREDIT_S]
+#   clear_name: "Synthetic (Normalized)"
+#   population_extractor: naive
+#   normalizers: default
+#   base_scenario_name: synthetic_base
 
-synthetic_normalized_and_population:
-  logs: [O2C_S, CLAIM_S, LOAN_S, CREDIT_S]
-  clear_name: "Synthetic (Normalized + Population)"
-  population_extractor: chao1
-  normalizers: default
-  base_scenario_name: synthetic_base
+# synthetic_normalized_and_population:
+#   logs: [O2C_S, CLAIM_S, LOAN_S, CREDIT_S]
+#   clear_name: "Synthetic (Normalized + Population)"
+#   population_extractor: chao1
+#   normalizers: default
+#   base_scenario_name: synthetic_base
 
 real_base:
   logs: [BPIC12, RTFMP]
@@ -36,28 +36,28 @@ real_base:
   normalizers: null
   base_scenario_name: null
 
-real_normalized:
-  logs: [BPIC12, RTFMP]
-  clear_name: "Real (Normalized)"
-  population_extractor: naive
-  normalizers: default
-  base_scenario_name: real_base
+# real_normalized:
+#   logs: [BPIC12, RTFMP]
+#   clear_name: "Real (Normalized)"
+#   population_extractor: naive
+#   normalizers: default
+#   base_scenario_name: real_base
 
-real_normalized_and_population:
-  logs: [BPIC12, RTFMP]
-  clear_name: "Real (Normalized + Population)"
-  population_extractor: chao1
-  normalizers: default
-  base_scenario_name: real_base
+# real_normalized_and_population:
+#   logs: [BPIC12, RTFMP]
+#   clear_name: "Real (Normalized + Population)"
+#   population_extractor: chao1
+#   normalizers: default
+#   base_scenario_name: real_base
 
-test_bpic12:
-  logs: [TEST_BPIC12]
-  clear_name: "TEST BPIC12 (full grid)"
-  population_extractor: naive
-  normalizers: null
-  base_scenario_name: null
+# test_bpic12:
+#   logs: [TEST_BPIC12]
+#   clear_name: "TEST BPIC12 (full grid)"
+#   population_extractor: naive
+#   normalizers: null
+#   base_scenario_name: null
 
-# Invoked by: python -m scripts.bias_study.run_bias_study --test (uses experiment_settings profile "test")
+# Smoke scenario: python -m scripts.bias_study.run_bias_study --test (profile "test" in experiment_settings.yaml)
 test:
   logs: [TEST_BPIC12]
   clear_name: "Test"

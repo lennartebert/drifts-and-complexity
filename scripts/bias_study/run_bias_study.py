@@ -5,9 +5,9 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -20,7 +20,6 @@ from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetrics
 from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
     VidgofMetricsAdapter,
 )
-from utils.latex_table_generation import generate_all_latex_tables
 from utils.master_table import build_and_save_master_csv, combine_analysis_with_means
 from utils.normalization.orchestrator import DEFAULT_NORMALIZERS
 from utils.pipeline.compute import (
@@ -40,14 +39,16 @@ from utils.population.extractors.naive_population_extractor import (
 from utils.sample_confidence_interval_extractor import SampleConfidenceIntervalExtractor
 from utils.windowing.window import Window
 
-from .yaml_config import (
+from .yaml_input_handling import (
+    ExperimentSettings,
     build_scenarios_registry,
+    experiment_settings_from_profile,
     load_experiment_settings,
     load_scenarios_yaml,
-    parse_correlation_window_sizes,
+    plateau_window_sizes_for_log,
 )
 
-# --- defaults (same as before) ---
+# --- defaults ---
 SORTED_METRICS = constants.ALL_METRIC_NAMES  # constants.PC_METRICS
 
 PLOT_GRID = [
@@ -90,43 +91,7 @@ PLOT_ROW_GROUPS = [
 ]
 
 
-@dataclass(frozen=True)
-class ExperimentSettings:
-    """Loaded from experiment_settings.yaml (profile full or test); passed through the pipeline."""
-
-    samples_per_size: int
-    random_state: int
-    bootstrap_replica_count: int
-    correlation_sizes: Union[range, List[int]]
-    plateau_max_cap: int
-    plateau_step: int
-    plateau_threshold: float
-    reliability_sizes: List[int]
-
-
-def experiment_settings_from_profile(profile: Dict[str, Any]) -> ExperimentSettings:
-    ca = profile["correlation_analysis"]
-    pa = profile["plateau_analysis"]
-    ra = profile["reliability_analysis"]
-    return ExperimentSettings(
-        samples_per_size=int(profile["samples_per_size"]),
-        random_state=int(profile["random_state"]),
-        bootstrap_replica_count=int(profile["bootstrap_replica_count"]),
-        correlation_sizes=parse_correlation_window_sizes(ca["window_sizes"]),
-        plateau_max_cap=int(pa["max_window_cap"]),
-        plateau_step=int(pa["step"]),
-        plateau_threshold=float(pa["relative_threshold"]),
-        reliability_sizes=[int(x) for x in ra["window_sizes"]],
-    )
-
-
 _EXPERIMENT_YAML = load_experiment_settings()
-
-BREAKDOWN_BY = "dimension"  # None, "basis", or "dimension"
-
-CORRELATION_TYPE = (
-    "Spearman"  # Correlation type to use in LaTeX tables ("Pearson" or "Spearman")
-)
 
 default_population_extractor = NaivePopulationExtractor()
 chao1_population_extractor = Chao1PopulationExtractor()
@@ -146,7 +111,7 @@ SCENARIOS = build_scenarios_registry(
 )
 
 
-# Metrics used for the log-level statistics (CSV + LaTeX table)
+# Metrics used for the log-level statistics CSV
 METRICS_FOR_LOG_STATISTICS = [
     "Number of Events",
     "Number of Traces",
@@ -245,113 +210,6 @@ def build_log_statistics_dataframe(log_data_list: List[Dict[str, Any]]) -> pd.Da
     return df
 
 
-def generate_latex_log_statistics_table(
-    df: pd.DataFrame,
-    caption: str = "Event Logs Used in this Study",
-    label: str = "tab:list_event_logs",
-) -> str:
-    """
-    Generate LaTeX table from log statistics DataFrame.
-
-    Parameters
-    ----------
-    df
-        DataFrame with log statistics.
-    caption
-        Table caption.
-    label
-        Table label.
-
-    Returns
-    -------
-    str
-        LaTeX table code.
-    """
-    # Determine LaTeX column specification dynamically:
-    #  - 3 left-aligned columns (Type, Event Log, Description)
-    #  - one centered column per metric
-    num_metrics = len(METRICS_FOR_LOG_STATISTICS)
-    colspec = "l@{}ll" + "c" * num_metrics + "@{}"
-
-    # Header row: use METRIC_NAMES_TO_LATEX_MAP for metric display names
-    metric_headers = [
-        constants.METRIC_NAMES_TO_LATEX_MAP.get(metric, metric)
-        for metric in METRICS_FOR_LOG_STATISTICS
-    ]
-    header_metrics_part = " & ".join(metric_headers)
-
-    lines = [
-        "\\begin{table}[ht]",
-        "\\centering",
-        f"\\caption{{{caption}}}",
-        f"\\label{{{label}}}",
-        "\\setlength{\\tabcolsep}{4pt} % reduce column padding",
-        f"\\begin{{tabular}}{{{colspec}}}",
-        "\\toprule",
-        f" Type&Event Log   &Description&  {header_metrics_part}\\\\",
-        "",
-    ]
-
-    # Sort rows by type and event log
-    df_sorted = df.sort_values(by=["Type", "Event Log"])
-
-    current_type: Optional[str] = None
-    for _, row in df_sorted.iterrows():
-        row_type = row["Type"]
-        log_name = row["Event Log"]
-        description = row["Description"]
-
-        # Escape underscores in log names for LaTeX
-        if isinstance(log_name, str):
-            escaped_log_name = log_name.replace("_", "\\_")
-        else:
-            escaped_log_name = str(log_name)
-
-        # Add type label if it changed
-        if row_type != current_type:
-            if current_type is not None:
-                lines.append("")
-                lines.append("\\midrule")
-            current_type = row_type
-            type_label = row_type.capitalize()
-        else:
-            type_label = ""
-
-        # Build metric value cells in the order of METRICS_FOR_LOG_STATISTICS
-        metric_cells: List[str] = []
-        for metric in METRICS_FOR_LOG_STATISTICS:
-            if metric not in row or pd.isna(row[metric]):
-                metric_cells.append("")
-                continue
-
-            value = row[metric]
-            # Heuristic: average-like metrics as floats, others as integers with thousands separator
-            if (
-                isinstance(value, (int, np.integer))
-                and "Avg." not in metric
-                and "Average" not in metric
-            ):
-                metric_cells.append(f"{int(value):,}")
-            elif isinstance(value, (float, np.floating)) and (
-                "Avg." in metric or "Average" in metric
-            ):
-                metric_cells.append(f"{float(value):.2f}")
-            else:
-                # Fallback: string representation
-                metric_cells.append(str(value))
-
-        metrics_part = " & ".join(metric_cells)
-        line = f" {type_label}&{escaped_log_name}& {description}&  {metrics_part}\\\\"
-        lines.append(line)
-
-    lines.append("")
-    lines.append("\\bottomrule")
-    lines.append("\\end{tabular}")
-    lines.append("\\end{table}")
-
-    return "\n".join(lines)
-
-
 def _merge_correlation_reliability_plateau(
     corr_df: pd.DataFrame,
     rel_df: pd.DataFrame,
@@ -394,165 +252,65 @@ def _merge_correlation_reliability_plateau(
     return merged
 
 
-def _adaptive_plateau_extension(
-    pm4py_log,
-    base_metrics_df: pd.DataFrame,
-    *,
-    settings: ExperimentSettings,
+def _metrics_df_long(metrics_df: pd.DataFrame) -> pd.DataFrame:
+    df = metrics_df.reset_index()
+    if "Sample Size" not in df.columns and "Sample Size" in df.index.names:
+        df = df.reset_index()
+    return df
+
+
+def _mean_at_window(df: pd.DataFrame, metric: str, window_size: int) -> Optional[float]:
+    """Mean ``Value`` across samples for one metric at ``window_size``; None if missing."""
+    sub = df[(df["Metric"] == metric) & (df["Sample Size"] == window_size)]
+    if sub.empty:
+        return None
+    v = float(sub["Value"].mean())
+    return v if np.isfinite(v) else None
+
+
+def _plateau_summary_by_metric(
     include_metrics: List[str],
-    max_win: int,
-    population_extractor,
-    metric_adapters,
-    bootstrap_sampler,
-    normalizers,
-) -> tuple[pd.DataFrame, pd.DataFrame, Dict[str, float], Dict[str, bool]]:
-    """
-    Extend beyond 550 only when needed. Returns (extra_metrics_df, plateau_per_sample_df,
-    plateau_median_by_metric, plateau_found_majority_by_metric).
-    """
-    df = base_metrics_df.reset_index()
-    maps: Dict[tuple[str, str], Dict[int, float]] = {}
-    for _, row in df.iterrows():
-        sid = str(row["Sample ID"])
-        m = str(row["Metric"])
-        sz = int(row["Sample Size"])
-        maps.setdefault((sid, m), {})[sz] = float(row["Value"])
-
-    step = settings.plateau_step
-    rel_threshold = settings.plateau_threshold
-    samples_per_size = settings.samples_per_size
-    random_state = settings.random_state
-    pending: set[tuple[str, str]] = set()
-    plateau_n: Dict[tuple[str, str], float] = {}
-
-    for sid, m in list(maps.keys()):
-        if m not in include_metrics:
-            continue
-        sm = maps[(sid, m)]
-        pn, ok = helpers.consecutive_plateau_first_size(
-            sm,
-            step=step,
-            rel_threshold=rel_threshold,
-            max_win=min(500, max_win),
-        )
-        if ok:
-            plateau_n[(sid, m)] = pn
-        elif max_win > 500:
-            pending.add((sid, m))
-
-    extra_parts: list[pd.DataFrame] = []
-    if max_win <= 500 or not pending:
-        plateau_per_sample, med, maj = _plateau_per_sample_and_aggregate(
-            include_metrics, samples_per_size, plateau_n
-        )
-        return pd.DataFrame(), plateau_per_sample, med, maj
-
-    for curr_size in range(500 + step, max_win + 1, step):
-        need_sids = sorted({sid for (sid, _m) in pending})
-        if not need_sids:
-            break
-        window_samples = (
-            sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                pm4py_log, [curr_size], samples_per_size, random_state
-            )
-        )
-        batch_df = compute_metrics_for_samples(
-            window_samples,
-            population_extractor=population_extractor,
-            metric_adapters=metric_adapters,
-            bootstrap_sampler=bootstrap_sampler,
-            normalizers=normalizers,
-            include_metrics=include_metrics,
-        )
-        extra_parts.append(batch_df)
-        dfb = batch_df.reset_index()
-        for _, row in dfb.iterrows():
-            sid = str(row["Sample ID"])
-            m = str(row["Metric"])
-            sz = int(row["Sample Size"])
-            if (sid, m) in maps:
-                maps[(sid, m)][sz] = float(row["Value"])
-            else:
-                maps[(sid, m)] = {sz: float(row["Value"])}
-
-        for sid, m in list(pending):
-            sm = maps.get((sid, m), {})
-            prev = curr_size - step
-            if prev not in sm or curr_size not in sm:
-                continue
-            vp = sm[prev]
-            vc = sm[curr_size]
-            if not (np.isfinite(vp) and np.isfinite(vc)):
-                continue
-            if abs(vp) < 1e-15:
-                continue
-            if abs(vc - vp) / abs(vp) <= rel_threshold:
-                plateau_n[(sid, m)] = float(curr_size)
-                pending.discard((sid, m))
-
-    plateau_per_sample, med, maj = _plateau_per_sample_and_aggregate(
-        include_metrics, samples_per_size, plateau_n
-    )
-    extra_df = (
-        pd.concat(extra_parts, ignore_index=False)
-        if extra_parts
-        else pd.DataFrame()
-    )
-    return extra_df, plateau_per_sample, med, maj
-
-
-def _plateau_per_sample_and_aggregate(
-    include_metrics: List[str],
-    samples_per_size: int,
-    plateau_n: Dict[tuple[str, str], float],
+    plateau_n_by_metric: Dict[str, float],
 ) -> tuple[pd.DataFrame, Dict[str, float], Dict[str, bool]]:
+    """
+    One row per metric: plateau is detected from means across samples at each window size,
+    not per sample. ``Plateau n`` is the first window size (in the plateau grid) where the
+    relative change criterion is met; ``Plateau Found`` is False if no plateau was reached.
+    """
     rows = []
-    for sid in (str(i) for i in range(samples_per_size)):
-        for m in include_metrics:
-            key = (sid, m)
-            pn = plateau_n.get(key, np.nan)
-            if not np.isfinite(pn):
-                pn = np.nan
-            rows.append(
-                {
-                    "Sample ID": sid,
-                    "Metric": m,
-                    "Plateau n": pn,
-                    "Plateau Found": bool(np.isfinite(pn)),
-                }
-            )
-    plateau_per_sample = pd.DataFrame(rows)
-    med: Dict[str, float] = {}
-    maj: Dict[str, bool] = {}
-    for m, grp in plateau_per_sample.groupby("Metric"):
-        vals = grp["Plateau n"].to_numpy(dtype=float)
-        if not np.any(np.isfinite(vals)):
-            med[m] = float("nan")
-        else:
-            med[m] = float(np.nanmedian(vals))
-        frac = float(np.mean(grp["Plateau Found"].to_numpy(dtype=bool)))
-        maj[m] = frac >= 0.5
-    return plateau_per_sample, med, maj
+    plateau_med: Dict[str, float] = {}
+    plateau_maj: Dict[str, bool] = {}
+    for m in include_metrics:
+        pn = plateau_n_by_metric.get(m, np.nan)
+        if not np.isfinite(pn):
+            pn = np.nan
+        found = bool(np.isfinite(pn))
+        rows.append(
+            {"Metric": m, "Plateau n": pn, "Plateau Found": found},
+        )
+        plateau_med[m] = float(pn) if found else float("nan")
+        plateau_maj[m] = found
+    return pd.DataFrame(rows), plateau_med, plateau_maj
 
 
 # --- core compute function ---
 def compute_results(
-    list_of_logs: List[str],
-    results_name: str,
     scenario_name: str,
-    clear_name: str,
     settings: ExperimentSettings,
-    population_extractor=default_population_extractor,
-    metric_adapters=default_metric_adapters,
-    bootstrap_sampler=None,
-    normalizers=default_normalizers,
-    include_metrics: Optional[List[str]] = None,
-    sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
-    base_scenario_name: Optional[str] = None,  # type: ignore
+    scenario: Dict[str, Any],
 ) -> None:
-    print(f"Generating results for {results_name}")
-    if include_metrics is None:
-        include_metrics = SORTED_METRICS
+    list_of_logs = scenario["logs"]
+    population_extractor = scenario["population_extractor"]
+    metric_adapters = scenario["metric_adapters"]
+    bootstrap_sampler = scenario["bootstrap_sampler"]
+    normalizers = scenario["normalizers"]
+    sample_confidence_interval_extractor = scenario.get(
+        "sample_confidence_interval_extractor",
+        default_sample_confidence_interval_extractor,
+    )
+    base_scenario_name = scenario["base_scenario_name"]
+    print(f"Generating results for {scenario_name}")
+    include_metrics = settings.include_metrics
     if bootstrap_sampler is None:
         bootstrap_sampler = BootstrapSampler(
             B=settings.bootstrap_replica_count, seed=settings.random_state
@@ -579,10 +337,12 @@ def compute_results(
         log_path = Path(dataset_info["path"])
         pm4py_log = xes_importer.apply(str(log_path))
         # Store population size (number of traces) for FPC
-        log_population_sizes[log_name] = len(pm4py_log)
-        max_win = min(settings.plateau_max_cap, len(pm4py_log))
-        correlation_sizes_f = [s for s in settings.correlation_sizes if s <= max_win]
-        reliability_sizes_f = [s for s in settings.reliability_sizes if s <= max_win]
+        log_n = len(pm4py_log)
+        log_population_sizes[log_name] = log_n
+        # Correlation / reliability: only cap by log length (feasible window sizes).
+        # Plateau uses ``plateau_max_cap`` inside ``plateau_window_sizes_for_log``.
+        correlation_sizes_f = [s for s in settings.correlation_sizes if s <= log_n]
+        reliability_sizes_f = [s for s in settings.reliability_sizes if s <= log_n]
 
         # Compute basic log statistics
         basic_metrics = compute_metrics_for_log_statistics(
@@ -600,7 +360,7 @@ def compute_results(
         out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name / log_name
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # Pass A: correlation window sizes (50–500, capped by log)
+        # Pass A: correlation window sizes (e.g., 50–500, capped by log)
         window_samples_base = (
             sampling_helper.sample_consecutive_trace_windows_with_replacement(
                 pm4py_log,
@@ -618,7 +378,7 @@ def compute_results(
             include_metrics=include_metrics,
         )
 
-        # Pass B: reliability-only sizes not in correlation grid (typically 1000)
+        # Pass B: reliability-only sizes not in correlation grid (e.g., 1000)
         extra_rel_sizes = [s for s in reliability_sizes_f if s not in set(correlation_sizes_f)]
         metrics_extra_list: list[pd.DataFrame] = [metrics_base]
         if extra_rel_sizes:
@@ -643,26 +403,81 @@ def compute_results(
         raw_metrics_df = pd.concat(metrics_extra_list, axis=0)
         raw_metrics_df = raw_metrics_df.sort_index()
 
-        # Pass C: adaptive plateau beyond 500
-        plateau_extra, plateau_per_sample, plateau_med, plateau_maj = (
-            _adaptive_plateau_extension(
-                pm4py_log,
-                metrics_base,
-                settings=settings,
-                include_metrics=include_metrics,
-                max_win=max_win,
-                population_extractor=population_extractor,
-                metric_adapters=metric_adapters,
-                bootstrap_sampler=bootstrap_sampler,
-                normalizers=normalizers,
-            )
+        # --- Pass C: plateau (experiment_settings plateau_analysis.window_sizes; no bootstrap) ---
+        # For each size in plateau_window_sizes_for_log: reuse means from raw_metrics_df when
+        # present, else sample windows and compute. Compare each metric's mean to the previous
+        # size in the plateau list; relative change ≤ plateau_threshold → record plateau n.
+        plateau_df = _metrics_df_long(raw_metrics_df)
+        plateau_window_sizes = plateau_window_sizes_for_log(settings, log_n)
+        plateau_rel_threshold = settings.plateau_threshold
+        plateau_pending = set(include_metrics)
+        plateau_last_mean: Dict[str, float] = {}
+        plateau_by_metric: Dict[str, float] = {}
+        plateau_extra_parts: list[pd.DataFrame] = []
+
+        for pi, pw in enumerate(plateau_window_sizes):
+            if not plateau_pending:
+                break
+            plateau_missing_m = [
+                m for m in plateau_pending if _mean_at_window(plateau_df, m, pw) is None
+            ]
+            if plateau_missing_m:
+                plateau_window_samples = (
+                    sampling_helper.sample_consecutive_trace_windows_with_replacement(
+                        pm4py_log,
+                        [pw],
+                        settings.samples_per_size,
+                        settings.random_state,
+                    )
+                )
+                plateau_batch_df = compute_metrics_for_samples(
+                    plateau_window_samples,
+                    population_extractor=population_extractor,
+                    metric_adapters=metric_adapters,
+                    bootstrap_sampler=None,
+                    normalizers=normalizers,
+                    include_metrics=plateau_missing_m,
+                )
+                plateau_extra_parts.append(plateau_batch_df)
+                plateau_dfb = plateau_batch_df.reset_index()
+                if "Sample Size" not in plateau_dfb.columns and "Sample Size" in plateau_dfb.index.names:
+                    plateau_dfb = plateau_dfb.reset_index()
+                plateau_df = pd.concat([plateau_df, plateau_dfb], ignore_index=True)
+
+            for m in list(plateau_pending):
+                mu = _mean_at_window(plateau_df, m, pw)
+                if mu is None:
+                    continue
+                if pi == 0:
+                    plateau_last_mean[m] = mu
+                    continue
+                prev_mu = plateau_last_mean.get(m)
+                if prev_mu is None or not np.isfinite(prev_mu):
+                    plateau_last_mean[m] = mu
+                    continue
+                if abs(prev_mu) < 1e-15:
+                    plateau_last_mean[m] = mu
+                    continue
+                if abs(mu - prev_mu) / abs(prev_mu) <= plateau_rel_threshold:
+                    plateau_by_metric[m] = float(pw)
+                    plateau_pending.discard(m)
+                else:
+                    plateau_last_mean[m] = mu
+
+        plateau_summary, plateau_med, plateau_maj = _plateau_summary_by_metric(
+            include_metrics, plateau_by_metric
+        )
+        plateau_extra = (
+            pd.concat(plateau_extra_parts, ignore_index=False)
+            if plateau_extra_parts
+            else pd.DataFrame()
         )
         if not plateau_extra.empty:
             raw_metrics_df = pd.concat([raw_metrics_df, plateau_extra], axis=0)
             raw_metrics_df = raw_metrics_df.sort_index()
 
         raw_metrics_df.to_csv(out_dir / "raw_metrics.csv")
-        plateau_per_sample.to_csv(out_dir / "plateau_per_sample.csv", index=False)
+        plateau_summary.to_csv(out_dir / "plateau_summary.csv", index=False)
 
         # Correlation analysis (rho / Pearson vs window size)
         corr_metrics = raw_metrics_df.reset_index()
@@ -763,126 +578,103 @@ def compute_results(
             out_csv_path=comparison_csv_path,
         )
 
-    # 4) Generate LaTeX tables from CSVs
-    latex_out_dir = out_dir / "latex"
-    comparison_csv_path = (
-        str(out_dir / "metrics_comparison.csv")
-        if base_scenario_name is not None
-        else None
-    )
-
-    generate_all_latex_tables(
-        master_csv_path=csv_path,
-        out_dir=str(latex_out_dir),
-        scenario_key=scenario_name,
-        scenario_title=clear_name,
-        correlation=CORRELATION_TYPE,
-        comparison_csv_path=comparison_csv_path,
-        breakdown_by=BREAKDOWN_BY,
-    )
-
-    # 5) Generate and save log statistics table
     if log_statistics:
         log_stats_df = build_log_statistics_dataframe(log_statistics)
-        # Save CSV
         log_stats_csv_path = out_dir / "log_statistics.csv"
         log_stats_df.to_csv(log_stats_csv_path, index=False)
         print(f"Log statistics table saved to: {log_stats_csv_path}")
 
-        # Generate and save LaTeX
-        latex_table = generate_latex_log_statistics_table(log_stats_df)
-        log_stats_latex_path = latex_out_dir / "log_statistics.tex"
-        log_stats_latex_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(log_stats_latex_path, "w", encoding="utf-8") as f:
-            f.write(latex_table)
-        print(f"Log statistics LaTeX table saved to: {log_stats_latex_path}")
-
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run scenarios by ID or name.")
-    parser.add_argument(
-        "scenarios",
-        nargs="*",
-        help=f"Scenario IDs [0..{len(SCENARIOS)-1}] or scenario names: {list(SCENARIOS.keys())}. If none provided, runs all scenarios.",
+    all_scenario_names = list(SCENARIOS.keys())
+    non_test_scenario_names = [n for n in all_scenario_names if n != "test"]
+    parser = argparse.ArgumentParser(
+        description=(
+            "Bias study: run scenarios from scenarios.yaml. "
+            "Use --test for the smoke 'test' scenario and experiment_settings profile 'test'. "
+            "Otherwise use profile 'full' and run every scenario except 'test', "
+            "or pass --scenarios to choose by name."
+        )
     )
     parser.add_argument(
-        "--test", action="store_true", help="Run in test mode with reduced parameters"
+        "--test",
+        action="store_true",
+        help="Run only the 'test' scenario with experiment_settings profile 'test'.",
+    )
+    parser.add_argument(
+        "--scenarios",
+        nargs="*",
+        default=None,
+        metavar="NAME",
+        help=(
+            "Scenario names to run (profile 'full' only), e.g. real_base synthetic_base. "
+            "Default: all scenarios except 'test'. Cannot be used with --test."
+        ),
     )
     parser.add_argument(
         "--metrics",
         nargs="*",
         default=None,
-        help=f"Metrics to calculate. Use shorthand names: {list(constants.METRIC_SHORTHAND.keys())} or full names. Default: all metrics",
+        help=(
+            "Override experiment_settings include_metrics. Shorthand: "
+            f"{list(constants.METRIC_SHORTHAND.keys())} or full names."
+        ),
     )
     args = parser.parse_args()
 
-    # Process metrics parameter
-    try:
-        if args.metrics is None:
-            # Use default sorted_metrics
-            sorted_selected_metrics = SORTED_METRICS
-        else:
-            # Resolve shorthand names to full names
-            sorted_selected_metrics = helpers.resolve_metric_names(args.metrics)
-    except ValueError as e:
-        raise SystemExit(str(e))
+    if args.test and args.scenarios is not None:
+        raise SystemExit("Cannot use --scenarios together with --test (use --test alone).")
+
+    cli_include_metrics: Optional[List[str]] = None
+    if args.metrics is not None:
+        try:
+            cli_include_metrics = helpers.resolve_metric_names(args.metrics)
+        except ValueError as e:
+            raise SystemExit(str(e))
 
     if args.test:
         experiment_settings = experiment_settings_from_profile(_EXPERIMENT_YAML["test"])
+        if cli_include_metrics is not None:
+            experiment_settings = replace(
+                experiment_settings, include_metrics=cli_include_metrics
+            )
         test_scenario = SCENARIOS["test"].copy()
-        test_scenario["include_metrics"] = sorted_selected_metrics
         scenarios_to_run = [("test", test_scenario, experiment_settings)]
     else:
         scenarios_to_run = []
-        scenario_names = list(SCENARIOS.keys())
         full_settings = experiment_settings_from_profile(_EXPERIMENT_YAML["full"])
+        if cli_include_metrics is not None:
+            full_settings = replace(full_settings, include_metrics=cli_include_metrics)
 
-        # If no scenarios specified, run all
-        if not args.scenarios:
-            print("No scenarios specified, running all scenarios...")
-            for scenario_name, scenario_config in SCENARIOS.items():
-                scenario_config = scenario_config.copy()
-                scenario_config["include_metrics"] = sorted_selected_metrics
+        if args.scenarios is None:
+            # run all scenarios except "test"
+            for scenario_name in non_test_scenario_names:
+                scenario_config = SCENARIOS[scenario_name].copy()
                 scenarios_to_run.append((scenario_name, scenario_config, full_settings))
         else:
-            for scenario_input in args.scenarios:
-                try:
-                    scenario_id = int(scenario_input)
-                    if scenario_id < 0 or scenario_id >= len(SCENARIOS):
-                        raise SystemExit(
-                            f"Invalid scenario_id {scenario_id}. Valid range: 0-{len(SCENARIOS)-1}"
-                        )
-                    scenario_name = scenario_names[scenario_id]
-                    scenario_config = SCENARIOS[scenario_name].copy()
-                    scenario_config["include_metrics"] = sorted_selected_metrics
-                    scenarios_to_run.append((scenario_name, scenario_config, full_settings))
-                except ValueError:
-                    if scenario_input not in SCENARIOS:
-                        raise SystemExit(
-                            f"Invalid scenario name '{scenario_input}'. Valid names: {scenario_names}"
-                        )
-                    scenario_config = SCENARIOS[scenario_input].copy()
-                    scenario_config["include_metrics"] = sorted_selected_metrics
-                    scenarios_to_run.append((scenario_input, scenario_config, full_settings))
+            if not args.scenarios:
+                raise SystemExit(
+                    "--scenarios requires at least one scenario name (or omit --scenarios to run all except 'test')."
+                )
+            for name in args.scenarios:
+                if name == "test":
+                    raise SystemExit(
+                        "Scenario 'test' is only run with --test (smoke settings). "
+                        "Omit it from --scenarios or use --test."
+                    )
+                if name not in SCENARIOS:
+                    raise SystemExit(
+                        f"Unknown scenario {name!r}. Valid names: {all_scenario_names}"
+                    )
+                scenario_config = SCENARIOS[name].copy()
+                scenarios_to_run.append((name, scenario_config, full_settings))
 
     for scenario_name, sc, experiment_settings in scenarios_to_run:
         print(f"\n=== Running scenario: {scenario_name} ===")
         compute_results(
-            list_of_logs=sc["logs"],  # type: ignore
-            results_name=scenario_name,
             scenario_name=scenario_name,
-            clear_name=sc["clear_name"],  # type: ignore
             settings=experiment_settings,
-            population_extractor=sc["population_extractor"],  # type: ignore
-            metric_adapters=sc["metric_adapters"],  # type: ignore
-            bootstrap_sampler=sc["bootstrap_sampler"],  # type: ignore
-            normalizers=sc["normalizers"],  # type: ignore
-            include_metrics=sc["include_metrics"],  # type: ignore
-            sample_confidence_interval_extractor=sc.get(
-                "sample_confidence_interval_extractor",
-                default_sample_confidence_interval_extractor,
-            ),
-            base_scenario_name=sc["base_scenario_name"],  # type: ignore
+            scenario=sc,
         )
 
 

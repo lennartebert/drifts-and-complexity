@@ -107,7 +107,10 @@ def split_log_into_windows_by_change_points(
 
 
 def split_log_into_fixed_windows(
-    log: List[Trace], window_size: int, offset: int
+    log: List[Trace],
+    window_size: int,
+    offset: int,
+    include_incomplete_windows: bool = True,
 ) -> List[Window]:
     """Split log into fixed-size windows.
 
@@ -115,6 +118,9 @@ def split_log_into_fixed_windows(
         log: List of PM4Py Trace objects.
         window_size: Size of each window.
         offset: Offset between windows.
+        include_incomplete_windows: If True, include trailing partial windows by
+            truncating to the end of the log. If False, keep only full windows
+            of exactly ``window_size`` traces.
 
     Returns:
         List of Window objects.
@@ -125,11 +131,45 @@ def split_log_into_fixed_windows(
     i0 = 0
     if window_size <= 0 or offset <= 0 or window_size > n:
         return out
-    while i0 + window_size <= n:
+    while i0 < n:
         i1 = i0 + window_size - 1
+        if i1 >= n:
+            if not include_incomplete_windows:
+                break
+            i1 = n - 1
         out.append(_make_window(log, i0, i1, str(wid)))
         wid += 1
         i0 += offset
+    return out
+
+
+def split_log_into_growing_prefix_trace_windows(
+    log: List[Trace], increment: int, *, start_index: int = 0
+) -> List[Window]:
+    """Nested prefix windows: each window starts at ``start_index`` and grows by ``increment`` traces.
+
+    Window index ``wid`` (0-based) spans traces with sizes ``increment``, ``2*increment``, …
+    i.e. ``last_index = start_index + (wid + 1) * increment - 1``, while that slice fits in the log.
+
+    Args:
+        log: List of PM4Py Trace objects (e.g. from ``load_xes_log``, sorted by start time).
+        increment: Trace count added per iteration (>= 1).
+        start_index: Index of the first trace in every window (default 0).
+
+    Returns:
+        List of Window objects. Empty if parameters are invalid or the log is too short
+        for at least one full window of size ``increment`` from ``start_index``.
+    """
+    n = len(log)
+    out: List[Window] = []
+    if increment <= 0 or start_index < 0 or start_index >= n:
+        return out
+    k = 1
+    while start_index + k * increment <= n:
+        i0 = start_index
+        i1 = start_index + k * increment - 1
+        out.append(_make_window(log, i0, i1, str(len(out))))
+        k += 1
     return out
 
 
@@ -139,6 +179,7 @@ def split_log_into_fixed_time_windows(
     offset: int,
     unit: str,
     align_first_window: bool,
+    include_incomplete_windows: bool = True,
 ) -> List[Window]:
     """
     Split log into fixed time windows (sliding by time).
@@ -158,6 +199,9 @@ def split_log_into_fixed_time_windows(
         align_first_window: If True, align the first window start to the
             beginning of the corresponding day/month/year in the first event's
             timestamp.
+        include_incomplete_windows: If True, include a trailing partial window.
+            If False, exclude windows whose end would be beyond the last trace
+            start timestamp.
 
     Returns:
         List of Window objects. Empty windows (with zero assigned traces) are
@@ -226,6 +270,8 @@ def split_log_into_fixed_time_windows(
     # Step until the window start moves beyond the last trace start.
     while cur_start <= last_start:
         cur_end = cur_start + window_delta
+        if not include_incomplete_windows and cur_end > last_start:
+            break
 
         # Find the contiguous trace slice whose start times are in
         # [cur_start, cur_end).

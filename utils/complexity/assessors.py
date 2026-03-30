@@ -13,6 +13,7 @@ from utils.windowing.helpers import (
     split_log_into_fixed_comparable_windows,
     split_log_into_fixed_time_windows,
     split_log_into_fixed_windows,
+    split_log_into_growing_prefix_trace_windows,
     split_log_into_windows_by_change_points,
 )
 from utils.windowing.window import Window
@@ -221,6 +222,70 @@ def assess_complexity_via_fixed_sized_windows(
         include_adapter_name=include_adapter_name,
     )
     df = _materialize_rows(windows, merged)
+    save_complexity_csv(dataset_key, _cfg_name(configuration_name, approach_name), df)
+    return df
+
+
+def build_growing_prefix_complexity_dataframe(
+    pm4py_log: EventLog,
+    increment: int,
+    adapter_names: Iterable[str],
+    *,
+    start_index: int = 0,
+    add_prefix: bool = True,
+    include_adapter_name: bool = False,
+) -> pd.DataFrame:
+    """Build a complexity DataFrame using growing-prefix trace windows (no I/O).
+
+    Args:
+        pm4py_log: Event log to analyze.
+        increment: Trace count added per window step (first window size = increment).
+        adapter_names: Names of metric adapters to run.
+        start_index: First trace index included in every window (default 0).
+        add_prefix: Whether to add ``measure_`` / ``info_`` prefixes.
+        include_adapter_name: Whether to namespace keys by adapter (e.g. ``local::``).
+
+    Returns:
+        DataFrame with window metadata and flattened adapter results.
+    """
+    windows = split_log_into_growing_prefix_trace_windows(
+        pm4py_log, increment, start_index=start_index
+    )
+    merged = run_metric_adapters(
+        windows,
+        adapter_names,
+        add_prefix=add_prefix,
+        include_adapter_name=include_adapter_name,
+    )
+    return _materialize_rows(windows, merged)
+
+
+def assess_complexity_via_growing_prefix_trace_windows(
+    pm4py_log: EventLog,
+    increment: int,
+    dataset_key: str,
+    configuration_name: str,
+    approach_name: str,
+    adapter_names: Iterable[str],
+    drift_info_by_id: Optional[Dict[str, Any]] = None,
+    *,
+    start_index: int = 0,
+    add_prefix: bool = True,
+    include_adapter_name: bool = False,
+) -> pd.DataFrame:
+    """Assess complexity using nested prefix windows from ``start_index``.
+
+    Window sizes are ``increment``, ``2 * increment``, … until the slice no longer
+    fits in the log. See :func:`split_log_into_growing_prefix_trace_windows`.
+    """
+    df = build_growing_prefix_complexity_dataframe(
+        pm4py_log,
+        increment,
+        adapter_names,
+        start_index=start_index,
+        add_prefix=add_prefix,
+        include_adapter_name=include_adapter_name,
+    )
     save_complexity_csv(dataset_key, _cfg_name(configuration_name, approach_name), df)
     return df
 

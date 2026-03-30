@@ -4,11 +4,13 @@
 #   samples_per_size     Replicates drawn per window size (same RNG stream layout for all analyses).
 #   random_state         Seed for window sampling.
 #   bootstrap_replica_count  B for window-level bootstrap CIs inside compute_metrics_for_samples.
+#   include_metrics      null = all metrics (see constants.ALL_METRIC_NAMES); else list of shorthand or full names.
 
 full:
   samples_per_size: 100
   random_state: 123
   bootstrap_replica_count: 200
+  include_metrics: null
 
   correlation_analysis:
     # Pearson / Spearman vs window size. Windows: start, stop (inclusive), step.
@@ -18,10 +20,14 @@ full:
       step: 50
 
   plateau_analysis:
-    # Per-sample_id consecutive stability: stop extending when relative change vs previous size
-    # is below relative_threshold, up to min(max_window_cap, log length).
+    # Mean metric value across samples vs window size; plateau when relative change vs previous
+    # size is below relative_threshold. window_sizes.stop may be omitted or null: use up to
+    # min(max_window_cap, log length).
+    window_sizes:
+      start: 50
+      step: 50
+      stop: null
     max_window_cap: 10000
-    step: 50
     relative_threshold: 0.025
 
   reliability_analysis:
@@ -33,6 +39,7 @@ test:
   samples_per_size: 2
   random_state: 123
   bootstrap_replica_count: 2
+  include_metrics: null
 
   correlation_analysis:
     window_sizes:
@@ -41,8 +48,11 @@ test:
       step: 50
 
   plateau_analysis:
+    window_sizes:
+      start: 50
+      step: 50
+      stop: 200
     max_window_cap: 300
-    step: 50
     relative_threshold: 0.025
 
   reliability_analysis:

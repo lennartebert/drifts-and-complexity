@@ -1,13 +1,25 @@
-"""Load experiment settings and scenario definitions from YAML."""
+"""Load and parse bias_study YAML (experiment_settings.yaml, scenarios.yaml)."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
+from utils import constants, helpers
+
 _BIAS_STUDY_DIR = Path(__file__).resolve().parent
+
+
+def _resolve_include_metrics(raw: Any) -> List[str]:
+    """YAML null / missing -> all registered metrics; else shorthand or full names."""
+    if raw is None:
+        return list(constants.ALL_METRIC_NAMES)
+    if not isinstance(raw, list):
+        raise ValueError("experiment_settings include_metrics must be a list or null")
+    return helpers.resolve_metric_names([str(x) for x in raw])
 
 
 def parse_correlation_window_sizes(
@@ -19,6 +31,15 @@ def parse_correlation_window_sizes(
     stop = int(spec["stop"])
     step = int(spec["step"])
     return range(start, stop + 1, step)
+
+
+def _parse_plateau_stop(raw: Any) -> Optional[int]:
+    """None / empty string / YAML null -> open-ended stop (resolved per log in plateau_window_sizes_for_log)."""
+    if raw is None:
+        return None
+    if isinstance(raw, str) and raw.strip() == "":
+        return None
+    return int(raw)
 
 
 def load_experiment_settings(
@@ -39,6 +60,63 @@ def load_scenarios_yaml(path: Optional[Path] = None) -> Dict[str, Dict[str, Any]
     if not isinstance(data, dict):
         raise ValueError(f"{p} must be a mapping of scenario name -> config")
     return data
+
+
+@dataclass(frozen=True)
+class ExperimentSettings:
+    """Loaded from experiment_settings.yaml (profile full or test); passed through the pipeline."""
+
+    samples_per_size: int
+    random_state: int
+    bootstrap_replica_count: int
+    include_metrics: List[str]
+    correlation_sizes: Union[range, List[int]]
+    plateau_max_cap: int
+    plateau_window_start: int
+    plateau_window_step: int
+    plateau_window_stop: Optional[int]
+    plateau_threshold: float
+    reliability_sizes: List[int]
+
+
+def plateau_window_sizes_for_log(settings: ExperimentSettings, log_len: int) -> List[int]:
+    """
+    Ordered window sizes for plateau analysis: range(start, stop+1, step) capped by log length
+    and max_window_cap. If plateau_window_stop is None, stop is min(max_window_cap, log_len).
+    """
+    cap = min(settings.plateau_max_cap, log_len)
+    stop = settings.plateau_window_stop
+    if stop is None:
+        stop = cap
+    else:
+        stop = min(stop, cap)
+    start = settings.plateau_window_start
+    step = settings.plateau_window_step
+    if step <= 0:
+        raise ValueError("plateau_analysis.window_sizes.step must be positive")
+    if start > stop:
+        return []
+    return list(range(start, stop + 1, step))
+
+
+def experiment_settings_from_profile(profile: Dict[str, Any]) -> ExperimentSettings:
+    ca = profile["correlation_analysis"]
+    pa = profile["plateau_analysis"]
+    ra = profile["reliability_analysis"]
+    pws = pa["window_sizes"]
+    return ExperimentSettings(
+        samples_per_size=int(profile["samples_per_size"]),
+        random_state=int(profile["random_state"]),
+        bootstrap_replica_count=int(profile["bootstrap_replica_count"]),
+        include_metrics=_resolve_include_metrics(profile.get("include_metrics")),
+        correlation_sizes=parse_correlation_window_sizes(ca["window_sizes"]),
+        plateau_max_cap=int(pa["max_window_cap"]),
+        plateau_window_start=int(pws["start"]),
+        plateau_window_step=int(pws["step"]),
+        plateau_window_stop=_parse_plateau_stop(pws.get("stop")),
+        plateau_threshold=float(pa["relative_threshold"]),
+        reliability_sizes=[int(x) for x in ra["window_sizes"]],
+    )
 
 
 def resolve_scenario_dict(

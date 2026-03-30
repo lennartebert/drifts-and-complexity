@@ -9,7 +9,13 @@ from ..helpers import load_yaml
 
 # Window approach types accepted from window_config.yml.
 # Note: `fixed_size_windows` was renamed to `fixed_trace_windows` (strict rename).
-_ALLOWED = {"change_point_windows", "fixed_trace_windows", "fixed_time_windows", "window_comparison"}
+_ALLOWED = {
+    "change_point_windows",
+    "fixed_trace_windows",
+    "growing_prefix_trace_windows",
+    "fixed_time_windows",
+    "window_comparison",
+}
 
 
 def _req_int(params: Dict[str, Any], key: str, min_val: int) -> int:
@@ -35,6 +41,12 @@ def _req_int(params: Dict[str, Any], key: str, min_val: int) -> int:
     if val < min_val:
         raise ValueError(f"Param '{key}' must be ≥ {min_val}.")
     return val
+
+
+def _opt_bool(params: Dict[str, Any], key: str) -> None:
+    """Validate optional boolean parameter if present."""
+    if key in params and not isinstance(params[key], bool):
+        raise ValueError(f"Param '{key}' must be boolean.")
 
 
 def validate_window_approaches(approaches: List[Dict[str, Any]]) -> None:
@@ -63,9 +75,15 @@ def validate_window_approaches(approaches: List[Dict[str, Any]]) -> None:
         if typ == "fixed_trace_windows":
             _req_int(params, "window_size", 1)
             _req_int(params, "offset", 1)
+            _opt_bool(params, "include_incomplete_windows")
+        elif typ == "growing_prefix_trace_windows":
+            _req_int(params, "increment", 1)
+            if "start_index" in params:
+                _req_int(params, "start_index", 0)
         elif typ == "fixed_time_windows":
             _req_int(params, "window_size", 1)
             _req_int(params, "offset", 1)
+            _opt_bool(params, "include_incomplete_windows")
 
             unit = params.get("unit", None)
             if unit not in {"day", "month", "year"}:
