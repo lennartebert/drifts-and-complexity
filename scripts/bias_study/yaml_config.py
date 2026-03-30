@@ -53,8 +53,6 @@ def apply_experiment_profile(
     g["PLATEAU_STEP"] = int(pa["step"])
     g["PLATEAU_THRESHOLD"] = float(pa["relative_threshold"])
     g["RELIABILITY_SIZES"] = [int(x) for x in ra["window_sizes"]]
-    # Same sizes as reliability_analysis: master.csv RelCI {n} columns (see combine_analysis_with_means).
-    g["REF_SIZES"] = list(g["RELIABILITY_SIZES"])
     g["BOOTSTRAP_SIZE"] = g["BOOTSTRAP_REPLICA_COUNT"]
     from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
 

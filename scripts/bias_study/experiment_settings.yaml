@@ -26,8 +26,8 @@ full:
     relative_threshold: 0.025
 
   reliability_analysis:
-    # Across-sample relative CI width (RelCI) at these window sizes only.
-    # REF_SIZES in code is set equal to this list (master table columns RelCI {n}).
+    # Across-sample relative CI width (RelCI) at these window sizes; same list is passed to
+    # combine_analysis_with_means as ref_sizes (master columns RelCI {n}).
     window_sizes: [50, 500, 1000]
 
 test:

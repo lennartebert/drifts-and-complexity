@@ -101,8 +101,6 @@ PLATEAU_MAX_CAP = 10000
 PLATEAU_STEP = 50
 PLATEAU_THRESHOLD = 0.025
 RELIABILITY_SIZES = [50, 500, 1000]
-# Duplicates reliability_analysis.window_sizes; passed to combine_analysis_with_means as ref_sizes (RelCI columns).
-REF_SIZES = [50, 500, 1000]
 BOOTSTRAP_SIZE = 0
 
 BREAKDOWN_BY = "dimension"  # None, "basis", or "dimension"
@@ -724,7 +722,7 @@ def compute_results(
     # Combine all analysis data and add mean rows
     combined_analysis_df = combine_analysis_with_means(
         analysis_per_log=analysis_per_log,
-        ref_sizes=REF_SIZES,
+        ref_sizes=RELIABILITY_SIZES,
         measure_basis_map=constants.METRIC_BASIS_MAP,
         n=n_samples,
         N_pop=avg_population_size,
@@ -824,7 +822,7 @@ def main() -> None:
         raise SystemExit(str(e))
 
     global SAMPLES_PER_SIZE, BOOTSTRAP_REPLICA_COUNT, BOOTSTRAP_SIZE
-    global CORRELATION_SIZES, RELIABILITY_SIZES, PLATEAU_MAX_CAP, REF_SIZES
+    global CORRELATION_SIZES, RELIABILITY_SIZES, PLATEAU_MAX_CAP
     if args.test:
         apply_experiment_profile(
             _EXPERIMENT_SETTINGS["test"], globals_dict=globals()
