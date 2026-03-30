@@ -87,7 +87,8 @@ PLOT_ROW_GROUPS = [
 SAMPLES_PER_SIZE = 100
 RANDOM_STATE = 123
 # Bootstrap replicate count (B) for window-level bootstrap CIs
-BOOTSTRAP_REPLICA_COUNT = 200
+# TODO: restore to 200 after validation; temporarily 2 for faster local runs
+BOOTSTRAP_REPLICA_COUNT = 2
 
 # 1) Correlation analysis: rho vs window size (50–500)
 CORRELATION_SIZES = range(50, 501, 50)
@@ -846,6 +847,17 @@ SCENARIOS = {
         normalizers=DEFAULT_NORMALIZERS,
         sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
         base_scenario_name="real_base",
+    ),
+    # Full correlation / plateau / reliability grid on TEST_BPIC12 only (use with BOOTSTRAP_REPLICA_COUNT=2 while testing)
+    "test_bpic12": dict(
+        logs=["TEST_BPIC12"],
+        clear_name="TEST BPIC12 (full grid)",
+        population_extractor=default_population_extractor,
+        metric_adapters=default_metric_adapters,
+        bootstrap_sampler=None,
+        normalizers=None,
+        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
+        base_scenario_name=None,
     ),
 }
 
