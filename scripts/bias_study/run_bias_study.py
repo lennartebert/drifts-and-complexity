@@ -42,6 +42,13 @@ from utils.population.extractors.naive_population_extractor import (
 from utils.sample_confidence_interval_extractor import SampleConfidenceIntervalExtractor
 from utils.windowing.window import Window
 
+from .yaml_config import (
+    apply_experiment_profile,
+    build_scenarios_registry,
+    load_experiment_settings,
+    load_scenarios_yaml,
+)
+
 # --- defaults (same as before) ---
 SORTED_METRICS = constants.ALL_METRIC_NAMES  # constants.PC_METRICS
 
@@ -83,29 +90,19 @@ PLOT_ROW_GROUPS = [
     "Graph Entropy",
     "Graph Entropy",
 ]
-# --- Analysis-specific globals (see plan: correlation / plateau / reliability) ---
-SAMPLES_PER_SIZE = 100
-RANDOM_STATE = 123
-# Bootstrap replicate count (B) for window-level bootstrap CIs
-# TODO: restore to 200 after validation; temporarily 2 for faster local runs
-BOOTSTRAP_REPLICA_COUNT = 2
-
-# 1) Correlation analysis: rho vs window size (50–500)
-CORRELATION_SIZES = range(50, 501, 50)
-
-# 2) Plateau analysis: consecutive relative change vs previous size (per sample_id)
+# --- Analysis-specific globals: defaults from experiment_settings.yaml (profile "full") ---
+_EXPERIMENT_SETTINGS = load_experiment_settings()
+SAMPLES_PER_SIZE = 0
+RANDOM_STATE = 0
+BOOTSTRAP_REPLICA_COUNT = 0
+CORRELATION_SIZES = range(50, 51, 1)
 PLATEAU_MIN = 50
 PLATEAU_MAX_CAP = 10000
 PLATEAU_STEP = 50
 PLATEAU_THRESHOLD = 0.025
-
-# 3) Reliability: across-sample relative CIs at selected sizes
 RELIABILITY_SIZES = [50, 500, 1000]
-
 REF_SIZES = [50, 500, 1000]
-
-# Back-compat alias for bootstrap sampler construction
-BOOTSTRAP_SIZE = BOOTSTRAP_REPLICA_COUNT
+BOOTSTRAP_SIZE = 0
 
 BREAKDOWN_BY = "dimension"  # None, "basis", or "dimension"
 
@@ -114,13 +111,22 @@ CORRELATION_TYPE = (
 )
 
 default_population_extractor = NaivePopulationExtractor()
+chao1_population_extractor = Chao1PopulationExtractor()
 default_metric_adapters = [LocalMetricsAdapter(), VidgofMetricsAdapter()]
-default_bootstrap_sampler = BootstrapSampler(
-    B=BOOTSTRAP_REPLICA_COUNT, seed=RANDOM_STATE
-)
 default_normalizers: Optional[List] = None
 default_sample_confidence_interval_extractor = SampleConfidenceIntervalExtractor(
     conf_level=0.95
+)
+
+apply_experiment_profile(_EXPERIMENT_SETTINGS["full"], globals_dict=globals())
+
+SCENARIOS = build_scenarios_registry(
+    load_scenarios_yaml(),
+    default_sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
+    default_metric_adapters=default_metric_adapters,
+    naive_population_extractor=default_population_extractor,
+    chao1_population_extractor=chao1_population_extractor,
+    default_normalizers=DEFAULT_NORMALIZERS,
 )
 
 
@@ -787,81 +793,6 @@ def compute_results(
         print(f"Log statistics LaTeX table saved to: {log_stats_latex_path}")
 
 
-# --- scenario registry ---
-SCENARIOS = {
-    "synthetic_base": dict(
-        logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
-        clear_name="Synthetic (Base)",
-        population_extractor=default_population_extractor,
-        metric_adapters=default_metric_adapters,
-        bootstrap_sampler=None,
-        normalizers=None,
-        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
-        base_scenario_name=None,
-    ),
-    "synthetic_normalized": dict(
-        logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
-        clear_name="Synthetic (Normalized)",
-        population_extractor=default_population_extractor,
-        metric_adapters=default_metric_adapters,
-        bootstrap_sampler=None,
-        normalizers=DEFAULT_NORMALIZERS,
-        base_scenario_name="synthetic_base",
-    ),
-    "synthetic_normalized_and_population": dict(
-        logs=["O2C_S", "CLAIM_S", "LOAN_S", "CREDIT_S"],
-        clear_name="Synthetic (Normalized + Population)",
-        population_extractor=Chao1PopulationExtractor(),
-        metric_adapters=default_metric_adapters,
-        bootstrap_sampler=None,
-        normalizers=DEFAULT_NORMALIZERS,
-        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
-        base_scenario_name="synthetic_base",
-    ),
-    "real_base": dict(
-        logs=["BPIC12", "RTFMP"],
-        clear_name="Real (Base)",
-        population_extractor=default_population_extractor,
-        metric_adapters=default_metric_adapters,
-        bootstrap_sampler=None,
-        normalizers=None,
-        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
-        base_scenario_name=None,
-    ),
-    "real_normalized": dict(
-        logs=["BPIC12", "RTFMP"],
-        clear_name="Real (Normalized)",
-        population_extractor=default_population_extractor,
-        metric_adapters=default_metric_adapters,
-        bootstrap_sampler=None,
-        normalizers=DEFAULT_NORMALIZERS,
-        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
-        base_scenario_name="real_base",
-    ),
-    "real_normalized_and_population": dict(
-        logs=["BPIC12", "RTFMP"],
-        clear_name="Real (Normalized + Population)",
-        population_extractor=Chao1PopulationExtractor(),
-        metric_adapters=default_metric_adapters,
-        bootstrap_sampler=None,
-        normalizers=DEFAULT_NORMALIZERS,
-        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
-        base_scenario_name="real_base",
-    ),
-    # Full correlation / plateau / reliability grid on TEST_BPIC12 only (use with BOOTSTRAP_REPLICA_COUNT=2 while testing)
-    "test_bpic12": dict(
-        logs=["TEST_BPIC12"],
-        clear_name="TEST BPIC12 (full grid)",
-        population_extractor=default_population_extractor,
-        metric_adapters=default_metric_adapters,
-        bootstrap_sampler=None,
-        normalizers=None,
-        sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
-        base_scenario_name=None,
-    ),
-}
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run scenarios by ID or name.")
     parser.add_argument(
@@ -891,30 +822,14 @@ def main() -> None:
     except ValueError as e:
         raise SystemExit(str(e))
 
-    # Modify global parameters for test mode
     global SAMPLES_PER_SIZE, BOOTSTRAP_REPLICA_COUNT, BOOTSTRAP_SIZE
-    global CORRELATION_SIZES, RELIABILITY_SIZES, PLATEAU_MAX_CAP
+    global CORRELATION_SIZES, RELIABILITY_SIZES, PLATEAU_MAX_CAP, REF_SIZES
     if args.test:
-        SAMPLES_PER_SIZE = 2
-        BOOTSTRAP_REPLICA_COUNT = 2
-        BOOTSTRAP_SIZE = BOOTSTRAP_REPLICA_COUNT
-        CORRELATION_SIZES = range(50, 101, 50)
-        RELIABILITY_SIZES = [50, 100, 150]
-        PLATEAU_MAX_CAP = 300
-
-        # Create test scenario
-        test_scenario = dict(
-            logs=["TEST_BPIC12"],
-            clear_name="Test",
-            population_extractor=default_population_extractor,
-            metric_adapters=default_metric_adapters,
-            bootstrap_sampler=None,
-            normalizers=None,
-            include_metrics=sorted_selected_metrics,
-            sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
-            base_scenario_name=None,
+        apply_experiment_profile(
+            _EXPERIMENT_SETTINGS["test"], globals_dict=globals()
         )
-
+        test_scenario = SCENARIOS["test"].copy()
+        test_scenario["include_metrics"] = sorted_selected_metrics
         scenarios_to_run = [("test", test_scenario)]
     else:
         scenarios_to_run = []

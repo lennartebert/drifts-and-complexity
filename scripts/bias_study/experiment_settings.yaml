@@ -1,0 +1,32 @@
+# Windowing / bootstrap / grid settings for bias study.
+# Keys: full (production), test (fast smoke runs with --test).
+
+full:
+  samples_per_size: 100
+  random_state: 123
+  bootstrap_replica_count: 200
+  correlation_sizes:
+    start: 50
+    stop: 500
+    step: 50
+  plateau_min: 50
+  plateau_max_cap: 10000
+  plateau_step: 50
+  plateau_threshold: 0.025
+  reliability_sizes: [50, 500, 1000]
+  ref_sizes: [50, 500, 1000]
+
+test:
+  samples_per_size: 2
+  random_state: 123
+  bootstrap_replica_count: 2
+  correlation_sizes:
+    start: 50
+    stop: 100
+    step: 50
+  plateau_min: 50
+  plateau_max_cap: 300
+  plateau_step: 50
+  plateau_threshold: 0.025
+  reliability_sizes: [50, 100, 150]
+  ref_sizes: [50, 100, 150]
