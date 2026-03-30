@@ -5,8 +5,9 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -14,9 +15,6 @@ from pm4py.objects.log.importer.xes import importer as xes_importer
 
 from utils import constants, helpers, sampling_helper
 from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
-from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import (
-    INextBootstrapSampler,
-)
 from utils.comparison_table import build_comparison_table_if_exists
 from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetricsAdapter
 from utils.complexity.metrics_adapters.vidgof_metrics_adapter import (
@@ -43,10 +41,10 @@ from utils.sample_confidence_interval_extractor import SampleConfidenceIntervalE
 from utils.windowing.window import Window
 
 from .yaml_config import (
-    apply_experiment_profile,
     build_scenarios_registry,
     load_experiment_settings,
     load_scenarios_yaml,
+    parse_correlation_window_sizes,
 )
 
 # --- defaults (same as before) ---
@@ -90,18 +88,39 @@ PLOT_ROW_GROUPS = [
     "Graph Entropy",
     "Graph Entropy",
 ]
-# --- Analysis-specific globals: defaults from experiment_settings.yaml (profile "full") ---
-_EXPERIMENT_SETTINGS = load_experiment_settings()
-SAMPLES_PER_SIZE = 0
-RANDOM_STATE = 0
-BOOTSTRAP_REPLICA_COUNT = 0
-CORRELATION_SIZES = range(50, 51, 1)
-PLATEAU_MIN = 50
-PLATEAU_MAX_CAP = 10000
-PLATEAU_STEP = 50
-PLATEAU_THRESHOLD = 0.025
-RELIABILITY_SIZES = [50, 500, 1000]
-BOOTSTRAP_SIZE = 0
+
+
+@dataclass(frozen=True)
+class ExperimentSettings:
+    """Loaded from experiment_settings.yaml (profile full or test); passed through the pipeline."""
+
+    samples_per_size: int
+    random_state: int
+    bootstrap_replica_count: int
+    correlation_sizes: Union[range, List[int]]
+    plateau_max_cap: int
+    plateau_step: int
+    plateau_threshold: float
+    reliability_sizes: List[int]
+
+
+def experiment_settings_from_profile(profile: Dict[str, Any]) -> ExperimentSettings:
+    ca = profile["correlation_analysis"]
+    pa = profile["plateau_analysis"]
+    ra = profile["reliability_analysis"]
+    return ExperimentSettings(
+        samples_per_size=int(profile["samples_per_size"]),
+        random_state=int(profile["random_state"]),
+        bootstrap_replica_count=int(profile["bootstrap_replica_count"]),
+        correlation_sizes=parse_correlation_window_sizes(ca["window_sizes"]),
+        plateau_max_cap=int(pa["max_window_cap"]),
+        plateau_step=int(pa["step"]),
+        plateau_threshold=float(pa["relative_threshold"]),
+        reliability_sizes=[int(x) for x in ra["window_sizes"]],
+    )
+
+
+_EXPERIMENT_YAML = load_experiment_settings()
 
 BREAKDOWN_BY = "dimension"  # None, "basis", or "dimension"
 
@@ -116,8 +135,6 @@ default_normalizers: Optional[List] = None
 default_sample_confidence_interval_extractor = SampleConfidenceIntervalExtractor(
     conf_level=0.95
 )
-
-apply_experiment_profile(_EXPERIMENT_SETTINGS["full"], globals_dict=globals())
 
 SCENARIOS = build_scenarios_registry(
     load_scenarios_yaml(),
@@ -335,20 +352,6 @@ def generate_latex_log_statistics_table(
     return "\n".join(lines)
 
 
-def _long_metrics_to_value_map(
-    metrics_df: pd.DataFrame,
-) -> Dict[tuple[str, str], Dict[int, float]]:
-    """Map (sample_id_str, metric) -> {window_size -> value}."""
-    df = metrics_df.reset_index()
-    out: Dict[tuple[str, str], Dict[int, float]] = {}
-    for _, row in df.iterrows():
-        sid = str(row["Sample ID"])
-        m = str(row["Metric"])
-        sz = int(row["Sample Size"])
-        out.setdefault((sid, m), {})[sz] = float(row["Value"])
-    return out
-
-
 def _merge_correlation_reliability_plateau(
     corr_df: pd.DataFrame,
     rel_df: pd.DataFrame,
@@ -395,22 +398,30 @@ def _adaptive_plateau_extension(
     pm4py_log,
     base_metrics_df: pd.DataFrame,
     *,
+    settings: ExperimentSettings,
     include_metrics: List[str],
-    samples_per_size: int,
     max_win: int,
-    step: int,
-    rel_threshold: float,
     population_extractor,
     metric_adapters,
     bootstrap_sampler,
     normalizers,
-    random_state: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame, Dict[str, float], Dict[str, bool]]:
     """
     Extend beyond 550 only when needed. Returns (extra_metrics_df, plateau_per_sample_df,
     plateau_median_by_metric, plateau_found_majority_by_metric).
     """
-    maps = _long_metrics_to_value_map(base_metrics_df)
+    df = base_metrics_df.reset_index()
+    maps: Dict[tuple[str, str], Dict[int, float]] = {}
+    for _, row in df.iterrows():
+        sid = str(row["Sample ID"])
+        m = str(row["Metric"])
+        sz = int(row["Sample Size"])
+        maps.setdefault((sid, m), {})[sz] = float(row["Value"])
+
+    step = settings.plateau_step
+    rel_threshold = settings.plateau_threshold
+    samples_per_size = settings.samples_per_size
+    random_state = settings.random_state
     pending: set[tuple[str, str]] = set()
     plateau_n: Dict[tuple[str, str], float] = {}
 
@@ -431,10 +442,9 @@ def _adaptive_plateau_extension(
 
     extra_parts: list[pd.DataFrame] = []
     if max_win <= 500 or not pending:
-        plateau_per_sample = _plateau_summary_records(
-            include_metrics, samples_per_size, plateau_n, maps
+        plateau_per_sample, med, maj = _plateau_per_sample_and_aggregate(
+            include_metrics, samples_per_size, plateau_n
         )
-        med, maj = _plateau_aggregate(plateau_per_sample, samples_per_size)
         return pd.DataFrame(), plateau_per_sample, med, maj
 
     for curr_size in range(500 + step, max_win + 1, step):
@@ -480,10 +490,9 @@ def _adaptive_plateau_extension(
                 plateau_n[(sid, m)] = float(curr_size)
                 pending.discard((sid, m))
 
-    plateau_per_sample = _plateau_summary_records(
-        include_metrics, samples_per_size, plateau_n, maps
+    plateau_per_sample, med, maj = _plateau_per_sample_and_aggregate(
+        include_metrics, samples_per_size, plateau_n
     )
-    med, maj = _plateau_aggregate(plateau_per_sample, samples_per_size)
     extra_df = (
         pd.concat(extra_parts, ignore_index=False)
         if extra_parts
@@ -492,15 +501,13 @@ def _adaptive_plateau_extension(
     return extra_df, plateau_per_sample, med, maj
 
 
-def _plateau_summary_records(
+def _plateau_per_sample_and_aggregate(
     include_metrics: List[str],
     samples_per_size: int,
     plateau_n: Dict[tuple[str, str], float],
-    maps: Dict[tuple[str, str], Dict[int, float]],
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, Dict[str, float], Dict[str, bool]]:
     rows = []
-    sample_ids = [str(i) for i in range(samples_per_size)]
-    for sid in sample_ids:
+    for sid in (str(i) for i in range(samples_per_size)):
         for m in include_metrics:
             key = (sid, m)
             pn = plateau_n.get(key, np.nan)
@@ -514,12 +521,7 @@ def _plateau_summary_records(
                     "Plateau Found": bool(np.isfinite(pn)),
                 }
             )
-    return pd.DataFrame(rows)
-
-
-def _plateau_aggregate(
-    plateau_per_sample: pd.DataFrame, samples_per_size: int
-) -> tuple[Dict[str, float], Dict[str, bool]]:
+    plateau_per_sample = pd.DataFrame(rows)
     med: Dict[str, float] = {}
     maj: Dict[str, bool] = {}
     for m, grp in plateau_per_sample.groupby("Metric"):
@@ -530,7 +532,7 @@ def _plateau_aggregate(
             med[m] = float(np.nanmedian(vals))
         frac = float(np.mean(grp["Plateau Found"].to_numpy(dtype=bool)))
         maj[m] = frac >= 0.5
-    return med, maj
+    return plateau_per_sample, med, maj
 
 
 # --- core compute function ---
@@ -539,6 +541,7 @@ def compute_results(
     results_name: str,
     scenario_name: str,
     clear_name: str,
+    settings: ExperimentSettings,
     population_extractor=default_population_extractor,
     metric_adapters=default_metric_adapters,
     bootstrap_sampler=None,
@@ -552,7 +555,7 @@ def compute_results(
         include_metrics = SORTED_METRICS
     if bootstrap_sampler is None:
         bootstrap_sampler = BootstrapSampler(
-            B=BOOTSTRAP_REPLICA_COUNT, seed=RANDOM_STATE
+            B=settings.bootstrap_replica_count, seed=settings.random_state
         )
     data_dictionary = helpers.load_data_dictionary(
         constants.get_data_dictionary_path(), get_real=True, get_synthetic=True
@@ -577,9 +580,9 @@ def compute_results(
         pm4py_log = xes_importer.apply(str(log_path))
         # Store population size (number of traces) for FPC
         log_population_sizes[log_name] = len(pm4py_log)
-        max_win = min(PLATEAU_MAX_CAP, len(pm4py_log))
-        correlation_sizes_f = [s for s in CORRELATION_SIZES if s <= max_win]
-        reliability_sizes_f = [s for s in RELIABILITY_SIZES if s <= max_win]
+        max_win = min(settings.plateau_max_cap, len(pm4py_log))
+        correlation_sizes_f = [s for s in settings.correlation_sizes if s <= max_win]
+        reliability_sizes_f = [s for s in settings.reliability_sizes if s <= max_win]
 
         # Compute basic log statistics
         basic_metrics = compute_metrics_for_log_statistics(
@@ -600,7 +603,10 @@ def compute_results(
         # Pass A: correlation window sizes (50–500, capped by log)
         window_samples_base = (
             sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                pm4py_log, correlation_sizes_f, SAMPLES_PER_SIZE, RANDOM_STATE
+                pm4py_log,
+                correlation_sizes_f,
+                settings.samples_per_size,
+                settings.random_state,
             )
         )
         metrics_base = compute_metrics_for_samples(
@@ -618,7 +624,10 @@ def compute_results(
         if extra_rel_sizes:
             window_samples_rel = (
                 sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                    pm4py_log, extra_rel_sizes, SAMPLES_PER_SIZE, RANDOM_STATE
+                    pm4py_log,
+                    extra_rel_sizes,
+                    settings.samples_per_size,
+                    settings.random_state,
                 )
             )
             metrics_rel_only = compute_metrics_for_samples(
@@ -639,16 +648,13 @@ def compute_results(
             _adaptive_plateau_extension(
                 pm4py_log,
                 metrics_base,
+                settings=settings,
                 include_metrics=include_metrics,
-                samples_per_size=SAMPLES_PER_SIZE,
                 max_win=max_win,
-                step=PLATEAU_STEP,
-                rel_threshold=PLATEAU_THRESHOLD,
                 population_extractor=population_extractor,
                 metric_adapters=metric_adapters,
                 bootstrap_sampler=bootstrap_sampler,
                 normalizers=normalizers,
-                random_state=RANDOM_STATE,
             )
         )
         if not plateau_extra.empty:
@@ -674,7 +680,7 @@ def compute_results(
         )
         analysis_correlation.to_csv(out_dir / "analysis_correlation.csv")
 
-        # Reliability: relative CIs at REF sizes
+        # Reliability: relative CIs at reliability window sizes
         rel_metrics = raw_metrics_df.reset_index()
         rel_metrics = rel_metrics[
             rel_metrics["Sample Size"].isin(reliability_sizes_f)
@@ -712,7 +718,7 @@ def compute_results(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Compute sample size for FPC (correlation grid)
-    n_samples = len(list(CORRELATION_SIZES)) * SAMPLES_PER_SIZE
+    n_samples = len(list(settings.correlation_sizes)) * settings.samples_per_size
     avg_population_size = (
         int(np.mean(list(log_population_sizes.values())))
         if log_population_sizes
@@ -722,7 +728,7 @@ def compute_results(
     # Combine all analysis data and add mean rows
     combined_analysis_df = combine_analysis_with_means(
         analysis_per_log=analysis_per_log,
-        ref_sizes=RELIABILITY_SIZES,
+        ref_sizes=settings.reliability_sizes,
         measure_basis_map=constants.METRIC_BASIS_MAP,
         n=n_samples,
         N_pop=avg_population_size,
@@ -821,30 +827,25 @@ def main() -> None:
     except ValueError as e:
         raise SystemExit(str(e))
 
-    global SAMPLES_PER_SIZE, BOOTSTRAP_REPLICA_COUNT, BOOTSTRAP_SIZE
-    global CORRELATION_SIZES, RELIABILITY_SIZES, PLATEAU_MAX_CAP
     if args.test:
-        apply_experiment_profile(
-            _EXPERIMENT_SETTINGS["test"], globals_dict=globals()
-        )
+        experiment_settings = experiment_settings_from_profile(_EXPERIMENT_YAML["test"])
         test_scenario = SCENARIOS["test"].copy()
         test_scenario["include_metrics"] = sorted_selected_metrics
-        scenarios_to_run = [("test", test_scenario)]
+        scenarios_to_run = [("test", test_scenario, experiment_settings)]
     else:
         scenarios_to_run = []
         scenario_names = list(SCENARIOS.keys())
+        full_settings = experiment_settings_from_profile(_EXPERIMENT_YAML["full"])
 
         # If no scenarios specified, run all
         if not args.scenarios:
             print("No scenarios specified, running all scenarios...")
             for scenario_name, scenario_config in SCENARIOS.items():
-                # Add include_metrics to scenario config
                 scenario_config = scenario_config.copy()
                 scenario_config["include_metrics"] = sorted_selected_metrics
-                scenarios_to_run.append((scenario_name, scenario_config))
+                scenarios_to_run.append((scenario_name, scenario_config, full_settings))
         else:
             for scenario_input in args.scenarios:
-                # Try to parse as integer (scenario ID)
                 try:
                     scenario_id = int(scenario_input)
                     if scenario_id < 0 or scenario_id >= len(SCENARIOS):
@@ -854,25 +855,24 @@ def main() -> None:
                     scenario_name = scenario_names[scenario_id]
                     scenario_config = SCENARIOS[scenario_name].copy()
                     scenario_config["include_metrics"] = sorted_selected_metrics
-                    scenarios_to_run.append((scenario_name, scenario_config))
+                    scenarios_to_run.append((scenario_name, scenario_config, full_settings))
                 except ValueError:
-                    # Not an integer, treat as scenario name
                     if scenario_input not in SCENARIOS:
                         raise SystemExit(
                             f"Invalid scenario name '{scenario_input}'. Valid names: {scenario_names}"
                         )
                     scenario_config = SCENARIOS[scenario_input].copy()
                     scenario_config["include_metrics"] = sorted_selected_metrics
-                    scenarios_to_run.append((scenario_input, scenario_config))
+                    scenarios_to_run.append((scenario_input, scenario_config, full_settings))
 
-    # Run each scenario
-    for scenario_name, sc in scenarios_to_run:
+    for scenario_name, sc, experiment_settings in scenarios_to_run:
         print(f"\n=== Running scenario: {scenario_name} ===")
         compute_results(
             list_of_logs=sc["logs"],  # type: ignore
             results_name=scenario_name,
             scenario_name=scenario_name,
             clear_name=sc["clear_name"],  # type: ignore
+            settings=experiment_settings,
             population_extractor=sc["population_extractor"],  # type: ignore
             metric_adapters=sc["metric_adapters"],  # type: ignore
             bootstrap_sampler=sc["bootstrap_sampler"],  # type: ignore

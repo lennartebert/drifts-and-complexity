@@ -20,7 +20,6 @@ full:
   plateau_analysis:
     # Per-sample_id consecutive stability: stop extending when relative change vs previous size
     # is below relative_threshold, up to min(max_window_cap, log length).
-    min_window: 50
     max_window_cap: 10000
     step: 50
     relative_threshold: 0.025
@@ -42,7 +41,6 @@ test:
       step: 50
 
   plateau_analysis:
-    min_window: 50
     max_window_cap: 300
     step: 50
     relative_threshold: 0.025

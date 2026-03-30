@@ -10,7 +10,7 @@ import yaml
 _BIAS_STUDY_DIR = Path(__file__).resolve().parent
 
 
-def _parse_correlation_sizes(
+def parse_correlation_window_sizes(
     spec: Union[Dict[str, int], List[int]]
 ) -> Union[range, List[int]]:
     if isinstance(spec, list):
@@ -30,35 +30,6 @@ def load_experiment_settings(
     if not isinstance(data, dict) or "full" not in data or "test" not in data:
         raise ValueError(f"{p} must contain 'full' and 'test' top-level keys")
     return data
-
-
-def apply_experiment_profile(
-    profile: Dict[str, Any],
-    *,
-    globals_dict: Dict[str, Any],
-) -> None:
-    """Apply one profile (full or test) into the given globals mapping (run_bias_study module)."""
-    g = globals_dict
-    g["SAMPLES_PER_SIZE"] = int(profile["samples_per_size"])
-    g["RANDOM_STATE"] = int(profile["random_state"])
-    g["BOOTSTRAP_REPLICA_COUNT"] = int(profile["bootstrap_replica_count"])
-
-    ca = profile["correlation_analysis"]
-    pa = profile["plateau_analysis"]
-    ra = profile["reliability_analysis"]
-
-    g["CORRELATION_SIZES"] = _parse_correlation_sizes(ca["window_sizes"])
-    g["PLATEAU_MIN"] = int(pa["min_window"])
-    g["PLATEAU_MAX_CAP"] = int(pa["max_window_cap"])
-    g["PLATEAU_STEP"] = int(pa["step"])
-    g["PLATEAU_THRESHOLD"] = float(pa["relative_threshold"])
-    g["RELIABILITY_SIZES"] = [int(x) for x in ra["window_sizes"]]
-    g["BOOTSTRAP_SIZE"] = g["BOOTSTRAP_REPLICA_COUNT"]
-    from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
-
-    g["default_bootstrap_sampler"] = BootstrapSampler(
-        B=g["BOOTSTRAP_REPLICA_COUNT"], seed=g["RANDOM_STATE"]
-    )
 
 
 def load_scenarios_yaml(path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
