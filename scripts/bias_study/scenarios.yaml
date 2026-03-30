@@ -1,6 +1,12 @@
-# Scenario registry: which logs and preprocessing pipeline per run.
-# population_extractor: naive | chao1
-# normalizers: null | default
+# Bias study scenarios: which event logs to run and how to preprocess windows.
+#
+# Fields:
+#   logs                  Keys in data_dictionary.json (dataset ids).
+#   clear_name            Human-readable title for LaTeX / reports.
+#   population_extractor  naive: no extra population model; chao1: Chao1-based population on the window.
+#   normalizers           null: raw measures; default: project default normalizers (see DEFAULT_NORMALIZERS).
+#   base_scenario_name    If set, metrics_comparison.csv can compare this run to that scenario's master.csv
+#                         (null for baseline runs).
 
 synthetic_base:
   logs: [O2C_S, CLAIM_S, LOAN_S, CREDIT_S]
@@ -51,7 +57,7 @@ test_bpic12:
   normalizers: null
   base_scenario_name: null
 
-# Used with `python ... run_bias_study.py --test`
+# Invoked by: python -m scripts.bias_study.run_bias_study --test (uses experiment_settings profile "test")
 test:
   logs: [TEST_BPIC12]
   clear_name: "Test"

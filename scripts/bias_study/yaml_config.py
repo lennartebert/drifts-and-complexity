@@ -42,13 +42,19 @@ def apply_experiment_profile(
     g["SAMPLES_PER_SIZE"] = int(profile["samples_per_size"])
     g["RANDOM_STATE"] = int(profile["random_state"])
     g["BOOTSTRAP_REPLICA_COUNT"] = int(profile["bootstrap_replica_count"])
-    g["CORRELATION_SIZES"] = _parse_correlation_sizes(profile["correlation_sizes"])
-    g["PLATEAU_MIN"] = int(profile["plateau_min"])
-    g["PLATEAU_MAX_CAP"] = int(profile["plateau_max_cap"])
-    g["PLATEAU_STEP"] = int(profile["plateau_step"])
-    g["PLATEAU_THRESHOLD"] = float(profile["plateau_threshold"])
-    g["RELIABILITY_SIZES"] = [int(x) for x in profile["reliability_sizes"]]
-    g["REF_SIZES"] = [int(x) for x in profile["ref_sizes"]]
+
+    ca = profile["correlation_analysis"]
+    pa = profile["plateau_analysis"]
+    ra = profile["reliability_analysis"]
+
+    g["CORRELATION_SIZES"] = _parse_correlation_sizes(ca["window_sizes"])
+    g["PLATEAU_MIN"] = int(pa["min_window"])
+    g["PLATEAU_MAX_CAP"] = int(pa["max_window_cap"])
+    g["PLATEAU_STEP"] = int(pa["step"])
+    g["PLATEAU_THRESHOLD"] = float(pa["relative_threshold"])
+    g["RELIABILITY_SIZES"] = [int(x) for x in ra["window_sizes"]]
+    # Same sizes as reliability_analysis: master.csv RelCI {n} columns (see combine_analysis_with_means).
+    g["REF_SIZES"] = list(g["RELIABILITY_SIZES"])
     g["BOOTSTRAP_SIZE"] = g["BOOTSTRAP_REPLICA_COUNT"]
     from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
 

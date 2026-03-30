@@ -1,32 +1,51 @@
-# Windowing / bootstrap / grid settings for bias study.
-# Keys: full (production), test (fast smoke runs with --test).
+# Bias study experiment profiles. Keys: full (production), test (fast smoke with --test).
+#
+# Shared knobs (used by more than one analysis path):
+#   samples_per_size     Replicates drawn per window size (same RNG stream layout for all analyses).
+#   random_state         Seed for window sampling.
+#   bootstrap_replica_count  B for window-level bootstrap CIs inside compute_metrics_for_samples.
 
 full:
   samples_per_size: 100
   random_state: 123
   bootstrap_replica_count: 200
-  correlation_sizes:
-    start: 50
-    stop: 500
+
+  correlation_analysis:
+    # Pearson / Spearman vs window size. Windows: start, stop (inclusive), step.
+    window_sizes:
+      start: 50
+      stop: 500
+      step: 50
+
+  plateau_analysis:
+    # Per-sample_id consecutive stability: stop extending when relative change vs previous size
+    # is below relative_threshold, up to min(max_window_cap, log length).
+    min_window: 50
+    max_window_cap: 10000
     step: 50
-  plateau_min: 50
-  plateau_max_cap: 10000
-  plateau_step: 50
-  plateau_threshold: 0.025
-  reliability_sizes: [50, 500, 1000]
-  ref_sizes: [50, 500, 1000]
+    relative_threshold: 0.025
+
+  reliability_analysis:
+    # Across-sample relative CI width (RelCI) at these window sizes only.
+    # REF_SIZES in code is set equal to this list (master table columns RelCI {n}).
+    window_sizes: [50, 500, 1000]
 
 test:
   samples_per_size: 2
   random_state: 123
   bootstrap_replica_count: 2
-  correlation_sizes:
-    start: 50
-    stop: 100
+
+  correlation_analysis:
+    window_sizes:
+      start: 50
+      stop: 100
+      step: 50
+
+  plateau_analysis:
+    min_window: 50
+    max_window_cap: 300
     step: 50
-  plateau_min: 50
-  plateau_max_cap: 300
-  plateau_step: 50
-  plateau_threshold: 0.025
-  reliability_sizes: [50, 100, 150]
-  ref_sizes: [50, 100, 150]
+    relative_threshold: 0.025
+
+  reliability_analysis:
+    window_sizes: [50, 100, 150]

@@ -101,6 +101,7 @@ PLATEAU_MAX_CAP = 10000
 PLATEAU_STEP = 50
 PLATEAU_THRESHOLD = 0.025
 RELIABILITY_SIZES = [50, 500, 1000]
+# Duplicates reliability_analysis.window_sizes; passed to combine_analysis_with_means as ref_sizes (RelCI columns).
 REF_SIZES = [50, 500, 1000]
 BOOTSTRAP_SIZE = 0
 
