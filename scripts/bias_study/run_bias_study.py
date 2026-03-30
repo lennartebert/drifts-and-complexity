@@ -83,12 +83,28 @@ PLOT_ROW_GROUPS = [
     "Graph Entropy",
     "Graph Entropy",
 ]
-SAMPLES_PER_SIZE = 500
+# --- Analysis-specific globals (see plan: correlation / plateau / reliability) ---
+SAMPLES_PER_SIZE = 100
 RANDOM_STATE = 123
-BOOTSTRAP_SIZE = 200
-SIZES = range(50, 501, 50)
+# Bootstrap replicate count (B) for window-level bootstrap CIs
+BOOTSTRAP_REPLICA_COUNT = 200
 
-REF_SIZES = [50, 250, 500]
+# 1) Correlation analysis: rho vs window size (50–500)
+CORRELATION_SIZES = range(50, 501, 50)
+
+# 2) Plateau analysis: consecutive relative change vs previous size (per sample_id)
+PLATEAU_MIN = 50
+PLATEAU_MAX_CAP = 10000
+PLATEAU_STEP = 50
+PLATEAU_THRESHOLD = 0.025
+
+# 3) Reliability: across-sample relative CIs at selected sizes
+RELIABILITY_SIZES = [50, 500, 1000]
+
+REF_SIZES = [50, 500, 1000]
+
+# Back-compat alias for bootstrap sampler construction
+BOOTSTRAP_SIZE = BOOTSTRAP_REPLICA_COUNT
 
 BREAKDOWN_BY = "dimension"  # None, "basis", or "dimension"
 
@@ -98,7 +114,9 @@ CORRELATION_TYPE = (
 
 default_population_extractor = NaivePopulationExtractor()
 default_metric_adapters = [LocalMetricsAdapter(), VidgofMetricsAdapter()]
-default_bootstrap_sampler = BootstrapSampler(B=BOOTSTRAP_SIZE, seed=RANDOM_STATE)
+default_bootstrap_sampler = BootstrapSampler(
+    B=BOOTSTRAP_REPLICA_COUNT, seed=RANDOM_STATE
+)
 default_normalizers: Optional[List] = None
 default_sample_confidence_interval_extractor = SampleConfidenceIntervalExtractor(
     conf_level=0.95
@@ -117,8 +135,6 @@ METRICS_FOR_LOG_STATISTICS = [
 
 
 # --- Helper functions for event log statistics ---
-
-
 def compute_metrics_for_log_statistics(
     pm4py_log, metric_adapter: LocalMetricsAdapter, population_extractor
 ) -> Dict[str, float]:
@@ -313,6 +329,204 @@ def generate_latex_log_statistics_table(
     return "\n".join(lines)
 
 
+def _long_metrics_to_value_map(
+    metrics_df: pd.DataFrame,
+) -> Dict[tuple[str, str], Dict[int, float]]:
+    """Map (sample_id_str, metric) -> {window_size -> value}."""
+    df = metrics_df.reset_index()
+    out: Dict[tuple[str, str], Dict[int, float]] = {}
+    for _, row in df.iterrows():
+        sid = str(row["Sample ID"])
+        m = str(row["Metric"])
+        sz = int(row["Sample Size"])
+        out.setdefault((sid, m), {})[sz] = float(row["Value"])
+    return out
+
+
+def _merge_correlation_reliability_plateau(
+    corr_df: pd.DataFrame,
+    rel_df: pd.DataFrame,
+    plateau_median: Dict[str, float],
+    plateau_found_majority: Dict[str, bool],
+) -> pd.DataFrame:
+    """Combine correlation analysis, reliability CIs, and plateau summary for master/plots."""
+    c = corr_df.reset_index()
+    r = rel_df.reset_index()
+    const = (
+        c.drop_duplicates(subset=["Metric"])
+        .set_index("Metric")[["Pearson Rho", "Pearson P", "Spearman Rho", "Spearman P"]]
+    )
+    merged = pd.merge(
+        c,
+        r,
+        on=["Metric", "Sample Size"],
+        how="outer",
+        suffixes=("_corr", "_rel"),
+    )
+    merged["Mean Value"] = merged["Mean Value_rel"].fillna(merged["Mean Value_corr"])
+    merged["Median Value"] = merged["Median Value_rel"].fillna(merged["Median Value_corr"])
+    drop_cols = [
+        c
+        for c in merged.columns
+        if c.endswith("_corr") and c not in ("Metric", "Sample Size")
+    ]
+    merged = merged.drop(columns=drop_cols, errors="ignore")
+    rename_ci = {
+        f"{k}_rel": k
+        for k in ["Sample CI Low", "Sample CI High", "Sample CI Rel Width"]
+        if f"{k}_rel" in merged.columns
+    }
+    merged = merged.rename(columns=rename_ci)
+    for col in ["Pearson Rho", "Pearson P", "Spearman Rho", "Spearman P"]:
+        merged[col] = merged["Metric"].map(const[col])
+    merged["Plateau n"] = merged["Metric"].map(plateau_median)
+    merged["Plateau Found"] = merged["Metric"].map(plateau_found_majority)
+    merged = merged.set_index(["Metric", "Sample Size"]).sort_index()
+    return merged
+
+
+def _adaptive_plateau_extension(
+    pm4py_log,
+    base_metrics_df: pd.DataFrame,
+    *,
+    include_metrics: List[str],
+    samples_per_size: int,
+    max_win: int,
+    step: int,
+    rel_threshold: float,
+    population_extractor,
+    metric_adapters,
+    bootstrap_sampler,
+    normalizers,
+    random_state: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, Dict[str, float], Dict[str, bool]]:
+    """
+    Extend beyond 550 only when needed. Returns (extra_metrics_df, plateau_per_sample_df,
+    plateau_median_by_metric, plateau_found_majority_by_metric).
+    """
+    maps = _long_metrics_to_value_map(base_metrics_df)
+    pending: set[tuple[str, str]] = set()
+    plateau_n: Dict[tuple[str, str], float] = {}
+
+    for sid, m in list(maps.keys()):
+        if m not in include_metrics:
+            continue
+        sm = maps[(sid, m)]
+        pn, ok = helpers.consecutive_plateau_first_size(
+            sm,
+            step=step,
+            rel_threshold=rel_threshold,
+            max_win=min(500, max_win),
+        )
+        if ok:
+            plateau_n[(sid, m)] = pn
+        elif max_win > 500:
+            pending.add((sid, m))
+
+    extra_parts: list[pd.DataFrame] = []
+    if max_win <= 500 or not pending:
+        plateau_per_sample = _plateau_summary_records(
+            include_metrics, samples_per_size, plateau_n, maps
+        )
+        med, maj = _plateau_aggregate(plateau_per_sample, samples_per_size)
+        return pd.DataFrame(), plateau_per_sample, med, maj
+
+    for curr_size in range(500 + step, max_win + 1, step):
+        need_sids = sorted({sid for (sid, _m) in pending})
+        if not need_sids:
+            break
+        window_samples = (
+            sampling_helper.sample_consecutive_trace_windows_with_replacement(
+                pm4py_log, [curr_size], samples_per_size, random_state
+            )
+        )
+        batch_df = compute_metrics_for_samples(
+            window_samples,
+            population_extractor=population_extractor,
+            metric_adapters=metric_adapters,
+            bootstrap_sampler=bootstrap_sampler,
+            normalizers=normalizers,
+            include_metrics=include_metrics,
+        )
+        extra_parts.append(batch_df)
+        dfb = batch_df.reset_index()
+        for _, row in dfb.iterrows():
+            sid = str(row["Sample ID"])
+            m = str(row["Metric"])
+            sz = int(row["Sample Size"])
+            if (sid, m) in maps:
+                maps[(sid, m)][sz] = float(row["Value"])
+            else:
+                maps[(sid, m)] = {sz: float(row["Value"])}
+
+        for sid, m in list(pending):
+            sm = maps.get((sid, m), {})
+            prev = curr_size - step
+            if prev not in sm or curr_size not in sm:
+                continue
+            vp = sm[prev]
+            vc = sm[curr_size]
+            if not (np.isfinite(vp) and np.isfinite(vc)):
+                continue
+            if abs(vp) < 1e-15:
+                continue
+            if abs(vc - vp) / abs(vp) <= rel_threshold:
+                plateau_n[(sid, m)] = float(curr_size)
+                pending.discard((sid, m))
+
+    plateau_per_sample = _plateau_summary_records(
+        include_metrics, samples_per_size, plateau_n, maps
+    )
+    med, maj = _plateau_aggregate(plateau_per_sample, samples_per_size)
+    extra_df = (
+        pd.concat(extra_parts, ignore_index=False)
+        if extra_parts
+        else pd.DataFrame()
+    )
+    return extra_df, plateau_per_sample, med, maj
+
+
+def _plateau_summary_records(
+    include_metrics: List[str],
+    samples_per_size: int,
+    plateau_n: Dict[tuple[str, str], float],
+    maps: Dict[tuple[str, str], Dict[int, float]],
+) -> pd.DataFrame:
+    rows = []
+    sample_ids = [str(i) for i in range(samples_per_size)]
+    for sid in sample_ids:
+        for m in include_metrics:
+            key = (sid, m)
+            pn = plateau_n.get(key, np.nan)
+            if not np.isfinite(pn):
+                pn = np.nan
+            rows.append(
+                {
+                    "Sample ID": sid,
+                    "Metric": m,
+                    "Plateau n": pn,
+                    "Plateau Found": bool(np.isfinite(pn)),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _plateau_aggregate(
+    plateau_per_sample: pd.DataFrame, samples_per_size: int
+) -> tuple[Dict[str, float], Dict[str, bool]]:
+    med: Dict[str, float] = {}
+    maj: Dict[str, bool] = {}
+    for m, grp in plateau_per_sample.groupby("Metric"):
+        vals = grp["Plateau n"].to_numpy(dtype=float)
+        if not np.any(np.isfinite(vals)):
+            med[m] = float("nan")
+        else:
+            med[m] = float(np.nanmedian(vals))
+        frac = float(np.mean(grp["Plateau Found"].to_numpy(dtype=bool)))
+        maj[m] = frac >= 0.5
+    return med, maj
+
+
 # --- core compute function ---
 def compute_results(
     list_of_logs: List[str],
@@ -321,7 +535,7 @@ def compute_results(
     clear_name: str,
     population_extractor=default_population_extractor,
     metric_adapters=default_metric_adapters,
-    bootstrap_sampler=default_bootstrap_sampler,
+    bootstrap_sampler=None,
     normalizers=default_normalizers,
     include_metrics: Optional[List[str]] = None,
     sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
@@ -330,6 +544,10 @@ def compute_results(
     print(f"Generating results for {results_name}")
     if include_metrics is None:
         include_metrics = SORTED_METRICS
+    if bootstrap_sampler is None:
+        bootstrap_sampler = BootstrapSampler(
+            B=BOOTSTRAP_REPLICA_COUNT, seed=RANDOM_STATE
+        )
     data_dictionary = helpers.load_data_dictionary(
         constants.get_data_dictionary_path(), get_real=True, get_synthetic=True
     )
@@ -353,6 +571,9 @@ def compute_results(
         pm4py_log = xes_importer.apply(str(log_path))
         # Store population size (number of traces) for FPC
         log_population_sizes[log_name] = len(pm4py_log)
+        max_win = min(PLATEAU_MAX_CAP, len(pm4py_log))
+        correlation_sizes_f = [s for s in CORRELATION_SIZES if s <= max_win]
+        reliability_sizes_f = [s for s in RELIABILITY_SIZES if s <= max_win]
 
         # Compute basic log statistics
         basic_metrics = compute_metrics_for_log_statistics(
@@ -367,18 +588,17 @@ def compute_results(
             }
         )
 
-        window_samples = (
-            sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                pm4py_log, SIZES, SAMPLES_PER_SIZE, RANDOM_STATE
-            )
-        )
-
         out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name / log_name
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # Compute raw metrics
-        metrics_df = compute_metrics_for_samples(
-            window_samples,
+        # Pass A: correlation window sizes (50–500, capped by log)
+        window_samples_base = (
+            sampling_helper.sample_consecutive_trace_windows_with_replacement(
+                pm4py_log, correlation_sizes_f, SAMPLES_PER_SIZE, RANDOM_STATE
+            )
+        )
+        metrics_base = compute_metrics_for_samples(
+            window_samples_base,
             population_extractor=population_extractor,
             metric_adapters=metric_adapters,
             bootstrap_sampler=bootstrap_sampler,
@@ -386,35 +606,107 @@ def compute_results(
             include_metrics=include_metrics,
         )
 
-        # Save raw metrics
-        metrics_df.to_csv(out_dir / "raw_metrics.csv")
+        # Pass B: reliability-only sizes not in correlation grid (typically 1000)
+        extra_rel_sizes = [s for s in reliability_sizes_f if s not in set(correlation_sizes_f)]
+        metrics_extra_list: list[pd.DataFrame] = [metrics_base]
+        if extra_rel_sizes:
+            window_samples_rel = (
+                sampling_helper.sample_consecutive_trace_windows_with_replacement(
+                    pm4py_log, extra_rel_sizes, SAMPLES_PER_SIZE, RANDOM_STATE
+                )
+            )
+            metrics_rel_only = compute_metrics_for_samples(
+                window_samples_rel,
+                population_extractor=population_extractor,
+                metric_adapters=metric_adapters,
+                bootstrap_sampler=bootstrap_sampler,
+                normalizers=normalizers,
+                include_metrics=include_metrics,
+            )
+            metrics_extra_list.append(metrics_rel_only)
 
-        # Compute analysis (mean values, CIs, correlations, plateau)
-        analysis_df = compute_analysis_for_metrics(
-            metrics_df,
+        raw_metrics_df = pd.concat(metrics_extra_list, axis=0)
+        raw_metrics_df = raw_metrics_df.sort_index()
+
+        # Pass C: adaptive plateau beyond 500
+        plateau_extra, plateau_per_sample, plateau_med, plateau_maj = (
+            _adaptive_plateau_extension(
+                pm4py_log,
+                metrics_base,
+                include_metrics=include_metrics,
+                samples_per_size=SAMPLES_PER_SIZE,
+                max_win=max_win,
+                step=PLATEAU_STEP,
+                rel_threshold=PLATEAU_THRESHOLD,
+                population_extractor=population_extractor,
+                metric_adapters=metric_adapters,
+                bootstrap_sampler=bootstrap_sampler,
+                normalizers=normalizers,
+                random_state=RANDOM_STATE,
+            )
+        )
+        if not plateau_extra.empty:
+            raw_metrics_df = pd.concat([raw_metrics_df, plateau_extra], axis=0)
+            raw_metrics_df = raw_metrics_df.sort_index()
+
+        raw_metrics_df.to_csv(out_dir / "raw_metrics.csv")
+        plateau_per_sample.to_csv(out_dir / "plateau_per_sample.csv", index=False)
+
+        # Correlation analysis (rho / Pearson vs window size)
+        corr_metrics = raw_metrics_df.reset_index()
+        corr_metrics = corr_metrics[
+            corr_metrics["Sample Size"].isin(correlation_sizes_f)
+        ].set_index(["Metric", "Sample Size"])
+
+        analysis_correlation = compute_analysis_for_metrics(
+            corr_metrics,
+            sample_confidence_interval_extractor=None,
+            include_metrics=include_metrics,
+            include_sample_ci=False,
+            include_correlations=True,
+            include_plateau=False,
+        )
+        analysis_correlation.to_csv(out_dir / "analysis_correlation.csv")
+
+        # Reliability: relative CIs at REF sizes
+        rel_metrics = raw_metrics_df.reset_index()
+        rel_metrics = rel_metrics[
+            rel_metrics["Sample Size"].isin(reliability_sizes_f)
+        ].set_index(["Metric", "Sample Size"])
+
+        analysis_reliability = compute_analysis_for_metrics(
+            rel_metrics,
             sample_confidence_interval_extractor=sample_confidence_interval_extractor,
             include_metrics=include_metrics,
+            include_sample_ci=True,
+            include_correlations=False,
+            include_plateau=False,
         )
+        analysis_reliability.to_csv(out_dir / "analysis_reliability.csv")
 
-        # Save analysis results to CSV
+        # Merged table for master + correlation plots
+        analysis_df = _merge_correlation_reliability_plateau(
+            analysis_correlation,
+            analysis_reliability,
+            plateau_med,
+            plateau_maj,
+        )
         analysis_df.to_csv(out_dir / "analysis.csv")
 
-        # Create CI plots
         plot_sample_cis(
-            analysis_df=analysis_df,
+            analysis_df=analysis_reliability.reset_index(),
             plot_grid=PLOT_GRID,
             plot_row_groups=PLOT_ROW_GROUPS,
             out_dir=out_dir,
         )
 
-        # Store for downstream processing
         analysis_per_log[log_name] = analysis_df
 
     out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Compute sample size for FPC
-    n_samples = len(SIZES) * SAMPLES_PER_SIZE
+    # Compute sample size for FPC (correlation grid)
+    n_samples = len(list(CORRELATION_SIZES)) * SAMPLES_PER_SIZE
     avg_population_size = (
         int(np.mean(list(log_population_sizes.values())))
         if log_population_sizes
@@ -588,11 +880,15 @@ def main() -> None:
         raise SystemExit(str(e))
 
     # Modify global parameters for test mode
-    global SAMPLES_PER_SIZE, BOOTSTRAP_SIZE, SIZES
+    global SAMPLES_PER_SIZE, BOOTSTRAP_REPLICA_COUNT, BOOTSTRAP_SIZE
+    global CORRELATION_SIZES, RELIABILITY_SIZES, PLATEAU_MAX_CAP
     if args.test:
         SAMPLES_PER_SIZE = 2
-        BOOTSTRAP_SIZE = 2
-        SIZES = range(50, 101, 50)
+        BOOTSTRAP_REPLICA_COUNT = 2
+        BOOTSTRAP_SIZE = BOOTSTRAP_REPLICA_COUNT
+        CORRELATION_SIZES = range(50, 101, 50)
+        RELIABILITY_SIZES = [50, 100, 150]
+        PLATEAU_MAX_CAP = 300
 
         # Create test scenario
         test_scenario = dict(
@@ -604,7 +900,7 @@ def main() -> None:
             normalizers=None,
             include_metrics=sorted_selected_metrics,
             sample_confidence_interval_extractor=default_sample_confidence_interval_extractor,
-            base_scenario_name="test1",
+            base_scenario_name=None,
         )
 
         scenarios_to_run = [("test", test_scenario)]
@@ -656,6 +952,10 @@ def main() -> None:
             bootstrap_sampler=sc["bootstrap_sampler"],  # type: ignore
             normalizers=sc["normalizers"],  # type: ignore
             include_metrics=sc["include_metrics"],  # type: ignore
+            sample_confidence_interval_extractor=sc.get(
+                "sample_confidence_interval_extractor",
+                default_sample_confidence_interval_extractor,
+            ),
             base_scenario_name=sc["base_scenario_name"],  # type: ignore
         )
 

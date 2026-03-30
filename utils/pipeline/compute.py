@@ -442,6 +442,9 @@ def compute_analysis_for_metrics(
         "SampleStandardDeviationExtractor"
     ] = None,
     include_metrics: Optional[Iterable[str]] = None,
+    include_sample_ci: bool = True,
+    include_correlations: bool = True,
+    include_plateau: bool = True,
 ) -> pd.DataFrame:
     """
     Compute analysis metrics from raw metric values: mean and median values, CIs, correlations, and plateau detection.
@@ -458,6 +461,12 @@ def compute_analysis_for_metrics(
         If provided, computes sample standard deviation across samples.
     include_metrics : Optional[Iterable[str]]
         If provided, only analyze these metrics.
+    include_sample_ci : bool
+        If False, skip sample (across-replicate) CI even if an extractor is passed.
+    include_correlations : bool
+        If False, skip Pearson/Spearman correlations vs window size.
+    include_plateau : bool
+        If False, skip aggregate plateau detection (legacy mean-curve plateau).
 
     Returns
     -------
@@ -500,7 +509,10 @@ def compute_analysis_for_metrics(
     )
 
     # 2. Compute sample confidence intervals if extractor provided
-    if sample_confidence_interval_extractor is not None:
+    if (
+        include_sample_ci
+        and sample_confidence_interval_extractor is not None
+    ):
         sample_ci_df = sample_confidence_interval_extractor.compute_sample_ci_long(
             metrics_df
         )
@@ -536,75 +548,92 @@ def compute_analysis_for_metrics(
         analysis_df["Sample Std"] = None
 
     # 3. Compute correlations (per metric, not per sample size)
-    correlations_df = helpers.compute_correlations_from_long_format(metrics_df)
-    if include_metrics is not None:
-        correlations_df = correlations_df[correlations_df["Metric"].isin(metric_list)]
+    if include_correlations:
+        correlations_df = helpers.compute_correlations_from_long_format(metrics_df)
+        if include_metrics is not None:
+            correlations_df = correlations_df[
+                correlations_df["Metric"].isin(metric_list)
+            ]
 
-    # Merge correlations - they're constant per metric, so broadcast across all Sample Size values
-    analysis_df = analysis_df.merge(
-        correlations_df[
-            ["Metric", "Pearson Rho", "Pearson P", "Spearman Rho", "Spearman P"]
-        ],
-        on="Metric",
-        how="left",
-    )
+        # Merge correlations - they're constant per metric, so broadcast across all Sample Size values
+        analysis_df = analysis_df.merge(
+            correlations_df[
+                ["Metric", "Pearson Rho", "Pearson P", "Spearman Rho", "Spearman P"]
+            ],
+            on="Metric",
+            how="left",
+        )
+    else:
+        analysis_df["Pearson Rho"] = np.nan
+        analysis_df["Pearson P"] = np.nan
+        analysis_df["Spearman Rho"] = np.nan
+        analysis_df["Spearman P"] = np.nan
 
     # 4. Compute plateau detection (based on mean values, per metric)
-    # Convert to wide format for plateau detection
-    mean_values_wide = analysis_df.pivot_table(
-        index="Sample Size",
-        columns="Metric",
-        values="Mean Value",
-    ).reset_index()
-    mean_values_wide = mean_values_wide.rename(columns={"Sample Size": "sample_size"})
-    mean_values_wide["sample_id"] = 0
+    if include_plateau:
+        # Convert to wide format for plateau detection
+        mean_values_wide = analysis_df.pivot_table(
+            index="Sample Size",
+            columns="Metric",
+            values="Mean Value",
+        ).reset_index()
+        mean_values_wide = mean_values_wide.rename(
+            columns={"Sample Size": "sample_size"}
+        )
+        mean_values_wide["sample_id"] = 0
 
-    plateau_df = helpers.detect_plateau_df(
-        measures_per_log={"log": mean_values_wide},
-        metric_columns=metric_list if include_metrics else None,
-        rel_threshold=0.025,  # 2.5% threshold
-        agg="mean",
-        min_runs=1,
-        report="current",
-    )
+        plateau_df = helpers.detect_plateau_df(
+            measures_per_log={"log": mean_values_wide},
+            metric_columns=metric_list if include_metrics else None,
+            rel_threshold=0.025,  # 2.5% threshold
+            agg="mean",
+            min_runs=1,
+            report="current",
+        )
 
-    # Extract plateau values and merge (constant per metric)
-    # plateau_df now has MultiIndex columns: (log_name, 'Plateau n') and (log_name, 'Plateau Found')
-    if isinstance(plateau_df.columns, pd.MultiIndex):
-        # Extract Plateau n and Plateau Found columns for the "log" log name
-        if ("log", "Plateau n") in plateau_df.columns:
-            # Extract the Series and create a clean DataFrame
-            plateau_n_series = plateau_df[("log", "Plateau n")]
-            plateau_n_df = pd.DataFrame(
-                {"Metric": plateau_n_series.index, "Plateau n": plateau_n_series.values}
-            )
-            analysis_df = analysis_df.merge(
-                plateau_n_df,
-                on="Metric",
-                how="left",
-            )
+        # Extract plateau values and merge (constant per metric)
+        # plateau_df now has MultiIndex columns: (log_name, 'Plateau n') and (log_name, 'Plateau Found')
+        if isinstance(plateau_df.columns, pd.MultiIndex):
+            # Extract Plateau n and Plateau Found columns for the "log" log name
+            if ("log", "Plateau n") in plateau_df.columns:
+                # Extract the Series and create a clean DataFrame
+                plateau_n_series = plateau_df[("log", "Plateau n")]
+                plateau_n_df = pd.DataFrame(
+                    {
+                        "Metric": plateau_n_series.index,
+                        "Plateau n": plateau_n_series.values,
+                    }
+                )
+                analysis_df = analysis_df.merge(
+                    plateau_n_df,
+                    on="Metric",
+                    how="left",
+                )
+            else:
+                analysis_df["Plateau n"] = None
+
+            if ("log", "Plateau Found") in plateau_df.columns:
+                # Extract the Series and create a clean DataFrame
+                plateau_found_series = plateau_df[("log", "Plateau Found")]
+                plateau_found_df = pd.DataFrame(
+                    {
+                        "Metric": plateau_found_series.index,
+                        "Plateau Found": plateau_found_series.values,
+                    }
+                )
+                analysis_df = analysis_df.merge(
+                    plateau_found_df,
+                    on="Metric",
+                    how="left",
+                )
+            else:
+                analysis_df["Plateau Found"] = False
         else:
+            # Fallback for old format (shouldn't happen with new code)
             analysis_df["Plateau n"] = None
-
-        if ("log", "Plateau Found") in plateau_df.columns:
-            # Extract the Series and create a clean DataFrame
-            plateau_found_series = plateau_df[("log", "Plateau Found")]
-            plateau_found_df = pd.DataFrame(
-                {
-                    "Metric": plateau_found_series.index,
-                    "Plateau Found": plateau_found_series.values,
-                }
-            )
-            analysis_df = analysis_df.merge(
-                plateau_found_df,
-                on="Metric",
-                how="left",
-            )
-        else:
             analysis_df["Plateau Found"] = False
     else:
-        # Fallback for old format (shouldn't happen with new code)
-        analysis_df["Plateau n"] = None
+        analysis_df["Plateau n"] = np.nan
         analysis_df["Plateau Found"] = False
 
     # Set index to Metric and Sample Size

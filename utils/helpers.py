@@ -5,7 +5,7 @@ import json
 ALPHA = 0.05  # Default significance level for Z-test
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -795,6 +795,42 @@ def detect_plateau_df(
     result_df = pd.DataFrame(combined_dict, index=metrics_sorted)
     result_df.index.name = None  # keep similar to your corr_df look
     return result_df
+
+
+def consecutive_plateau_first_size(
+    size_to_value: Dict[Union[int, float], float],
+    *,
+    step: int = 50,
+    rel_threshold: float = 0.025,
+    max_win: int,
+) -> Tuple[float, bool]:
+    """
+    First window size ``curr`` in ``{100, 150, ..., max_win}`` where consecutive
+    relative change from ``curr - step`` to ``curr`` is at most ``rel_threshold``.
+
+    Both ``curr`` and ``curr - step`` must be present in ``size_to_value``.
+    Keys may be int or float (normalized to int for lookup).
+    """
+    norm: Dict[int, float] = {}
+    for k, v in size_to_value.items():
+        try:
+            norm[int(float(k))] = float(v)
+        except (TypeError, ValueError):
+            continue
+
+    for curr in range(50 + step, max_win + 1, step):
+        prev = curr - step
+        if prev not in norm or curr not in norm:
+            continue
+        vp = norm[prev]
+        vc = norm[curr]
+        if not (np.isfinite(vp) and np.isfinite(vc)):
+            continue
+        if abs(vp) < 1e-15:
+            continue
+        if abs(vc - vp) / abs(vp) <= rel_threshold:
+            return float(curr), True
+    return float("nan"), False
 
 
 # LATEX helpers
