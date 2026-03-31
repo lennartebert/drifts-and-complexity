@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=caise_study
-#SBATCH --output=.scripts/logs/%A/log_%a.out
-#SBATCH --error=.scripts/logs/%A/log_%a.err
+#SBATCH --output=.slurm/logs/%A/log_%a.out
+#SBATCH --error=.slurm/logs/%A/log_%a.err
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --spread-job
