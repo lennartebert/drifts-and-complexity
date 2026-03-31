@@ -71,25 +71,25 @@ class ExperimentSettings:
     bootstrap_replica_count: int
     include_metrics: List[str]
     correlation_sizes: Union[range, List[int]]
-    plateau_max_cap: int
     plateau_window_start: int
     plateau_window_step: int
     plateau_window_stop: Optional[int]
-    plateau_threshold: float
+    plateau_samples_per_test: int
+    plateau_alpha: float
+    plateau_number_consecutive_non_trending_tests: int
     reliability_sizes: List[int]
 
 
 def plateau_window_sizes_for_log(settings: ExperimentSettings, log_len: int) -> List[int]:
     """
-    Ordered window sizes for plateau analysis: range(start, stop+1, step) capped by log length
-    and max_window_cap. If plateau_window_stop is None, stop is min(max_window_cap, log_len).
+    Ordered window sizes for plateau analysis: range(start, stop+1, step), capped by log length.
+    If plateau_window_stop is None, stop is log length.
     """
-    cap = min(settings.plateau_max_cap, log_len)
     stop = settings.plateau_window_stop
     if stop is None:
-        stop = cap
+        stop = log_len
     else:
-        stop = min(stop, cap)
+        stop = min(stop, log_len)
     start = settings.plateau_window_start
     step = settings.plateau_window_step
     if step <= 0:
@@ -110,11 +110,14 @@ def experiment_settings_from_profile(profile: Dict[str, Any]) -> ExperimentSetti
         bootstrap_replica_count=int(profile["bootstrap_replica_count"]),
         include_metrics=_resolve_include_metrics(profile.get("include_metrics")),
         correlation_sizes=parse_correlation_window_sizes(ca["window_sizes"]),
-        plateau_max_cap=int(pa["max_window_cap"]),
         plateau_window_start=int(pws["start"]),
         plateau_window_step=int(pws["step"]),
         plateau_window_stop=_parse_plateau_stop(pws.get("stop")),
-        plateau_threshold=float(pa["relative_threshold"]),
+        plateau_samples_per_test=int(pa["samples_per_test"]),
+        plateau_alpha=float(pa["alpha"]),
+        plateau_number_consecutive_non_trending_tests=int(
+            pa["number_consecutive_non_trending_tests"]
+        ),
         reliability_sizes=[int(x) for x in ra["window_sizes"]],
     )
 

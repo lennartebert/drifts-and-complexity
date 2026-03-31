@@ -11,6 +11,8 @@
 synthetic_base:
   logs: [O2C_S, CLAIM_S, LOAN_S, CREDIT_S]
   clear_name: "Synthetic (Base)"
+  # Caption fragment: "Summarized diagnostic results for <descriptor> data"
+  latex_data_descriptor: synthetic
   population_extractor: naive
   normalizers: null
   base_scenario_name: null
@@ -32,6 +34,7 @@ synthetic_base:
 real_base:
   logs: [BPIC12, RTFMP]
   clear_name: "Real (Base)"
+  latex_data_descriptor: real-world
   population_extractor: naive
   normalizers: null
   base_scenario_name: null

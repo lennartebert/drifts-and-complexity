@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 from pm4py.objects.log.importer.xes import importer as xes_importer
+from scipy.stats import kendalltau
 
 from utils import constants, helpers, sampling_helper
 from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
@@ -271,6 +272,10 @@ def _mean_at_window(df: pd.DataFrame, metric: str, window_size: int) -> Optional
 def _plateau_summary_by_metric(
     include_metrics: List[str],
     plateau_n_by_metric: Dict[str, float],
+    plateau_p_by_metric: Dict[str, float],
+    plateau_alpha: float,
+    tail_window_sizes_by_metric: Dict[str, List[int]],
+    tail_means_by_metric: Dict[str, List[float]],
 ) -> tuple[pd.DataFrame, Dict[str, float], Dict[str, bool]]:
     """
     One row per metric: plateau is detected from means across samples at each window size,
@@ -285,8 +290,22 @@ def _plateau_summary_by_metric(
         if not np.isfinite(pn):
             pn = np.nan
         found = bool(np.isfinite(pn))
+        p_val = plateau_p_by_metric.get(m, np.nan)
         rows.append(
-            {"Metric": m, "Plateau n": pn, "Plateau Found": found},
+            {
+                "Metric": m,
+                "Plateau n": pn,
+                "Plateau Found": found,
+                "Plateau Classification": "plateauing" if found else "trending",
+                "MK p-value": p_val,
+                "MK alpha": plateau_alpha,
+                "MK tail window sizes": ",".join(
+                    str(x) for x in tail_window_sizes_by_metric.get(m, [])
+                ),
+                "MK tail means": ",".join(
+                    f"{x:.10g}" for x in tail_means_by_metric.get(m, [])
+                ),
+            },
         )
         plateau_med[m] = float(pn) if found else float("nan")
         plateau_maj[m] = found
@@ -403,69 +422,96 @@ def compute_results(
         raw_metrics_df = pd.concat(metrics_extra_list, axis=0)
         raw_metrics_df = raw_metrics_df.sort_index()
 
-        # --- Pass C: plateau (experiment_settings plateau_analysis.window_sizes; no bootstrap) ---
-        # For each size in plateau_window_sizes_for_log: reuse means from raw_metrics_df when
-        # present, else sample windows and compute. Compare each metric's mean to the previous
-        # size in the plateau list; relative change ≤ plateau_threshold → record plateau n.
+        # --- Pass C: plateau (rolling MK test on tail means; no bootstrap) ---
+        # Old criterion: relative change vs previous window.
+        # New criterion: Mann-Kendall on rolling tails (N mean readings, shift by one step).
         plateau_df = _metrics_df_long(raw_metrics_df)
         plateau_window_sizes = plateau_window_sizes_for_log(settings, log_n)
-        plateau_rel_threshold = settings.plateau_threshold
-        plateau_pending = set(include_metrics)
-        plateau_last_mean: Dict[str, float] = {}
+        mk_tail_n = max(1, int(settings.plateau_samples_per_test))
+        mk_alpha = float(settings.plateau_alpha)
+        mk_required_consecutive = max(
+            1, int(settings.plateau_number_consecutive_non_trending_tests)
+        )
         plateau_by_metric: Dict[str, float] = {}
+        plateau_p_by_metric: Dict[str, float] = {}
+        tail_window_sizes_by_metric: Dict[str, List[int]] = {}
+        tail_means_by_metric: Dict[str, List[float]] = {}
         plateau_extra_parts: list[pd.DataFrame] = []
+        pending_metrics = set(include_metrics)
+        non_trending_streak: Dict[str, int] = {m: 0 for m in include_metrics}
+        non_trending_streak_start: Dict[str, float] = {}
+        max_start = len(plateau_window_sizes) - mk_tail_n
+        if max_start >= 0:
+            for si in range(max_start + 1):
+                if not pending_metrics:
+                    break
+                tail_window_sizes = plateau_window_sizes[si : si + mk_tail_n]
+                for pw in tail_window_sizes:
+                    plateau_missing_m = [
+                        m for m in pending_metrics if _mean_at_window(plateau_df, m, pw) is None
+                    ]
+                    if plateau_missing_m:
+                        plateau_window_samples = (
+                            sampling_helper.sample_consecutive_trace_windows_with_replacement(
+                                pm4py_log,
+                                [pw],
+                                settings.samples_per_size,
+                                settings.random_state,
+                            )
+                        )
+                        plateau_batch_df = compute_metrics_for_samples(
+                            plateau_window_samples,
+                            population_extractor=population_extractor,
+                            metric_adapters=metric_adapters,
+                            bootstrap_sampler=None,
+                            normalizers=normalizers,
+                            include_metrics=plateau_missing_m,
+                        )
+                        plateau_extra_parts.append(plateau_batch_df)
+                        plateau_dfb = plateau_batch_df.reset_index()
+                        if "Sample Size" not in plateau_dfb.columns and "Sample Size" in plateau_dfb.index.names:
+                            plateau_dfb = plateau_dfb.reset_index()
+                        plateau_df = pd.concat([plateau_df, plateau_dfb], ignore_index=True)
 
-        for pi, pw in enumerate(plateau_window_sizes):
-            if not plateau_pending:
-                break
-            plateau_missing_m = [
-                m for m in plateau_pending if _mean_at_window(plateau_df, m, pw) is None
-            ]
-            if plateau_missing_m:
-                plateau_window_samples = (
-                    sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                        pm4py_log,
-                        [pw],
-                        settings.samples_per_size,
-                        settings.random_state,
+                for m in list(pending_metrics):
+                    ys: list[float] = []
+                    xs: list[int] = []
+                    for pw in tail_window_sizes:
+                        mu = _mean_at_window(plateau_df, m, pw)
+                        if mu is None or not np.isfinite(mu):
+                            continue
+                        xs.append(int(pw))
+                        ys.append(float(mu))
+                    tail_window_sizes_by_metric[m] = xs
+                    tail_means_by_metric[m] = ys
+                    if len(ys) < 2:
+                        plateau_p_by_metric[m] = float("nan")
+                        continue
+                    _, p_value = kendalltau(range(len(ys)), ys)
+                    p_value_f = (
+                        float(p_value)
+                        if p_value is not None and np.isfinite(p_value)
+                        else float("nan")
                     )
-                )
-                plateau_batch_df = compute_metrics_for_samples(
-                    plateau_window_samples,
-                    population_extractor=population_extractor,
-                    metric_adapters=metric_adapters,
-                    bootstrap_sampler=None,
-                    normalizers=normalizers,
-                    include_metrics=plateau_missing_m,
-                )
-                plateau_extra_parts.append(plateau_batch_df)
-                plateau_dfb = plateau_batch_df.reset_index()
-                if "Sample Size" not in plateau_dfb.columns and "Sample Size" in plateau_dfb.index.names:
-                    plateau_dfb = plateau_dfb.reset_index()
-                plateau_df = pd.concat([plateau_df, plateau_dfb], ignore_index=True)
-
-            for m in list(plateau_pending):
-                mu = _mean_at_window(plateau_df, m, pw)
-                if mu is None:
-                    continue
-                if pi == 0:
-                    plateau_last_mean[m] = mu
-                    continue
-                prev_mu = plateau_last_mean.get(m)
-                if prev_mu is None or not np.isfinite(prev_mu):
-                    plateau_last_mean[m] = mu
-                    continue
-                if abs(prev_mu) < 1e-15:
-                    plateau_last_mean[m] = mu
-                    continue
-                if abs(mu - prev_mu) / abs(prev_mu) <= plateau_rel_threshold:
-                    plateau_by_metric[m] = float(pw)
-                    plateau_pending.discard(m)
-                else:
-                    plateau_last_mean[m] = mu
+                    plateau_p_by_metric[m] = p_value_f
+                    if np.isfinite(p_value_f) and p_value_f > mk_alpha:
+                        if non_trending_streak[m] == 0:
+                            non_trending_streak_start[m] = float(xs[0])
+                        non_trending_streak[m] += 1
+                        if non_trending_streak[m] >= mk_required_consecutive:
+                            plateau_by_metric[m] = non_trending_streak_start[m]
+                            pending_metrics.discard(m)
+                    else:
+                        non_trending_streak[m] = 0
+                        non_trending_streak_start.pop(m, None)
 
         plateau_summary, plateau_med, plateau_maj = _plateau_summary_by_metric(
-            include_metrics, plateau_by_metric
+            include_metrics,
+            plateau_by_metric,
+            plateau_p_by_metric,
+            mk_alpha,
+            tail_window_sizes_by_metric,
+            tail_means_by_metric,
         )
         plateau_extra = (
             pd.concat(plateau_extra_parts, ignore_index=False)
@@ -520,8 +566,11 @@ def compute_results(
         )
         analysis_df.to_csv(out_dir / "analysis.csv")
 
+        ci_plot_df = analysis_reliability.reset_index()
+        ci_plot_df = ci_plot_df[ci_plot_df["Sample Size"].isin(correlation_sizes_f)]
+
         plot_sample_cis(
-            analysis_df=analysis_reliability.reset_index(),
+            analysis_df=ci_plot_df,
             plot_grid=PLOT_GRID,
             plot_row_groups=PLOT_ROW_GROUPS,
             out_dir=out_dir,
