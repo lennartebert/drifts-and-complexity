@@ -11,6 +11,8 @@
 #SBATCH --account=eberlenn
 #SBATCH --time=1-00:00:00
 
+set -euo pipefail
+
 source /usr/local/anaconda3-2024.06/etc/profile.d/conda.sh
 conda activate drifts-and-complexity
 
@@ -20,4 +22,10 @@ scenarios=(
     real_base
 )
 
-python -m scripts.bias_study.run_bias_study --scenarios "${scenarios[$SLURM_ARRAY_TASK_ID]}"
+scenario="${scenarios[$SLURM_ARRAY_TASK_ID]}"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Script start (scenario=${scenario})"
+python -m scripts.bias_study.run_bias_study --scenarios "${scenario}"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Run bias study complete(scenario=${scenario})"
+python -m scripts.bias_study.generate_latex --scenarios "${scenario}"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Script complete (scenario=${scenario})"
