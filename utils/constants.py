@@ -167,6 +167,9 @@ COLUMN_NAMES_TO_LATEX_MAP = {
     "Sample CI Low": "Sample CI Low",
     "Sample CI High": "Sample CI High",
     "Sample CI Rel Width": "Sample CI Rel Width",
+    "Sample Q05": "Sample Q05",
+    "Sample Q95": "Sample Q95",
+    "Empirical CI Rel Width": "Empirical CI Rel Width",
     "Bootstrap CI Low": "Bootstrap CI Low",
     "Bootstrap CI High": "Bootstrap CI High",
     # Correlation columns

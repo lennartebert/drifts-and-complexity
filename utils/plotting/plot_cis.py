@@ -9,19 +9,24 @@ from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter
 
 
-def plot_sample_cis(
+def _plot_interval_grid(
     analysis_df: pd.DataFrame,
     plot_grid: Sequence[Sequence[Sequence[str]]],
     plot_row_groups: Sequence[str],
     out_dir: Path,
+    *,
+    lower_col: str,
+    upper_col: str,
+    legend_interval_label: str,
+    out_png_name: str,
+    out_pdf_name: str,
 ) -> None:
-    """Plot mean values and sample confidence intervals in a fixed grid layout.
+    """Plot mean values and optional interval bands in a fixed grid layout.
 
     The function expects `analysis_df` in the format produced by
     `compute_analysis_for_metrics`, i.e. with one row per
     (Sample Size, Metric) and at least the columns:
-    ``"Sample Size"``, ``"Metric"``, ``"Mean Value"``,
-    ``"Sample CI Low"``, and ``"Sample CI High"``.
+    ``"Sample Size"``, ``"Metric"``, and ``"Mean Value"``.
 
     The `plot_grid` argument controls which metrics are drawn in which subplot.
     It is a 2D structure where each entry is a list of metric names to plot in
@@ -46,16 +51,11 @@ def plot_sample_cis(
     ):
         analysis_df = analysis_df.reset_index()
 
-    required_columns = {
-        "Sample Size",
-        "Metric",
-        "Mean Value",
-        "Sample CI Low",
-        "Sample CI High",
-    }
+    required_columns = {"Sample Size", "Metric", "Mean Value"}
     missing = required_columns - set(analysis_df.columns)
     if missing:
         raise ValueError(f"analysis_df is missing required columns: {missing}")
+    has_interval_columns = lower_col in analysis_df.columns and upper_col in analysis_df.columns
 
     n_rows = len(plot_grid)
     if n_rows == 0:
@@ -79,6 +79,7 @@ def plot_sample_cis(
     # Create figure and axes (slightly reduced height and width per subplot).
     figsize = (3.1 * n_cols, 1.7 * n_rows)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, squeeze=False)
+    interval_drawn = False
 
     # Draw all panels according to the grid.
     for row_idx, row in enumerate(plot_grid):
@@ -96,13 +97,23 @@ def plot_sample_cis(
 
                 x = data["Sample Size"].values
                 y = data["Mean Value"].values
-                y_low = data["Sample CI Low"].values
-                y_high = data["Sample CI High"].values
 
                 # Mean line
                 ax.plot(x, y, color="C0", linestyle="-", linewidth=2)
-                # Shaded CI band only (no CI boundary lines)
-                ax.fill_between(x, y_low, y_high, color="C0", alpha=0.15)
+                # Optional shaded interval band when bounds are present and finite.
+                if has_interval_columns:
+                    y_low = data[lower_col]
+                    y_high = data[upper_col]
+                    valid = y_low.notna() & y_high.notna()
+                    if valid.any():
+                        ax.fill_between(
+                            x[valid.values],
+                            y_low[valid].values,
+                            y_high[valid].values,
+                            color="C0",
+                            alpha=0.15,
+                        )
+                        interval_drawn = True
 
             ax.grid(alpha=0.5)
             ax.set_title(", ".join(metrics_in_cell))
@@ -153,11 +164,13 @@ def plot_sample_cis(
         )
 
     # Figure-level legend under the grid.
-    # Legend: mean line + shaded confidence interval
+    # Legend: mean line + shaded interval.
     mean_handle = Line2D([0], [0], color="C0", linestyle="-", linewidth=2, label="Mean")
-    ci_patch = plt.Rectangle((0, 0), 1, 1, facecolor="C0", alpha=0.15, edgecolor="none")
-    ci_patch.set_label("95% confidence interval")
-    legend_handles = [mean_handle, ci_patch]
+    legend_handles = [mean_handle]
+    if interval_drawn:
+        ci_patch = plt.Rectangle((0, 0), 1, 1, facecolor="C0", alpha=0.15, edgecolor="none")
+        ci_patch.set_label(legend_interval_label)
+        legend_handles.append(ci_patch)
     fig.legend(
         handles=legend_handles,
         loc="lower center",
@@ -217,8 +230,48 @@ def plot_sample_cis(
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    png_path = out_dir / "sample_cis.png"
-    pdf_path = out_dir / "sample_cis.pdf"
+    png_path = out_dir / out_png_name
+    pdf_path = out_dir / out_pdf_name
     fig.savefig(png_path, dpi=300, bbox_inches="tight")
     fig.savefig(pdf_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
+
+
+def plot_bootstrap_cis(
+    analysis_df: pd.DataFrame,
+    plot_grid: Sequence[Sequence[Sequence[str]]],
+    plot_row_groups: Sequence[str],
+    out_dir: Path,
+) -> None:
+    """Plot mean values with bootstrap CI bands."""
+    _plot_interval_grid(
+        analysis_df=analysis_df,
+        plot_grid=plot_grid,
+        plot_row_groups=plot_row_groups,
+        out_dir=out_dir,
+        lower_col="Bootstrap CI Low",
+        upper_col="Bootstrap CI High",
+        legend_interval_label="95% confidence interval",
+        out_png_name="bootstrap_cis.png",
+        out_pdf_name="bootstrap_cis.pdf",
+    )
+
+
+def plot_empirical_cis(
+    analysis_df: pd.DataFrame,
+    plot_grid: Sequence[Sequence[Sequence[str]]],
+    plot_row_groups: Sequence[str],
+    out_dir: Path,
+) -> None:
+    """Plot mean values with empirical 5%-95% interval bands."""
+    _plot_interval_grid(
+        analysis_df=analysis_df,
+        plot_grid=plot_grid,
+        plot_row_groups=plot_row_groups,
+        out_dir=out_dir,
+        lower_col="Sample Q05",
+        upper_col="Sample Q95",
+        legend_interval_label="Range between 5% and 95% quartile",
+        out_png_name="empirical_cis.png",
+        out_pdf_name="empirical_cis.pdf",
+    )

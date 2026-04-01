@@ -27,7 +27,7 @@ from utils.pipeline.compute import (
     compute_analysis_for_metrics,
     compute_metrics_for_samples,
 )
-from utils.plotting.plot_cis import plot_sample_cis
+from utils.plotting.plot_cis import plot_bootstrap_cis, plot_empirical_cis
 from utils.plotting.plot_correlations import plot_all_correlation_results
 
 # plot_inext_curves module removed - no longer needed
@@ -46,7 +46,7 @@ from .yaml_input_handling import (
     experiment_settings_from_profile,
     load_experiment_settings,
     load_scenarios_yaml,
-    plateau_window_sizes_for_log,
+    plateau_test_start_sizes_for_log,
 )
 
 # --- defaults ---
@@ -239,12 +239,37 @@ def _merge_correlation_reliability_plateau(
         if c.endswith("_corr") and c not in ("Metric", "Sample Size")
     ]
     merged = merged.drop(columns=drop_cols, errors="ignore")
-    rename_ci = {
-        f"{k}_rel": k
-        for k in ["Sample CI Low", "Sample CI High", "Sample CI Rel Width"]
-        if f"{k}_rel" in merged.columns
-    }
-    merged = merged.rename(columns=rename_ci)
+    interval_columns = [
+        "Bootstrap CI Low",
+        "Bootstrap CI High",
+        "Sample CI Low",
+        "Sample CI High",
+        "Sample CI Rel Width",
+        "Sample Q05",
+        "Sample Q95",
+        "Empirical CI Rel Width",
+    ]
+    for col in interval_columns:
+        corr_col = f"{col}_corr"
+        rel_col = f"{col}_rel"
+        if corr_col in merged.columns or rel_col in merged.columns:
+            rel_vals = (
+                merged[rel_col]
+                if rel_col in merged.columns
+                else pd.Series(np.nan, index=merged.index)
+            )
+            corr_vals = (
+                merged[corr_col]
+                if corr_col in merged.columns
+                else pd.Series(np.nan, index=merged.index)
+            )
+            merged[col] = rel_vals.fillna(corr_vals)
+    drop_interval_suffix_cols = [
+        c
+        for c in merged.columns
+        if c.endswith("_corr") or c.endswith("_rel")
+    ]
+    merged = merged.drop(columns=drop_interval_suffix_cols, errors="ignore")
     for col in ["Pearson Rho", "Pearson P", "Spearman Rho", "Spearman P"]:
         merged[col] = merged["Metric"].map(const[col])
     merged["Plateau n"] = merged["Metric"].map(plateau_median)
@@ -359,7 +384,7 @@ def compute_results(
         log_n = len(pm4py_log)
         log_population_sizes[log_name] = log_n
         # Correlation / reliability: only cap by log length (feasible window sizes).
-        # Plateau uses ``plateau_max_cap`` inside ``plateau_window_sizes_for_log``.
+        # Plateau test starts and per-test windows are capped by log length.
         correlation_sizes_f = [s for s in settings.correlation_sizes if s <= log_n]
         reliability_sizes_f = [s for s in settings.reliability_sizes if s <= log_n]
 
@@ -426,8 +451,9 @@ def compute_results(
         # Old criterion: relative change vs previous window.
         # New criterion: Mann-Kendall on rolling tails (N mean readings, shift by one step).
         plateau_df = _metrics_df_long(raw_metrics_df)
-        plateau_window_sizes = plateau_window_sizes_for_log(settings, log_n)
-        mk_tail_n = max(1, int(settings.plateau_samples_per_test))
+        test_start_sizes = plateau_test_start_sizes_for_log(settings, log_n)
+        mk_tail_n = max(1, int(settings.plateau_windows_per_test_count))
+        mk_tail_step = max(1, int(settings.plateau_windows_per_test_step))
         mk_alpha = float(settings.plateau_alpha)
         mk_required_consecutive = max(
             1, int(settings.plateau_number_consecutive_non_trending_tests)
@@ -440,70 +466,81 @@ def compute_results(
         pending_metrics = set(include_metrics)
         non_trending_streak: Dict[str, int] = {m: 0 for m in include_metrics}
         non_trending_streak_start: Dict[str, float] = {}
-        max_start = len(plateau_window_sizes) - mk_tail_n
-        if max_start >= 0:
-            for si in range(max_start + 1):
-                if not pending_metrics:
-                    break
-                tail_window_sizes = plateau_window_sizes[si : si + mk_tail_n]
-                for pw in tail_window_sizes:
-                    plateau_missing_m = [
-                        m for m in pending_metrics if _mean_at_window(plateau_df, m, pw) is None
-                    ]
-                    if plateau_missing_m:
-                        plateau_window_samples = (
-                            sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                                pm4py_log,
-                                [pw],
-                                settings.samples_per_size,
-                                settings.random_state,
-                            )
-                        )
-                        plateau_batch_df = compute_metrics_for_samples(
-                            plateau_window_samples,
-                            population_extractor=population_extractor,
-                            metric_adapters=metric_adapters,
-                            bootstrap_sampler=None,
-                            normalizers=normalizers,
-                            include_metrics=plateau_missing_m,
-                        )
-                        plateau_extra_parts.append(plateau_batch_df)
-                        plateau_dfb = plateau_batch_df.reset_index()
-                        if "Sample Size" not in plateau_dfb.columns and "Sample Size" in plateau_dfb.index.names:
-                            plateau_dfb = plateau_dfb.reset_index()
-                        plateau_df = pd.concat([plateau_df, plateau_dfb], ignore_index=True)
+        for test_start in test_start_sizes:
+            if not pending_metrics:
+                break
+            tail_window_sizes = [
+                int(test_start + i * mk_tail_step) for i in range(mk_tail_n)
+            ]
+            tail_window_sizes = [w for w in tail_window_sizes if w <= log_n]
+            # Strict mode: evaluate only complete tests with the full configured window count.
+            if len(tail_window_sizes) < mk_tail_n:
+                continue
 
-                for m in list(pending_metrics):
-                    ys: list[float] = []
-                    xs: list[int] = []
-                    for pw in tail_window_sizes:
-                        mu = _mean_at_window(plateau_df, m, pw)
-                        if mu is None or not np.isfinite(mu):
-                            continue
-                        xs.append(int(pw))
-                        ys.append(float(mu))
-                    tail_window_sizes_by_metric[m] = xs
-                    tail_means_by_metric[m] = ys
-                    if len(ys) < 2:
-                        plateau_p_by_metric[m] = float("nan")
-                        continue
-                    _, p_value = kendalltau(range(len(ys)), ys)
-                    p_value_f = (
-                        float(p_value)
-                        if p_value is not None and np.isfinite(p_value)
-                        else float("nan")
+            missing_windows = [
+                pw
+                for pw in tail_window_sizes
+                if any(_mean_at_window(plateau_df, m, pw) is None for m in pending_metrics)
+            ]
+            if missing_windows:
+                plateau_window_samples = (
+                    sampling_helper.sample_consecutive_trace_windows_with_replacement(
+                        pm4py_log,
+                        missing_windows,
+                        settings.samples_per_size,
+                        settings.random_state,
                     )
-                    plateau_p_by_metric[m] = p_value_f
-                    if np.isfinite(p_value_f) and p_value_f > mk_alpha:
-                        if non_trending_streak[m] == 0:
-                            non_trending_streak_start[m] = float(xs[0])
-                        non_trending_streak[m] += 1
-                        if non_trending_streak[m] >= mk_required_consecutive:
-                            plateau_by_metric[m] = non_trending_streak_start[m]
-                            pending_metrics.discard(m)
-                    else:
-                        non_trending_streak[m] = 0
-                        non_trending_streak_start.pop(m, None)
+                )
+                # Compute all missing windows for this test in one call
+                # so the existing window-level parallelization can fan out.
+                plateau_batch_df = compute_metrics_for_samples(
+                    plateau_window_samples,
+                    population_extractor=population_extractor,
+                    metric_adapters=metric_adapters,
+                    bootstrap_sampler=None,
+                    normalizers=normalizers,
+                    include_metrics=list(pending_metrics),
+                )
+                plateau_extra_parts.append(plateau_batch_df)
+                plateau_dfb = plateau_batch_df.reset_index()
+                if (
+                    "Sample Size" not in plateau_dfb.columns
+                    and "Sample Size" in plateau_dfb.index.names
+                ):
+                    plateau_dfb = plateau_dfb.reset_index()
+                plateau_df = pd.concat([plateau_df, plateau_dfb], ignore_index=True)
+
+            for m in list(pending_metrics):
+                ys: list[float] = []
+                xs: list[int] = []
+                for pw in tail_window_sizes:
+                    mu = _mean_at_window(plateau_df, m, pw)
+                    if mu is None or not np.isfinite(mu):
+                        continue
+                    xs.append(int(pw))
+                    ys.append(float(mu))
+                tail_window_sizes_by_metric[m] = xs
+                tail_means_by_metric[m] = ys
+                if len(ys) < 2:
+                    plateau_p_by_metric[m] = float("nan")
+                    continue
+                _, p_value = kendalltau(range(len(ys)), ys)
+                p_value_f = (
+                    float(p_value)
+                    if p_value is not None and np.isfinite(p_value)
+                    else float("nan")
+                )
+                plateau_p_by_metric[m] = p_value_f
+                if np.isfinite(p_value_f) and p_value_f > mk_alpha:
+                    if non_trending_streak[m] == 0:
+                        non_trending_streak_start[m] = float(xs[0])
+                    non_trending_streak[m] += 1
+                    if non_trending_streak[m] >= mk_required_consecutive:
+                        plateau_by_metric[m] = non_trending_streak_start[m]
+                        pending_metrics.discard(m)
+                else:
+                    non_trending_streak[m] = 0
+                    non_trending_streak_start.pop(m, None)
 
         plateau_summary, plateau_med, plateau_maj = _plateau_summary_by_metric(
             include_metrics,
@@ -569,7 +606,19 @@ def compute_results(
         ci_plot_df = analysis_reliability.reset_index()
         ci_plot_df = ci_plot_df[ci_plot_df["Sample Size"].isin(correlation_sizes_f)]
 
-        plot_sample_cis(
+        # Remove legacy filenames so outputs reflect the current naming scheme.
+        for legacy_name in ("sample_cis.png", "sample_cis.pdf"):
+            legacy_path = out_dir / legacy_name
+            if legacy_path.exists():
+                legacy_path.unlink()
+
+        plot_bootstrap_cis(
+            analysis_df=ci_plot_df,
+            plot_grid=PLOT_GRID,
+            plot_row_groups=PLOT_ROW_GROUPS,
+            out_dir=out_dir,
+        )
+        plot_empirical_cis(
             analysis_df=ci_plot_df,
             plot_grid=PLOT_GRID,
             plot_row_groups=PLOT_ROW_GROUPS,

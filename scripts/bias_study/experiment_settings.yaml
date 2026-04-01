@@ -9,7 +9,7 @@
 full:
   samples_per_size: 100
   random_state: 123
-  bootstrap_replica_count: 200
+  bootstrap_replica_count: 0
   include_metrics: null
 
   correlation_analysis:
@@ -22,11 +22,12 @@ full:
   plateau_analysis:
     # Mann-Kendall trend test on tail means (one mean reading per window size).
     # Plateauing if p_value > alpha (no significant monotonic trend).
-    window_sizes:
-      start: 100
+    windows_per_test:
+      count: 20
       step: 25
-      stop: 10000
-    samples_per_test: 20
+    starting_window_size: 100
+    max_window_size: 10000
+    step_between_tests: 300
     alpha: 0.05
     number_consecutive_non_trending_tests: 3
 
@@ -38,7 +39,7 @@ full:
 test:
   samples_per_size: 2
   random_state: 123
-  bootstrap_replica_count: 2
+  bootstrap_replica_count: 0
   include_metrics: null
 
   correlation_analysis:
@@ -49,11 +50,14 @@ test:
 
   plateau_analysis:
     # Same MK-based criterion as full profile; smaller stop for fast smoke test.
-    window_sizes:
-      start: 50
+    windows_per_test:
+      count: 10
       step: 10
-      stop: 500
-    samples_per_test: 10
+    starting_window_size: 50
+    # Keep only complete tests with strict full-window requirement:
+    # start + (count-1)*step must stay <= log/test max.
+    max_window_size: 410
+    step_between_tests: 50
     alpha: 0.05
     number_consecutive_non_trending_tests: 2
 

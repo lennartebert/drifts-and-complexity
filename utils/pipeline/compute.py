@@ -508,6 +508,26 @@ def compute_analysis_for_metrics(
         .rename(columns={"mean": "Mean Value", "median": "Median Value"})
     )
 
+    # 1b. Compute empirical interval stats (5th-95th percentile) across samples.
+    grouped = metrics_df.groupby(["Sample Size", "Metric"], sort=True, as_index=True)
+    sample_q05 = grouped["Value"].quantile(0.05).reset_index(name="Sample Q05")
+    sample_q95 = grouped["Value"].quantile(0.95).reset_index(name="Sample Q95")
+    sample_means = grouped["Value"].mean().reset_index(name="Mean Value_tmp")
+    empirical_stats_df = sample_q05.merge(sample_q95, on=["Sample Size", "Metric"])
+    empirical_stats_df = empirical_stats_df.merge(
+        sample_means,
+        on=["Sample Size", "Metric"],
+    )
+    empirical_stats_df["Empirical CI Rel Width"] = (
+        empirical_stats_df["Sample Q95"] - empirical_stats_df["Sample Q05"]
+    ) / empirical_stats_df["Mean Value_tmp"].replace(0.0, np.nan)
+    empirical_stats_df = empirical_stats_df.drop(columns=["Mean Value_tmp"])
+    analysis_df = analysis_df.merge(
+        empirical_stats_df,
+        on=["Sample Size", "Metric"],
+        how="left",
+    )
+
     # 2. Compute sample confidence intervals if extractor provided
     if (
         include_sample_ci
@@ -546,6 +566,23 @@ def compute_analysis_for_metrics(
         )
     else:
         analysis_df["Sample Std"] = None
+
+    # 2c. Aggregate bootstrap CI bounds (from per-sample bootstrap) when available.
+    if "Bootstrap CI Low" in metrics_df.columns and "Bootstrap CI High" in metrics_df.columns:
+        bootstrap_bounds_df = (
+            metrics_df.groupby(["Sample Size", "Metric"], sort=True, as_index=False)[
+                ["Bootstrap CI Low", "Bootstrap CI High"]
+            ]
+            .mean()
+        )
+        analysis_df = analysis_df.merge(
+            bootstrap_bounds_df,
+            on=["Sample Size", "Metric"],
+            how="left",
+        )
+    else:
+        analysis_df["Bootstrap CI Low"] = None
+        analysis_df["Bootstrap CI High"] = None
 
     # 3. Compute correlations (per metric, not per sample size)
     if include_correlations:

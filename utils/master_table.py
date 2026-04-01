@@ -130,7 +130,7 @@ def combine_analysis_with_means(
 
             # Get RelCI values for this log from analysis_per_log
             relci = {}
-            if "Sample CI Rel Width" in analysis_reset.columns:
+            if "Empirical CI Rel Width" in analysis_reset.columns:
                 for ref_size in ref_sizes:
                     col_name = f"RelCI {ref_size}"
                     # Find row where Sample Size matches ref_size and Metric matches m
@@ -139,7 +139,7 @@ def combine_analysis_with_means(
                         & (analysis_reset["Metric"] == m)
                     ]
                     if len(size_rows) > 0:
-                        relci[col_name] = size_rows["Sample CI Rel Width"].iloc[0]
+                        relci[col_name] = size_rows["Empirical CI Rel Width"].iloc[0]
                     else:
                         relci[col_name] = np.nan
             else:
