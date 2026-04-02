@@ -294,6 +294,39 @@ def _mean_at_window(df: pd.DataFrame, metric: str, window_size: int) -> Optional
     return v if np.isfinite(v) else None
 
 
+def _load_raw_metrics_from_csv(
+    path: Path,
+    include_metrics: List[str],
+) -> pd.DataFrame:
+    """
+    Read ``raw_metrics.csv`` written by this script and restore the DataFrame shape
+    produced by ``compute_metrics_for_samples`` (MultiIndex Metric, Sample Size).
+    """
+    df = pd.read_csv(path)
+    required = {"Metric", "Sample Size", "Sample ID", "Value"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"{path} is missing required columns {sorted(missing)} (expected at least {sorted(required)})."
+        )
+    for col in ("Bootstrap CI Low", "Bootstrap CI High"):
+        if col not in df.columns:
+            df[col] = np.nan
+    df["Sample Size"] = df["Sample Size"].astype(int)
+    df = df[df["Metric"].isin(include_metrics)]
+    if df.empty:
+        raise ValueError(
+            f"{path} has no rows after filtering to the current include_metrics list.",
+        )
+    metric_order = {m: i for i, m in enumerate(include_metrics)}
+    df["_metric_order"] = df["Metric"].map(metric_order)
+    df = df.sort_values(by=["_metric_order", "Sample Size", "Sample ID"]).drop(
+        columns=["_metric_order"],
+    )
+    long_df = df.set_index(["Metric", "Sample Size"]).sort_index()
+    return long_df
+
+
 def _plateau_summary_by_metric(
     include_metrics: List[str],
     plateau_n_by_metric: Dict[str, float],
@@ -349,6 +382,8 @@ def compute_results(
     scenario_name: str,
     settings: ExperimentSettings,
     scenario: Dict[str, Any],
+    *,
+    load_existing_raw_metrics: bool = False,
 ) -> None:
     list_of_logs = scenario["logs"]
     population_extractor = scenario["population_extractor"]
@@ -411,48 +446,69 @@ def compute_results(
         out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name / log_name
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # Pass A: correlation window sizes (e.g., 50–500, capped by log)
-        window_samples_base = (
-            sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                pm4py_log,
-                correlation_sizes_f,
-                settings.samples_per_size,
-                settings.random_state,
+        raw_metrics_path = out_dir / "raw_metrics.csv"
+        if load_existing_raw_metrics:
+            if not raw_metrics_path.is_file():
+                raise SystemExit(
+                    f"--load-existing-raw-metrics requires {raw_metrics_path} to exist.",
+                )
+            print(
+                f"Loading raw metrics from {raw_metrics_path} (skipping window metric computation).",
             )
-        )
-        metrics_base = compute_metrics_for_samples(
-            window_samples_base,
-            population_extractor=population_extractor,
-            metric_adapters=metric_adapters,
-            bootstrap_sampler=bootstrap_sampler,
-            normalizers=normalizers,
-            include_metrics=include_metrics,
-        )
-
-        # Pass B: reliability-only sizes not in correlation grid (e.g., 1000)
-        extra_rel_sizes = [s for s in reliability_sizes_f if s not in set(correlation_sizes_f)]
-        metrics_extra_list: list[pd.DataFrame] = [metrics_base]
-        if extra_rel_sizes:
-            window_samples_rel = (
+            try:
+                raw_metrics_df = _load_raw_metrics_from_csv(
+                    raw_metrics_path,
+                    include_metrics,
+                )
+            except (ValueError, OSError) as e:
+                raise SystemExit(
+                    f"Failed to load raw metrics from {raw_metrics_path}: {e}",
+                ) from e
+        else:
+            # Pass A: correlation window sizes (e.g., 50–500, capped by log)
+            window_samples_base = (
                 sampling_helper.sample_consecutive_trace_windows_with_replacement(
                     pm4py_log,
-                    extra_rel_sizes,
+                    correlation_sizes_f,
                     settings.samples_per_size,
                     settings.random_state,
                 )
             )
-            metrics_rel_only = compute_metrics_for_samples(
-                window_samples_rel,
+            metrics_base = compute_metrics_for_samples(
+                window_samples_base,
                 population_extractor=population_extractor,
                 metric_adapters=metric_adapters,
                 bootstrap_sampler=bootstrap_sampler,
                 normalizers=normalizers,
                 include_metrics=include_metrics,
             )
-            metrics_extra_list.append(metrics_rel_only)
 
-        raw_metrics_df = pd.concat(metrics_extra_list, axis=0)
-        raw_metrics_df = raw_metrics_df.sort_index()
+            # Pass B: reliability-only sizes not in correlation grid (e.g., 1000)
+            extra_rel_sizes = [
+                s for s in reliability_sizes_f if s not in set(correlation_sizes_f)
+            ]
+            metrics_extra_list: list[pd.DataFrame] = [metrics_base]
+            if extra_rel_sizes:
+                window_samples_rel = (
+                    sampling_helper.sample_consecutive_trace_windows_with_replacement(
+                        pm4py_log,
+                        extra_rel_sizes,
+                        settings.samples_per_size,
+                        settings.random_state,
+                    )
+                )
+                metrics_rel_only = compute_metrics_for_samples(
+                    window_samples_rel,
+                    population_extractor=population_extractor,
+                    metric_adapters=metric_adapters,
+                    bootstrap_sampler=bootstrap_sampler,
+                    normalizers=normalizers,
+                    include_metrics=include_metrics,
+                )
+                metrics_extra_list.append(metrics_rel_only)
+
+            raw_metrics_df = pd.concat(metrics_extra_list, axis=0)
+            raw_metrics_df = raw_metrics_df.sort_index()
 
         # --- Pass C: plateau (rolling MK test on tail means; no bootstrap) ---
         # Old criterion: relative change vs previous window.
@@ -729,6 +785,15 @@ def main() -> None:
             f"{list(constants.METRIC_SHORTHAND.keys())} or full names."
         ),
     )
+    parser.add_argument(
+        "--load-existing-raw-metrics",
+        action="store_true",
+        help=(
+            "Per log, load results/<scenario>/<log>/raw_metrics.csv instead of sampling "
+            "windows and computing metrics (still loads event logs for statistics and may "
+            "compute missing plateau windows). Fails if the file is missing."
+        ),
+    )
     args = parser.parse_args()
 
     if args.test and args.scenarios is not None:
@@ -784,6 +849,7 @@ def main() -> None:
             scenario_name=scenario_name,
             settings=experiment_settings,
             scenario=sc,
+            load_existing_raw_metrics=args.load_existing_raw_metrics,
         )
 
 
