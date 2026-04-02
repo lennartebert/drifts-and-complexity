@@ -303,9 +303,16 @@ def _plateau_summary_by_metric(
     tail_means_by_metric: Dict[str, List[float]],
 ) -> tuple[pd.DataFrame, Dict[str, float], Dict[str, bool]]:
     """
-    One row per metric: plateau is detected from means across samples at each window size,
-    not per sample. ``Plateau n`` is the first window size (in the plateau grid) where the
-    relative change criterion is met; ``Plateau Found`` is False if no plateau was reached.
+    One row per metric summarizing plateau detection on mean metric values across samples
+    at each window size (not per-sample trajectories).
+
+    Plateau logic (Pass C in ``compute_results``): for rolling tails of window sizes,
+    Kendall's tau is computed between the tail index and the sequence of tail means. A tail
+    is non-trending when the p-value is above ``plateau_alpha`` (no significant monotonic
+    trend), or when all tail means are constant (Kendall p-value undefined; treated as
+    non-trending). After ``plateau_number_consecutive_non_trending_tests`` consecutive
+    non-trending tails, ``Plateau n`` is the first window size in that streak and
+    ``Plateau Found`` is True. Otherwise ``Plateau Found`` is False and ``Plateau n`` is NaN.
     """
     rows = []
     plateau_med: Dict[str, float] = {}
@@ -524,12 +531,16 @@ def compute_results(
                 if len(ys) < 2:
                     plateau_p_by_metric[m] = float("nan")
                     continue
-                _, p_value = kendalltau(range(len(ys)), ys)
-                p_value_f = (
-                    float(p_value)
-                    if p_value is not None and np.isfinite(p_value)
-                    else float("nan")
-                )
+                # Constant tail means: Kendall tau p-value is undefined (often nan); treat as no trend.
+                if float(np.min(ys)) == float(np.max(ys)):
+                    p_value_f = 1.0
+                else:
+                    _, p_value = kendalltau(range(len(ys)), ys)
+                    p_value_f = (
+                        float(p_value)
+                        if p_value is not None and np.isfinite(p_value)
+                        else float("nan")
+                    )
                 plateau_p_by_metric[m] = p_value_f
                 if np.isfinite(p_value_f) and p_value_f > mk_alpha:
                     if non_trending_streak[m] == 0:
