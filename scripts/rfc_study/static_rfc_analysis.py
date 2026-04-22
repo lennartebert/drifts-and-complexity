@@ -329,7 +329,8 @@ def main() -> None:
                 "estimated_power_law_exponent": estimated_power_law_exponent,
                 "best_fit": best_fit,
                 "best_nll": best_nll,
-                "power_law_exponent_from_min_nll": float(power_b) if best_fit == "Power Law" else np.nan,
+                # For C*x^(-alpha), the actual exponent is -alpha; report exponent * (-1) = alpha.
+                "power_law_exponent_alpha": float(power_b),
             }
         )
 

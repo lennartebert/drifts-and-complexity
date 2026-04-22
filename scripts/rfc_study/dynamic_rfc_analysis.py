@@ -153,20 +153,20 @@ def _make_figure_beta_vs_epsilon(summary_df: pd.DataFrame, output_path: Path) ->
 
 
 def _make_figure_beta_vs_power_law(summary_df: pd.DataFrame, output_path: Path) -> None:
-    """Create figure: beta vs static power-law exponent from min-NLL model selection."""
+    """Create figure: beta vs static power-law exponent alpha."""
     fig, ax = plt.subplots(figsize=(8, 6))
-    valid = summary_df[np.isfinite(summary_df["power_law_exponent_from_min_nll"])]
-    ax.scatter(valid["power_law_exponent_from_min_nll"], valid["beta"], alpha=0.8)
+    valid = summary_df[np.isfinite(summary_df["power_law_exponent_alpha"])]
+    ax.scatter(valid["power_law_exponent_alpha"], valid["beta"], alpha=0.8)
     for _, row in valid.iterrows():
         ax.text(
-            row["power_law_exponent_from_min_nll"],
+            row["power_law_exponent_alpha"],
             row["beta"],
             str(row["dataset"]),
             fontsize=8,
             ha="left",
             va="bottom",
         )
-    ax.set_xlabel("Power law exponent (static, min-NLL selected)")
+    ax.set_xlabel("Power law exponent alpha (static)")
     ax.set_ylabel("Preferential attachment exponent (beta)")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
@@ -214,7 +214,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Optional path to static_analysis_summary.csv. "
             "When provided, creates figure_beta_vs_power_law_exponent.png using "
-            "power_law_exponent_from_min_nll from static analysis."
+            "power_law_exponent_alpha from static analysis."
         ),
     )
     return parser.parse_args()
@@ -293,7 +293,7 @@ def main() -> None:
             print(f"Warning: static summary file not found: {static_summary_path}")
         else:
             static_summary_df = pd.read_csv(static_summary_path)
-            required_cols = {"dataset", "power_law_exponent_from_min_nll"}
+            required_cols = {"dataset", "power_law_exponent_alpha"}
             missing_cols = required_cols.difference(static_summary_df.columns)
             if missing_cols:
                 print(
@@ -302,7 +302,7 @@ def main() -> None:
                 )
             else:
                 merged = summary_df.merge(
-                    static_summary_df[["dataset", "power_law_exponent_from_min_nll"]],
+                    static_summary_df[["dataset", "power_law_exponent_alpha"]],
                     on="dataset",
                     how="left",
                 )
