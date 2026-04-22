@@ -161,7 +161,7 @@ def create_dataset_plots(
     base_output_dir: Path,
     dataset_name: str,
 ) -> None:
-    """Create four per-dataset RFC plots (rfc_all_*.png, same names as the aggregate folder) with fits."""
+    """Create four per-dataset RFC plots (rfc_fitted_*.png) with fitted curves."""
     dataset_dir = base_output_dir / dataset_name
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
@@ -230,7 +230,7 @@ def create_dataset_plots(
             ax.set_yscale("log")
 
         plt.tight_layout()
-        out_path = dataset_dir / f"rfc_all_{scale_name}.png"
+        out_path = dataset_dir / f"rfc_fitted_{scale_name}.png"
         fig.savefig(out_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved: {dataset_name}/{out_path.name}")
@@ -326,6 +326,7 @@ def main() -> None:
                 "estimated_power_law_exponent": estimated_power_law_exponent,
                 "best_fit": best_fit,
                 "best_nll": best_nll,
+                "power_law_exponent_from_min_nll": float(power_b) if best_fit == "Power Law" else np.nan,
             }
         )
 
@@ -353,7 +354,7 @@ def main() -> None:
     pd.DataFrame(cum_data).to_csv(analysis_dir / "cumulative_rank_frequencies.csv", index=False)
 
     correlations_df = pd.DataFrame(correlations_data)
-    correlations_df.to_csv(analysis_dir / "correlations.csv", index=False)
+    correlations_df.to_csv(analysis_dir / "static_analysis_summary.csv", index=False)
     create_all_plots(rank_freq_df, analysis_dir)
     for dataset_name, _ in input_pairs:
         if dataset_name in all_rank_freqs:

@@ -65,19 +65,6 @@ def _fit_alpha_beta_least_squares(d_df: pd.DataFrame, lambda_reg: float) -> Tupl
     return alpha, beta, epsilon
 
 
-def _estimate_power_law_exponent(d_df: pd.DataFrame, xmin: float = 1.0) -> float:
-    """Estimate power-law exponent with robust MLE form."""
-    degree = d_df["d1"].values + d_df["d2"].values
-    tail = degree[degree >= xmin]
-    if tail.size < 2:
-        return float("nan")
-    log_terms = np.log(tail / xmin)
-    denom = np.sum(log_terms)
-    if denom <= 0:
-        return float("nan")
-    return float(1.0 + tail.size / denom)
-
-
 def _make_scatter_plot(d_df: pd.DataFrame, alpha: float, beta: float, lambda_reg: float, output_path: Path) -> None:
     """Log-log fit plot with grouped boxplots by regularized degree."""
     x_raw = 1.0 + d_df["d1"].values
@@ -166,20 +153,20 @@ def _make_figure_beta_vs_epsilon(summary_df: pd.DataFrame, output_path: Path) ->
 
 
 def _make_figure_beta_vs_power_law(summary_df: pd.DataFrame, output_path: Path) -> None:
-    """Create figure: beta vs estimated power-law exponent."""
+    """Create figure: beta vs static power-law exponent from min-NLL model selection."""
     fig, ax = plt.subplots(figsize=(8, 6))
-    valid = summary_df[np.isfinite(summary_df["estimated_power_law_exponent"])]
-    ax.scatter(valid["estimated_power_law_exponent"], valid["beta"], alpha=0.8)
+    valid = summary_df[np.isfinite(summary_df["power_law_exponent_from_min_nll"])]
+    ax.scatter(valid["power_law_exponent_from_min_nll"], valid["beta"], alpha=0.8)
     for _, row in valid.iterrows():
         ax.text(
-            row["estimated_power_law_exponent"],
+            row["power_law_exponent_from_min_nll"],
             row["beta"],
             str(row["dataset"]),
             fontsize=8,
             ha="left",
             va="bottom",
         )
-    ax.set_xlabel("Estimated power law exponent")
+    ax.set_xlabel("Power law exponent (static, min-NLL selected)")
     ax.set_ylabel("Preferential attachment exponent (beta)")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
@@ -220,6 +207,16 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_LAMBDA_REG,
         help="Regularization lambda (default: 0.1, Kunegis et al. 2013)",
     )
+    parser.add_argument(
+        "--static-summary-path",
+        type=str,
+        default=None,
+        help=(
+            "Optional path to static_analysis_summary.csv. "
+            "When provided, creates figure_beta_vs_power_law_exponent.png using "
+            "power_law_exponent_from_min_nll from static analysis."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -252,7 +249,6 @@ def main() -> None:
         old_df, new_df = _split_old_new(df, split_ratio=args.split_ratio)
         d_df = _compute_d1_d2(old_df, new_df)
         alpha, beta, epsilon = _fit_alpha_beta_least_squares(d_df, lambda_reg=args.lambda_reg)
-        estimated_power_law_exponent = _estimate_power_law_exponent(d_df, xmin=1.0)
 
         dataset_dir = analysis_root / dataset_name
         dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -277,13 +273,9 @@ def main() -> None:
                 "alpha": float(alpha),
                 "beta": float(beta),
                 "epsilon": float(epsilon),
-                "estimated_power_law_exponent": float(estimated_power_law_exponent),
             }
         )
-        print(
-            f"  beta={beta:.6f}, epsilon={epsilon:.6f}, "
-            f"estimated_power_law_exponent={estimated_power_law_exponent:.6f}"
-        )
+        print(f"  beta={beta:.6f}, epsilon={epsilon:.6f}")
         print(f"  Saved: {dataset_dir}")
 
     if not summary_rows:
@@ -291,10 +283,31 @@ def main() -> None:
         raise SystemExit(1)
 
     summary_df = pd.DataFrame(summary_rows)
-    summary_path = analysis_root / "summary.csv"
+    summary_path = analysis_root / "dynamic_analysis_summary.csv"
     summary_df.to_csv(summary_path, index=False)
     _make_figure_beta_vs_epsilon(summary_df, analysis_root / "figure_beta_vs_epsilon.png")
-    _make_figure_beta_vs_power_law(summary_df, analysis_root / "figure_beta_vs_power_law_exponent.png")
+
+    if args.static_summary_path:
+        static_summary_path = Path(args.static_summary_path)
+        if not static_summary_path.exists():
+            print(f"Warning: static summary file not found: {static_summary_path}")
+        else:
+            static_summary_df = pd.read_csv(static_summary_path)
+            required_cols = {"dataset", "power_law_exponent_from_min_nll"}
+            missing_cols = required_cols.difference(static_summary_df.columns)
+            if missing_cols:
+                print(
+                    f"Warning: static summary missing required columns {sorted(missing_cols)}; "
+                    "skipping figure_beta_vs_power_law_exponent.png"
+                )
+            else:
+                merged = summary_df.merge(
+                    static_summary_df[["dataset", "power_law_exponent_from_min_nll"]],
+                    on="dataset",
+                    how="left",
+                )
+                _make_figure_beta_vs_power_law(merged, analysis_root / "figure_beta_vs_power_law_exponent.png")
+                print("Created: figure_beta_vs_power_law_exponent.png")
     print(f"\nSummary saved to: {summary_path}")
 
 

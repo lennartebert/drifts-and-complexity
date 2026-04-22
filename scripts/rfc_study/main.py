@@ -104,6 +104,7 @@ def main() -> None:
 
     if not args.skip_dynamic:
         dynamic_inputs = _build_attachment_inputs(args.datasets, args.output_dir, args.concept)
+        static_summary_path = (Path(args.output_dir) if args.output_dir else Path("results") / "rfc_study") / analysis_name / "static_analysis_summary.csv"
         dynamic_cmd = [
             python_exec,
             str(SCRIPT_DIR / "dynamic_rfc_analysis.py"),
@@ -117,6 +118,8 @@ def main() -> None:
             str(args.lambda_reg),
             *output_args,
         ]
+        if not args.skip_static:
+            dynamic_cmd.extend(["--static-summary-path", str(static_summary_path)])
         _run_command(dynamic_cmd, args.dry_run)
 
     print("\nRFC study pipeline completed.")
