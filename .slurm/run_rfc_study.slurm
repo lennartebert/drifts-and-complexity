@@ -1,12 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=run_rfc_study
-#SBATCH --output=.slurm/logs/%j_rfc_study.out
-#SBATCH --error=.slurm/logs/%j_rfc_study.err
+#SBATCH --output=.slurm/logs/%A_%a_rfc_study.out
+#SBATCH --error=.slurm/logs/%A_%a_rfc_study.err
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=16G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=3-00:00:00
+#SBATCH --array=0-2
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR}"
@@ -37,7 +38,19 @@ if [[ ! -f "${MAIN_SCRIPT}" ]]; then
 fi
 
 mkdir -p .slurm/logs
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting RFC study for ${#logs[@]} datasets, ${#concepts[@]} concepts (single job, SLURM_JOB_ID=${SLURM_JOB_ID:-N/A})"
+if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: SLURM_ARRAY_TASK_ID is not set" >&2
+  exit 1
+fi
+
+if (( SLURM_ARRAY_TASK_ID < 0 || SLURM_ARRAY_TASK_ID >= ${#concepts[@]} )); then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID} out of range [0,$((${#concepts[@]}-1))]" >&2
+  exit 1
+fi
+
+CONCEPT="${concepts[SLURM_ARRAY_TASK_ID]}"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting RFC study for concept=${CONCEPT} across ${#logs[@]} datasets (array_task=${SLURM_ARRAY_TASK_ID}, job_id=${SLURM_JOB_ID:-N/A})"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Smoke-test main entrypoint..."
 python "${MAIN_SCRIPT}" --help >/dev/null || {
@@ -45,10 +58,8 @@ python "${MAIN_SCRIPT}" --help >/dev/null || {
   exit 1
 }
 
-for CONCEPT in "${concepts[@]}"; do
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: python ${MAIN_SCRIPT} --datasets (all) --concept ${CONCEPT} ..."
-  python "${MAIN_SCRIPT}" --datasets "${logs[@]}" --concept "${CONCEPT}"
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Done concept ${CONCEPT} for all datasets"
-done
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: python ${MAIN_SCRIPT} --datasets (all) --concept ${CONCEPT} ..."
+python "${MAIN_SCRIPT}" --datasets "${logs[@]}" --concept "${CONCEPT}"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Done concept ${CONCEPT} for all datasets"
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Completed RFC study (all datasets, all concepts) job_id=${SLURM_JOB_ID:-N/A}"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Completed RFC study for concept=${CONCEPT} (array_task=${SLURM_ARRAY_TASK_ID}, job_id=${SLURM_JOB_ID:-N/A})"
