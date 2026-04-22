@@ -90,7 +90,7 @@ def fit_exponential(x: np.ndarray, y: np.ndarray) -> Tuple[float, float, float]:
 
 
 def fit_power_law(x: np.ndarray, y: np.ndarray) -> Tuple[float, float, float]:
-    """Fit y = a*x^b and return a, b, negative log-likelihood."""
+    """Fit y = C*x^(-alpha) and return C, alpha, negative log-likelihood."""
     mask = (x > 0) & (y > 0) & np.isfinite(x) & np.isfinite(y)
     if mask.sum() < 2:
         return np.nan, np.nan, np.inf
@@ -99,11 +99,12 @@ def fit_power_law(x: np.ndarray, y: np.ndarray) -> Tuple[float, float, float]:
     y_fit = y[mask]
     log_x = np.log(x_fit)
     log_y = np.log(y_fit)
-    b, log_a = np.polyfit(log_x, log_y, 1)
-    a = np.exp(log_a)
-    y_pred_full = a * (x**b)
+    slope, log_c = np.polyfit(log_x, log_y, 1)
+    alpha = -float(slope)
+    c = float(np.exp(log_c))
+    y_pred_full = c * (x ** (-alpha))
     nll = _negative_log_likelihood(y, y_pred_full)
-    return float(a), float(b), float(nll)
+    return c, alpha, float(nll)
 
 
 def estimate_power_law_exponent(counts: np.ndarray, xmin: float = 1.0) -> float:
@@ -190,7 +191,7 @@ def create_dataset_plots(
         # Plot each fit using already computed parameters.
         y_linear = row["linear_a"] * x_plot + row["linear_b"]
         y_exp = row["exponential_a"] * np.exp(row["exponential_b"] * x_plot)
-        y_power = row["power_a"] * (x_plot ** row["power_b"])
+        y_power = row["power_a"] * (x_plot ** (-row["power_b"]))
         if log_y:
             y_linear = np.maximum(y_linear, 1e-10)
             y_exp = np.maximum(y_exp, 1e-10)
@@ -322,6 +323,8 @@ def main() -> None:
                 "exponential_nll": exp_nll,
                 "power_a": power_a,
                 "power_b": power_b,
+                "power_c": power_a,
+                "power_alpha": power_b,
                 "power_nll": power_nll,
                 "estimated_power_law_exponent": estimated_power_law_exponent,
                 "best_fit": best_fit,
