@@ -139,21 +139,30 @@ def main() -> None:
             print(f"Warning: Log file missing for {dataset_name}: {log_path}")
             continue
 
+        concept_outputs = []
+        for concept in args.concepts:
+            dataset_concept_dir = output_root / concept / dataset_name
+            dataset_concept_dir.mkdir(parents=True, exist_ok=True)
+            attachment_path = dataset_concept_dir / "attachments.csv"
+            concept_outputs.append((concept, attachment_path))
+
+        pending_outputs = []
+        for concept, attachment_path in concept_outputs:
+            if attachment_path.exists() and not args.force:
+                print(f"  Skipping {concept}/{dataset_name}: {attachment_path} already exists")
+                continue
+            pending_outputs.append((concept, attachment_path))
+
+        if not pending_outputs:
+            print(f"Skipping dataset {dataset_name}: all requested concepts already extracted")
+            continue
+
         print(f"Extracting {dataset_name} from {log_path}...")
         event_log = load_event_log(log_path)
         trace_data = _trace_completion_data(event_log)
         # Sort once and reuse for all requested concepts to avoid repeated log traversal.
         trace_data.sort(key=lambda item: item["completion_timestamp"])
-        for concept in args.concepts:
-            dataset_concept_dir = output_root / concept / dataset_name
-            dataset_concept_dir.mkdir(parents=True, exist_ok=True)
-            attachment_path = dataset_concept_dir / "attachments.csv"
-
-            # Skip recomputation by default for fast iteration.
-            if attachment_path.exists() and not args.force:
-                print(f"  Skipping {concept}/{dataset_name}: {attachment_path} already exists")
-                continue
-
+        for concept, attachment_path in pending_outputs:
             attachments_df = extract_attachments_from_trace_data(trace_data, concept)
             attachments_df.to_csv(attachment_path, index=False)
             unique_nodes = attachments_df["node_id"].nunique() if not attachments_df.empty else 0
