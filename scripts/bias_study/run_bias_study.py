@@ -530,8 +530,15 @@ def compute_results(
         )
         analysis_df.to_csv(out_dir / "analysis.csv")
 
-        ci_plot_df = analysis_reliability.reset_index()
-        ci_plot_df = ci_plot_df[ci_plot_df["Sample Size"].isin(correlation_sizes_f)]
+        ci_plot_analysis = compute_analysis_for_metrics(
+            raw_metrics_df,
+            sample_confidence_interval_extractor=sample_confidence_interval_extractor,
+            include_metrics=include_metrics,
+            include_sample_ci=True,
+            include_correlations=False,
+            include_plateau=False,
+        )
+        ci_plot_df = ci_plot_analysis.reset_index()
 
         # Remove legacy filenames so outputs reflect the current naming scheme.
         for legacy_name in ("sample_cis.png", "sample_cis.pdf"):
