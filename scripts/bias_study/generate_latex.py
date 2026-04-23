@@ -43,6 +43,21 @@ def _strip_conv_avg_suffix(text: str) -> str:
     return re.sub(r"\s*\(avg.*", "", text, flags=re.IGNORECASE | re.DOTALL).strip()
 
 
+def _effect_size_label_from_rho(rho_val: Any) -> str:
+    """Cohen-style correlation magnitude labels based on absolute rho."""
+    try:
+        rho_abs = abs(float(rho_val))
+    except (TypeError, ValueError):
+        return "---"
+    if rho_abs >= 0.5:
+        return "large"
+    if rho_abs >= 0.3:
+        return "medium"
+    if rho_abs >= 0.1:
+        return "small"
+    return "---"
+
+
 def _metric_order(metric: str) -> int:
     try:
         return _ALL_METRICS.index(metric)
@@ -116,12 +131,7 @@ def _build_summary_table(
             short = _escape_latex(str(metric))
 
         rho = _format_num(row.get(rho_col), 4)
-        es_raw = row.get("Shape", "")
-        es = (
-            _escape_latex(es_raw)
-            if es_raw is not None and str(es_raw) != ""
-            else "---"
-        )
+        es = _effect_size_label_from_rho(row.get(rho_col))
         pr_raw = row.get("Plateau Reached", row.get("Plateau Found", ""))
         if pr_raw is not None and str(pr_raw) != "":
             pr_s = _strip_conv_avg_suffix(str(pr_raw))
@@ -237,6 +247,7 @@ def _summary_below_tabular_legend(
     return f"""{{\\centering
 $\\rho$: {rho_name} correlation \\quad
 \\textit{{ES}}: Effect size~\\cite{{Cohen2009StatisticalPowerAnalysis}} \\quad
+($|\\rho|\\geq 0.1$ small, $\\geq 0.3$ medium, $\\geq 0.5$ large) \\quad
 PR: Plateau reached (X/Y logs) \\quad
 Rel.\\ CI {relci_join}: 95\\% relative CI at window sizes {sizes_join}
 }}

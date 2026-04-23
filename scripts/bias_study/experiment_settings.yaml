@@ -20,16 +20,16 @@ full:
       step: 50
 
   plateau_analysis:
-    # Mann-Kendall trend test on tail means (one mean reading per window size).
+    # Mann-Kendall trend test on tail
     # Plateauing if p_value > alpha (no significant monotonic trend).
     windows_per_test:
-      count: 20
-      step: 25
-    starting_window_size: 100
-    max_window_size: 10000
-    step_between_tests: 300
+      count: 10
+      step: 50
+    starting_window_size: 50
+    max_window_size: 9500
+    step_between_tests: 500
     alpha: 0.05
-    number_consecutive_non_trending_tests: 3
+    number_consecutive_non_trending_tests: 1
 
   reliability_analysis:
     # Across-sample relative CI width (RelCI) at these window sizes; same list is passed to

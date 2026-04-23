@@ -119,8 +119,8 @@ METRIC_BASIS_MAP = {
 }
 
 METRIC_DIMENSION_MAP = {
-    "Number of Events": "Size", # Used to be length
-    "Number of Traces": "Size", # Used to be length
+    "Number of Events": "Length", # Used to be length
+    "Number of Traces": "Length", # Used to be length
     "Number of Distinct Activities": "Size",
     "Number of Distinct Traces": "Size",
     "Number of Distinct Directly-Follows Relations": "Size",

@@ -5,8 +5,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --spread-job
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=50
+#SBATCH --mem=64G
 #SBATCH --array=0-1
 #SBATCH --account=eberlenn
 #SBATCH --time=1-00:00:00

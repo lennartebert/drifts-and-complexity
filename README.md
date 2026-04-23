@@ -55,23 +55,36 @@ This repository contains the code and data for empirical studies on concept drif
 
 ### Sampling-Window Bias: Threats to Construct Validity and Reliability in Process Complexity Measurement
 
-To replicate the bias study analysis, run the bias study script with scenarios 0 and 3:
+Run the bias study via module execution:
 
 ```bash
-python scripts/bias_study/run_bias_study.py 0 3
+python -m scripts.bias_study.run_bias_study
 ```
 
-**Scenario descriptions:**
-- **Scenario 0** (`synthetic_base`): Synthetic datasets with base configuration
-- **Scenario 3** (`real_base`): Real-world datasets (BPIC12, RTFMP) with base configuration
+By default, this runs all scenarios from `scripts/bias_study/scenarios.yaml` except `test`, using the `full` profile from `scripts/bias_study/experiment_settings.yaml`.
 
-**Additional options:**
-- `--test`: Run in test mode with reduced parameters (faster, for testing)
-- `--metrics METRIC1 METRIC2 ...`: Calculate only specified metrics (use shorthand names or full names)
+**Typical commands:**
+- Run selected scenarios:
+  ```bash
+  python -m scripts.bias_study.run_bias_study --scenarios synthetic_base real_base
+  ```
+- Run smoke test scenario (`test` profile):
+  ```bash
+  python -m scripts.bias_study.run_bias_study --test
+  ```
+- Restrict to specific metrics:
+  ```bash
+  python -m scripts.bias_study.run_bias_study --scenarios real_base --metrics n_events n_traces
+  ```
 
-**Output:** Bias study results are saved in `results/bias_study/<scenario_name>/`
+**Notes:**
+- `--scenarios` and `--test` are mutually exclusive.
+- Scenario definitions are in `scripts/bias_study/scenarios.yaml`.
+- Experiment profiles (`full`, `test`) are in `scripts/bias_study/experiment_settings.yaml`.
 
-**Submitted results:** Permanent (submitted) results for this study are saved under `results/perm/CAiSE2026/...`
+**Output:** Bias study results are saved in `results/bias_study/<scenario_name>/`.
+
+**Submitted results:** Permanent (submitted) results for this study are saved under `results/perm/CAiSE2026/...`.
 
 ### Drifts and Complexity Analysis Pipeline
 
