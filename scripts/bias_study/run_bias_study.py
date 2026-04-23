@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 from pm4py.objects.log.importer.xes import importer as xes_importer
-from scipy.stats import kendalltau
 
 from utils import constants, helpers, sampling_helper
 from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
@@ -46,7 +45,6 @@ from .yaml_input_handling import (
     experiment_settings_from_profile,
     load_experiment_settings,
     load_scenarios_yaml,
-    plateau_test_start_sizes_for_log,
 )
 
 # --- defaults ---
@@ -278,77 +276,13 @@ def _merge_correlation_reliability_plateau(
     return merged
 
 
-def _metrics_df_long(metrics_df: pd.DataFrame) -> pd.DataFrame:
-    df = metrics_df.reset_index()
-    if "Sample Size" not in df.columns and "Sample Size" in df.index.names:
-        df = df.reset_index()
-    return df
-
-
-def _mean_at_window(df: pd.DataFrame, metric: str, window_size: int) -> Optional[float]:
-    """Mean ``Value`` across samples for one metric at ``window_size``; None if missing."""
-    sub = df[(df["Metric"] == metric) & (df["Sample Size"] == window_size)]
-    if sub.empty:
-        return None
-    v = float(sub["Value"].mean())
-    return v if np.isfinite(v) else None
-
-
-def _plateau_summary_by_metric(
-    include_metrics: List[str],
-    plateau_n_by_metric: Dict[str, float],
-    plateau_p_by_metric: Dict[str, float],
-    plateau_alpha: float,
-    tail_window_sizes_by_metric: Dict[str, List[int]],
-    tail_means_by_metric: Dict[str, List[float]],
-) -> tuple[pd.DataFrame, Dict[str, float], Dict[str, bool]]:
-    """
-    One row per metric summarizing plateau detection on mean metric values across samples
-    at each window size (not per-sample trajectories).
-
-    Plateau logic (Pass C in ``compute_results``): for rolling tails of window sizes,
-    Kendall's tau is computed between the tail index and the sequence of tail means. A tail
-    is non-trending when the p-value is above ``plateau_alpha`` (no significant monotonic
-    trend), or when all tail means are constant (Kendall p-value undefined; treated as
-    non-trending). After ``plateau_number_consecutive_non_trending_tests`` consecutive
-    non-trending tails, ``Plateau n`` is the first window size in that streak and
-    ``Plateau Found`` is True. Otherwise ``Plateau Found`` is False and ``Plateau n`` is NaN.
-    """
-    rows = []
-    plateau_med: Dict[str, float] = {}
-    plateau_maj: Dict[str, bool] = {}
-    for m in include_metrics:
-        pn = plateau_n_by_metric.get(m, np.nan)
-        if not np.isfinite(pn):
-            pn = np.nan
-        found = bool(np.isfinite(pn))
-        p_val = plateau_p_by_metric.get(m, np.nan)
-        rows.append(
-            {
-                "Metric": m,
-                "Plateau n": pn,
-                "Plateau Found": found,
-                "Plateau Classification": "plateauing" if found else "trending",
-                "MK p-value": p_val,
-                "MK alpha": plateau_alpha,
-                "MK tail window sizes": ",".join(
-                    str(x) for x in tail_window_sizes_by_metric.get(m, [])
-                ),
-                "MK tail means": ",".join(
-                    f"{x:.10g}" for x in tail_means_by_metric.get(m, [])
-                ),
-            },
-        )
-        plateau_med[m] = float(pn) if found else float("nan")
-        plateau_maj[m] = found
-    return pd.DataFrame(rows), plateau_med, plateau_maj
-
-
 # --- core compute function ---
 def compute_results(
     scenario_name: str,
     settings: ExperimentSettings,
     scenario: Dict[str, Any],
+    *,
+    reuse_raw_metrics_if_available: bool = True,
 ) -> None:
     list_of_logs = scenario["logs"]
     population_extractor = scenario["population_extractor"]
@@ -390,9 +324,12 @@ def compute_results(
         # Store population size (number of traces) for FPC
         log_n = len(pm4py_log)
         log_population_sizes[log_name] = log_n
-        # Correlation / reliability: only cap by log length (feasible window sizes).
-        # Plateau test starts and per-test windows are capped by log length.
-        correlation_sizes_f = [s for s in settings.correlation_sizes if s <= log_n]
+        all_window_sizes_f = [s for s in settings.window_sizes if s <= log_n]
+        correlation_sizes_f = [
+            s
+            for s in all_window_sizes_f
+            if settings.correlation_start <= s <= settings.correlation_stop
+        ]
         reliability_sizes_f = [s for s in settings.reliability_sizes if s <= log_n]
 
         # Compute basic log statistics
@@ -410,168 +347,94 @@ def compute_results(
 
         out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name / log_name
         out_dir.mkdir(parents=True, exist_ok=True)
+        raw_metrics_path = out_dir / "raw_metrics.csv"
 
-        # Pass A: correlation window sizes (e.g., 50–500, capped by log)
-        window_samples_base = (
-            sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                pm4py_log,
-                correlation_sizes_f,
-                settings.samples_per_size,
-                settings.random_state,
-            )
-        )
-        metrics_base = compute_metrics_for_samples(
-            window_samples_base,
-            population_extractor=population_extractor,
-            metric_adapters=metric_adapters,
-            bootstrap_sampler=bootstrap_sampler,
-            normalizers=normalizers,
-            include_metrics=include_metrics,
-        )
-
-        # Pass B: reliability-only sizes not in correlation grid (e.g., 1000)
-        extra_rel_sizes = [s for s in reliability_sizes_f if s not in set(correlation_sizes_f)]
-        metrics_extra_list: list[pd.DataFrame] = [metrics_base]
-        if extra_rel_sizes:
-            window_samples_rel = (
+        if reuse_raw_metrics_if_available and raw_metrics_path.exists():
+            raw_existing = pd.read_csv(raw_metrics_path)
+            if {"Metric", "Sample Size", "Sample ID", "Value"}.issubset(
+                set(raw_existing.columns)
+            ):
+                existing_sizes = set(
+                    raw_existing["Sample Size"].dropna().astype(int).tolist()
+                )
+                required_sizes = set(int(s) for s in all_window_sizes_f)
+                missing_sizes = sorted(required_sizes - existing_sizes)
+                if missing_sizes:
+                    print(
+                        "Found existing raw metrics but missing required window sizes. "
+                        f"Computing missing sizes only: {missing_sizes}"
+                    )
+                    window_samples_missing = (
+                        sampling_helper.sample_consecutive_trace_windows_with_replacement(
+                            pm4py_log,
+                            missing_sizes,
+                            settings.samples_per_size,
+                            settings.random_state,
+                        )
+                    )
+                    raw_missing_df = compute_metrics_for_samples(
+                        window_samples_missing,
+                        population_extractor=population_extractor,
+                        metric_adapters=metric_adapters,
+                        bootstrap_sampler=bootstrap_sampler,
+                        normalizers=normalizers,
+                        include_metrics=include_metrics,
+                    ).sort_index()
+                    raw_metrics_df = pd.concat(
+                        [raw_existing, raw_missing_df.reset_index()],
+                        ignore_index=True,
+                    )
+                    raw_metrics_df = raw_metrics_df.drop_duplicates(
+                        subset=["Metric", "Sample Size", "Sample ID"],
+                        keep="last",
+                    )
+                    raw_metrics_df = raw_metrics_df.set_index(
+                        ["Metric", "Sample Size"]
+                    ).sort_index()
+                    raw_metrics_df.to_csv(raw_metrics_path)
+                else:
+                    raw_metrics_df = raw_existing.set_index(["Metric", "Sample Size"])
+                    print(f"Reusing existing raw metrics: {raw_metrics_path}")
+            else:
+                print(
+                    "Existing raw metrics file has unexpected schema. "
+                    "Recomputing from scratch."
+                )
+                window_samples_all = (
+                    sampling_helper.sample_consecutive_trace_windows_with_replacement(
+                        pm4py_log,
+                        all_window_sizes_f,
+                        settings.samples_per_size,
+                        settings.random_state,
+                    )
+                )
+                raw_metrics_df = compute_metrics_for_samples(
+                    window_samples_all,
+                    population_extractor=population_extractor,
+                    metric_adapters=metric_adapters,
+                    bootstrap_sampler=bootstrap_sampler,
+                    normalizers=normalizers,
+                    include_metrics=include_metrics,
+                ).sort_index()
+                raw_metrics_df.to_csv(raw_metrics_path)
+        else:
+            window_samples_all = (
                 sampling_helper.sample_consecutive_trace_windows_with_replacement(
                     pm4py_log,
-                    extra_rel_sizes,
+                    all_window_sizes_f,
                     settings.samples_per_size,
                     settings.random_state,
                 )
             )
-            metrics_rel_only = compute_metrics_for_samples(
-                window_samples_rel,
+            raw_metrics_df = compute_metrics_for_samples(
+                window_samples_all,
                 population_extractor=population_extractor,
                 metric_adapters=metric_adapters,
                 bootstrap_sampler=bootstrap_sampler,
                 normalizers=normalizers,
                 include_metrics=include_metrics,
-            )
-            metrics_extra_list.append(metrics_rel_only)
-
-        raw_metrics_df = pd.concat(metrics_extra_list, axis=0)
-        raw_metrics_df = raw_metrics_df.sort_index()
-
-        # --- Pass C: plateau (rolling MK test on tail means; no bootstrap) ---
-        # Old criterion: relative change vs previous window.
-        # New criterion: Mann-Kendall on rolling tails (N mean readings, shift by one step).
-        plateau_df = _metrics_df_long(raw_metrics_df)
-        test_start_sizes = plateau_test_start_sizes_for_log(settings, log_n)
-        mk_tail_n = max(1, int(settings.plateau_windows_per_test_count))
-        mk_tail_step = max(1, int(settings.plateau_windows_per_test_step))
-        mk_alpha = float(settings.plateau_alpha)
-        mk_required_consecutive = max(
-            1, int(settings.plateau_number_consecutive_non_trending_tests)
-        )
-        plateau_by_metric: Dict[str, float] = {}
-        plateau_p_by_metric: Dict[str, float] = {}
-        tail_window_sizes_by_metric: Dict[str, List[int]] = {}
-        tail_means_by_metric: Dict[str, List[float]] = {}
-        plateau_extra_parts: list[pd.DataFrame] = []
-        pending_metrics = set(include_metrics)
-        non_trending_streak: Dict[str, int] = {m: 0 for m in include_metrics}
-        non_trending_streak_start: Dict[str, float] = {}
-        for test_start in test_start_sizes:
-            if not pending_metrics:
-                break
-            tail_window_sizes = [
-                int(test_start + i * mk_tail_step) for i in range(mk_tail_n)
-            ]
-            tail_window_sizes = [w for w in tail_window_sizes if w <= log_n]
-            # Strict mode: evaluate only complete tests with the full configured window count.
-            if len(tail_window_sizes) < mk_tail_n:
-                continue
-
-            missing_windows = [
-                pw
-                for pw in tail_window_sizes
-                if any(_mean_at_window(plateau_df, m, pw) is None for m in pending_metrics)
-            ]
-            if missing_windows:
-                plateau_window_samples = (
-                    sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                        pm4py_log,
-                        missing_windows,
-                        settings.samples_per_size,
-                        settings.random_state,
-                    )
-                )
-                # Compute all missing windows for this test in one call
-                # so the existing window-level parallelization can fan out.
-                plateau_batch_df = compute_metrics_for_samples(
-                    plateau_window_samples,
-                    population_extractor=population_extractor,
-                    metric_adapters=metric_adapters,
-                    bootstrap_sampler=None,
-                    normalizers=normalizers,
-                    include_metrics=list(pending_metrics),
-                )
-                plateau_extra_parts.append(plateau_batch_df)
-                plateau_dfb = plateau_batch_df.reset_index()
-                if (
-                    "Sample Size" not in plateau_dfb.columns
-                    and "Sample Size" in plateau_dfb.index.names
-                ):
-                    plateau_dfb = plateau_dfb.reset_index()
-                plateau_df = pd.concat([plateau_df, plateau_dfb], ignore_index=True)
-
-            for m in list(pending_metrics):
-                ys: list[float] = []
-                xs: list[int] = []
-                for pw in tail_window_sizes:
-                    mu = _mean_at_window(plateau_df, m, pw)
-                    if mu is None or not np.isfinite(mu):
-                        continue
-                    xs.append(int(pw))
-                    ys.append(float(mu))
-                tail_window_sizes_by_metric[m] = xs
-                tail_means_by_metric[m] = ys
-                if len(ys) < 2:
-                    plateau_p_by_metric[m] = float("nan")
-                    continue
-                # Constant tail means: Kendall tau p-value is undefined (often nan); treat as no trend.
-                if float(np.min(ys)) == float(np.max(ys)):
-                    p_value_f = 1.0
-                else:
-                    _, p_value = kendalltau(range(len(ys)), ys)
-                    p_value_f = (
-                        float(p_value)
-                        if p_value is not None and np.isfinite(p_value)
-                        else float("nan")
-                    )
-                plateau_p_by_metric[m] = p_value_f
-                if np.isfinite(p_value_f) and p_value_f > mk_alpha:
-                    if non_trending_streak[m] == 0:
-                        non_trending_streak_start[m] = float(xs[0])
-                    non_trending_streak[m] += 1
-                    if non_trending_streak[m] >= mk_required_consecutive:
-                        plateau_by_metric[m] = non_trending_streak_start[m]
-                        pending_metrics.discard(m)
-                else:
-                    non_trending_streak[m] = 0
-                    non_trending_streak_start.pop(m, None)
-
-        plateau_summary, plateau_med, plateau_maj = _plateau_summary_by_metric(
-            include_metrics,
-            plateau_by_metric,
-            plateau_p_by_metric,
-            mk_alpha,
-            tail_window_sizes_by_metric,
-            tail_means_by_metric,
-        )
-        plateau_extra = (
-            pd.concat(plateau_extra_parts, ignore_index=False)
-            if plateau_extra_parts
-            else pd.DataFrame()
-        )
-        if not plateau_extra.empty:
-            raw_metrics_df = pd.concat([raw_metrics_df, plateau_extra], axis=0)
-            raw_metrics_df = raw_metrics_df.sort_index()
-
-        raw_metrics_df.to_csv(out_dir / "raw_metrics.csv")
-        plateau_summary.to_csv(out_dir / "plateau_summary.csv", index=False)
+            ).sort_index()
+            raw_metrics_df.to_csv(raw_metrics_path)
 
         # Correlation analysis (rho / Pearson vs window size)
         corr_metrics = raw_metrics_df.reset_index()
@@ -604,6 +467,59 @@ def compute_results(
             include_plateau=False,
         )
         analysis_reliability.to_csv(out_dir / "analysis_reliability.csv")
+
+        plateau_analysis = compute_analysis_for_metrics(
+            raw_metrics_df,
+            sample_confidence_interval_extractor=None,
+            include_metrics=include_metrics,
+            include_sample_ci=False,
+            include_correlations=False,
+            include_plateau=True,
+            plateau_windows_per_test=settings.plateau_windows_per_test,
+            plateau_step_between_tests=settings.plateau_step_between_tests,
+            plateau_alpha=settings.plateau_alpha,
+            plateau_number_consecutive_non_trending_tests=settings.plateau_number_consecutive_non_trending_tests,
+            plateau_start_window_size=min(all_window_sizes_f) if all_window_sizes_f else None,
+        )
+        plateau_summary = (
+            plateau_analysis.reset_index()[
+                [
+                    "Metric",
+                    "Plateau n",
+                    "Plateau Found",
+                    "MK p-value",
+                    "MK alpha",
+                    "MK tail window sizes",
+                    "MK tail means",
+                ]
+            ]
+            .drop_duplicates(subset=["Metric"])
+            .copy()
+        )
+        plateau_summary["Plateau Classification"] = plateau_summary["Plateau Found"].map(
+            lambda x: "plateauing" if bool(x) else "trending"
+        )
+        plateau_summary = plateau_summary[
+            [
+                "Metric",
+                "Plateau n",
+                "Plateau Found",
+                "Plateau Classification",
+                "MK p-value",
+                "MK alpha",
+                "MK tail window sizes",
+                "MK tail means",
+            ]
+        ]
+        plateau_summary.to_csv(out_dir / "plateau_summary.csv", index=False)
+        plateau_med = {
+            str(r["Metric"]): (float(r["Plateau n"]) if pd.notna(r["Plateau n"]) else float("nan"))
+            for _, r in plateau_summary.iterrows()
+        }
+        plateau_maj = {
+            str(r["Metric"]): bool(r["Plateau Found"])
+            for _, r in plateau_summary.iterrows()
+        }
 
         # Merged table for master + correlation plots
         analysis_df = _merge_correlation_reliability_plateau(
@@ -641,8 +557,15 @@ def compute_results(
     out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Compute sample size for FPC (correlation grid)
-    n_samples = len(list(settings.correlation_sizes)) * settings.samples_per_size
+    # Compute sample size for FPC (correlation interval over configured window grid)
+    correlation_window_count = len(
+        [
+            s
+            for s in settings.window_sizes
+            if settings.correlation_start <= s <= settings.correlation_stop
+        ]
+    )
+    n_samples = correlation_window_count * settings.samples_per_size
     avg_population_size = (
         int(np.mean(list(log_population_sizes.values())))
         if log_population_sizes
@@ -729,6 +652,14 @@ def main() -> None:
             f"{list(constants.METRIC_SHORTHAND.keys())} or full names."
         ),
     )
+    parser.add_argument(
+        "--recompute-raw-metrics",
+        action="store_true",
+        help=(
+            "Recompute window metrics even if raw_metrics.csv already exists. "
+            "By default, existing raw metrics are reused."
+        ),
+    )
     args = parser.parse_args()
 
     if args.test and args.scenarios is not None:
@@ -784,6 +715,7 @@ def main() -> None:
             scenario_name=scenario_name,
             settings=experiment_settings,
             scenario=sc,
+            reuse_raw_metrics_if_available=not args.recompute_raw_metrics,
         )
 
 

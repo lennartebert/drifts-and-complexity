@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
@@ -22,9 +22,7 @@ def _resolve_include_metrics(raw: Any) -> List[str]:
     return helpers.resolve_metric_names([str(x) for x in raw])
 
 
-def parse_correlation_window_sizes(
-    spec: Union[Dict[str, int], List[int]]
-) -> Union[range, List[int]]:
+def parse_window_sizes(spec: Union[Dict[str, int], List[int]]) -> Union[range, List[int]]:
     if isinstance(spec, list):
         return [int(x) for x in spec]
     start = int(spec["start"])
@@ -61,50 +59,30 @@ class ExperimentSettings:
     random_state: int
     bootstrap_replica_count: int
     include_metrics: List[str]
-    correlation_sizes: Union[range, List[int]]
-    plateau_windows_per_test_count: int
-    plateau_windows_per_test_step: int
-    plateau_starting_window_size: int
-    plateau_max_window_size: int
+    window_sizes: Union[range, List[int]]
+    correlation_start: int
+    correlation_stop: int
+    plateau_windows_per_test: int
     plateau_step_between_tests: int
     plateau_alpha: float
     plateau_number_consecutive_non_trending_tests: int
     reliability_sizes: List[int]
 
 
-def plateau_test_start_sizes_for_log(settings: ExperimentSettings, log_len: int) -> List[int]:
-    """
-    Ordered starting window sizes for plateau tests.
-
-    Test starts are generated from:
-      starting_window_size, step_between_tests, max_window_size
-    and capped by the log length.
-    """
-    stop = min(settings.plateau_max_window_size, log_len)
-    start = settings.plateau_starting_window_size
-    step = settings.plateau_step_between_tests
-    if step <= 0:
-        raise ValueError("plateau_analysis.step_between_tests must be positive")
-    if start > stop:
-        return []
-    return list(range(start, stop + 1, step))
-
-
 def experiment_settings_from_profile(profile: Dict[str, Any]) -> ExperimentSettings:
     ca = profile["correlation_analysis"]
     pa = profile["plateau_analysis"]
     ra = profile["reliability_analysis"]
-    wpt = pa["windows_per_test"]
+    ws = profile["window_sizes"]
     return ExperimentSettings(
         samples_per_size=int(profile["samples_per_size"]),
         random_state=int(profile["random_state"]),
         bootstrap_replica_count=int(profile["bootstrap_replica_count"]),
         include_metrics=_resolve_include_metrics(profile.get("include_metrics")),
-        correlation_sizes=parse_correlation_window_sizes(ca["window_sizes"]),
-        plateau_windows_per_test_count=int(wpt["count"]),
-        plateau_windows_per_test_step=int(wpt["step"]),
-        plateau_starting_window_size=int(pa["starting_window_size"]),
-        plateau_max_window_size=int(pa["max_window_size"]),
+        window_sizes=parse_window_sizes(ws),
+        correlation_start=int(ca["start"]),
+        correlation_stop=int(ca["stop"]),
+        plateau_windows_per_test=int(pa["windows_per_test"]),
         plateau_step_between_tests=int(pa["step_between_tests"]),
         plateau_alpha=float(pa["alpha"]),
         plateau_number_consecutive_non_trending_tests=int(

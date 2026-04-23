@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Literal, Optional, Set, Tuple, Uni
 
 import numpy as np
 import pandas as pd
+from scipy.stats import kendalltau
 
 from utils.bootstrapping.bootstrap_samplers.inext_bootstrap_sampler import (
     INextBootstrapSampler,
@@ -445,6 +446,11 @@ def compute_analysis_for_metrics(
     include_sample_ci: bool = True,
     include_correlations: bool = True,
     include_plateau: bool = True,
+    plateau_windows_per_test: int = 10,
+    plateau_step_between_tests: int = 100,
+    plateau_alpha: float = 0.05,
+    plateau_number_consecutive_non_trending_tests: int = 1,
+    plateau_start_window_size: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Compute analysis metrics from raw metric values: mean and median values, CIs, correlations, and plateau detection.
@@ -606,69 +612,93 @@ def compute_analysis_for_metrics(
         analysis_df["Spearman Rho"] = np.nan
         analysis_df["Spearman P"] = np.nan
 
-    # 4. Compute plateau detection (based on mean values, per metric)
+    # 4. Compute MK plateau detection (based on mean values, per metric)
     if include_plateau:
-        # Convert to wide format for plateau detection
-        mean_values_wide = analysis_df.pivot_table(
-            index="Sample Size",
-            columns="Metric",
-            values="Mean Value",
-        ).reset_index()
-        mean_values_wide = mean_values_wide.rename(
-            columns={"Sample Size": "sample_size"}
-        )
-        mean_values_wide["sample_id"] = 0
+        plateau_windows_per_test = max(1, int(plateau_windows_per_test))
+        plateau_step_between_tests = max(1, int(plateau_step_between_tests))
+        required_non_trending = max(1, int(plateau_number_consecutive_non_trending_tests))
 
-        plateau_df = helpers.detect_plateau_df(
-            measures_per_log={"log": mean_values_wide},
-            metric_columns=metric_list if include_metrics else None,
-            rel_threshold=0.025,  # 2.5% threshold
-            agg="mean",
-            min_runs=1,
-            report="current",
-        )
-
-        # Extract plateau values and merge (constant per metric)
-        # plateau_df now has MultiIndex columns: (log_name, 'Plateau n') and (log_name, 'Plateau Found')
-        if isinstance(plateau_df.columns, pd.MultiIndex):
-            # Extract Plateau n and Plateau Found columns for the "log" log name
-            if ("log", "Plateau n") in plateau_df.columns:
-                # Extract the Series and create a clean DataFrame
-                plateau_n_series = plateau_df[("log", "Plateau n")]
-                plateau_n_df = pd.DataFrame(
-                    {
-                        "Metric": plateau_n_series.index,
-                        "Plateau n": plateau_n_series.values,
-                    }
-                )
-                analysis_df = analysis_df.merge(
-                    plateau_n_df,
-                    on="Metric",
-                    how="left",
-                )
-            else:
-                analysis_df["Plateau n"] = None
-
-            if ("log", "Plateau Found") in plateau_df.columns:
-                # Extract the Series and create a clean DataFrame
-                plateau_found_series = plateau_df[("log", "Plateau Found")]
-                plateau_found_df = pd.DataFrame(
-                    {
-                        "Metric": plateau_found_series.index,
-                        "Plateau Found": plateau_found_series.values,
-                    }
-                )
-                analysis_df = analysis_df.merge(
-                    plateau_found_df,
-                    on="Metric",
-                    how="left",
-                )
-            else:
-                analysis_df["Plateau Found"] = False
+        # Map (metric, sample_size) -> mean value
+        mean_by_metric_size = {
+            (str(r["Metric"]), int(r["Sample Size"])): float(r["Mean Value"])
+            for _, r in analysis_df[["Metric", "Sample Size", "Mean Value"]].iterrows()
+            if pd.notna(r["Mean Value"])
+        }
+        available_sizes = sorted(analysis_df["Sample Size"].dropna().astype(int).unique().tolist())
+        if available_sizes:
+            start_size = (
+                int(plateau_start_window_size)
+                if plateau_start_window_size is not None
+                else int(available_sizes[0])
+            )
+            max_size = int(available_sizes[-1])
+            test_starts = list(range(start_size, max_size + 1, plateau_step_between_tests))
         else:
-            # Fallback for old format (shouldn't happen with new code)
-            analysis_df["Plateau n"] = None
-            analysis_df["Plateau Found"] = False
+            test_starts = []
+
+        plateau_rows: List[Dict[str, Any]] = []
+        for metric in metric_list:
+            found_n = np.nan
+            found = False
+            p_last = np.nan
+            tail_sizes_last: List[int] = []
+            tail_means_last: List[float] = []
+            non_trending_streak = 0
+            non_trending_streak_start = np.nan
+
+            for test_start in test_starts:
+                tail_sizes = [s for s in available_sizes if s >= test_start][:plateau_windows_per_test]
+                if len(tail_sizes) < plateau_windows_per_test:
+                    break
+                ys: List[float] = []
+                xs: List[int] = []
+                for s in tail_sizes:
+                    v = mean_by_metric_size.get((metric, int(s)))
+                    if v is None or not np.isfinite(v):
+                        continue
+                    xs.append(int(s))
+                    ys.append(float(v))
+                tail_sizes_last = xs
+                tail_means_last = ys
+                if len(ys) < 2:
+                    p_last = np.nan
+                    non_trending_streak = 0
+                    non_trending_streak_start = np.nan
+                    continue
+
+                if float(np.min(ys)) == float(np.max(ys)):
+                    p_val = 1.0
+                else:
+                    _, p = kendalltau(range(len(ys)), ys)
+                    p_val = float(p) if p is not None and np.isfinite(p) else np.nan
+                p_last = p_val
+
+                if np.isfinite(p_val) and p_val > plateau_alpha:
+                    if non_trending_streak == 0:
+                        non_trending_streak_start = float(xs[0])
+                    non_trending_streak += 1
+                    if non_trending_streak >= required_non_trending:
+                        found_n = non_trending_streak_start
+                        found = True
+                        break
+                else:
+                    non_trending_streak = 0
+                    non_trending_streak_start = np.nan
+
+            plateau_rows.append(
+                {
+                    "Metric": metric,
+                    "Plateau n": found_n,
+                    "Plateau Found": bool(found),
+                    "MK p-value": p_last,
+                    "MK alpha": float(plateau_alpha),
+                    "MK tail window sizes": ",".join(str(x) for x in tail_sizes_last),
+                    "MK tail means": ",".join(f"{x:.10g}" for x in tail_means_last),
+                }
+            )
+
+        plateau_df = pd.DataFrame(plateau_rows)
+        analysis_df = analysis_df.merge(plateau_df, on="Metric", how="left")
     else:
         analysis_df["Plateau n"] = np.nan
         analysis_df["Plateau Found"] = False

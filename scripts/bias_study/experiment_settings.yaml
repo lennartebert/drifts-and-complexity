@@ -12,29 +12,27 @@ full:
   bootstrap_replica_count: 0
   include_metrics: null
 
+  window_sizes:
+    start: 100
+    stop: 10000
+    step:  100
+
   correlation_analysis:
-    # Pearson / Spearman vs window size. Windows: start, stop (inclusive), step.
-    window_sizes:
-      start: 50
-      stop: 1000
-      step: 50
+    start: 100
+    stop: 1000
 
   plateau_analysis:
     # Mann-Kendall trend test on tail
     # Plateauing if p_value > alpha (no significant monotonic trend).
-    windows_per_test:
-      count: 10
-      step: 50
-    starting_window_size: 50
-    max_window_size: 9500
-    step_between_tests: 500
+    windows_per_test: 10
+    step_between_tests: 1000
     alpha: 0.05
     number_consecutive_non_trending_tests: 1
 
   reliability_analysis:
     # Across-sample relative CI width (RelCI) at these window sizes; same list is passed to
     # combine_analysis_with_means as ref_sizes (master columns RelCI {n}).
-    window_sizes: [50, 500, 1000]
+    window_sizes: [100, 500, 10000]
 
 test:
   samples_per_size: 2
@@ -42,24 +40,20 @@ test:
   bootstrap_replica_count: 0
   include_metrics: null
 
+  window_sizes:
+    start: 100
+    stop: 1000
+    step: 100
+
   correlation_analysis:
-    window_sizes:
-      start: 50
-      stop: 100
-      step: 50
+    start: 100
+    stop: 500
 
   plateau_analysis:
-    # Same MK-based criterion as full profile; smaller stop for fast smoke test.
-    windows_per_test:
-      count: 10
-      step: 10
-    starting_window_size: 50
-    # Keep only complete tests with strict full-window requirement:
-    # start + (count-1)*step must stay <= log/test max.
-    max_window_size: 410
-    step_between_tests: 50
+    windows_per_test: 4
+    step_between_tests: 200
     alpha: 0.05
-    number_consecutive_non_trending_tests: 2
+    number_consecutive_non_trending_tests: 1
 
   reliability_analysis:
-    window_sizes: [50, 100, 150]
+    window_sizes: [100, 500, 1000]
