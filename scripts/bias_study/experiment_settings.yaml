@@ -16,7 +16,7 @@ full:
     # Pearson / Spearman vs window size. Windows: start, stop (inclusive), step.
     window_sizes:
       start: 50
-      stop: 500
+      stop: 1000
       step: 50
 
   plateau_analysis:
