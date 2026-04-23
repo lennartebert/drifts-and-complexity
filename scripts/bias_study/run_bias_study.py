@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from pm4py.objects.log.importer.xes import importer as xes_importer
 
-from utils import constants, helpers, sampling_helper
+from utils import constants, helpers
 from utils.bootstrapping.bootstrap_samplers.bootstrap_sampler import BootstrapSampler
 from utils.comparison_table import build_comparison_table_if_exists
 from utils.complexity.metrics_adapters.local_metrics_adapter import LocalMetricsAdapter
@@ -119,6 +119,47 @@ METRICS_FOR_LOG_STATISTICS = [
     "Number of Distinct Directly-Follows Relations",
     "Avg. Trace Length",
 ]
+
+
+def _sample_consecutive_windows_by_size_and_sample_id(
+    pm4py_log: Any,
+    size_to_sample_ids: Dict[int, List[str]],
+    random_state: int,
+) -> List[tuple[int, str, Window]]:
+    """
+    Deterministically sample consecutive windows for specific (size, sample_id) pairs.
+
+    Sampling seed is derived from (random_state, size, sample_id), so recomputing only
+    missing sample IDs yields the exact same windows as full recomputation.
+    """
+    traces = list(pm4py_log)
+    n_traces = len(traces)
+    if n_traces == 0:
+        return []
+
+    out: List[tuple[int, str, Window]] = []
+    base_seed = int(random_state)
+    for size in sorted(size_to_sample_ids.keys()):
+        s = int(size)
+        if s <= 0:
+            continue
+        if s > n_traces:
+            continue
+        for sample_id in sorted(size_to_sample_ids[s], key=lambda x: int(x)):
+            sid_i = int(sample_id)
+            seed_seq = np.random.SeedSequence([base_seed, s, sid_i])
+            derived_seed = int(seed_seq.generate_state(1, dtype=np.uint32)[0])
+            rng = np.random.default_rng(derived_seed)
+            start_idx = int(rng.integers(low=0, high=n_traces - s + 1))
+            chosen_traces = traces[start_idx : start_idx + s]
+            out.append(
+                (
+                    s,
+                    str(sample_id),
+                    Window(id=str(sample_id), size=s, traces=chosen_traces),
+                )
+            )
+    return out
 
 
 # --- Helper functions for event log statistics ---
@@ -354,23 +395,33 @@ def compute_results(
             if {"Metric", "Sample Size", "Sample ID", "Value"}.issubset(
                 set(raw_existing.columns)
             ):
-                existing_sizes = set(
-                    raw_existing["Sample Size"].dropna().astype(int).tolist()
+                required_sizes = sorted(int(s) for s in all_window_sizes_f)
+                expected_sample_ids = [str(i) for i in range(settings.samples_per_size)]
+                sample_ids_by_size = (
+                    raw_existing[["Sample Size", "Sample ID"]]
+                    .dropna(subset=["Sample Size", "Sample ID"])
+                    .drop_duplicates()
+                    .assign(**{"Sample Size": lambda d: d["Sample Size"].astype(int)})
+                    .assign(**{"Sample ID": lambda d: d["Sample ID"].astype(str)})
+                    .groupby("Sample Size")["Sample ID"]
+                    .apply(list)
                 )
-                required_sizes = set(int(s) for s in all_window_sizes_f)
-                missing_sizes = sorted(required_sizes - existing_sizes)
-                if missing_sizes:
+                missing_by_size: Dict[int, List[str]] = {}
+                for s in required_sizes:
+                    existing_ids = set(sample_ids_by_size.get(s, []))
+                    missing_ids = [sid for sid in expected_sample_ids if sid not in existing_ids]
+                    if missing_ids:
+                        missing_by_size[s] = missing_ids
+
+                if missing_by_size:
                     print(
-                        "Found existing raw metrics but missing required window sizes. "
-                        f"Computing missing sizes only: {missing_sizes}"
+                        "Found existing raw metrics but some required (size, sample_id) "
+                        "pairs are missing. Computing missing pairs only."
                     )
-                    window_samples_missing = (
-                        sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                            pm4py_log,
-                            missing_sizes,
-                            settings.samples_per_size,
-                            settings.random_state,
-                        )
+                    window_samples_missing = _sample_consecutive_windows_by_size_and_sample_id(
+                        pm4py_log,
+                        missing_by_size,
+                        settings.random_state,
                     )
                     raw_missing_df = compute_metrics_for_samples(
                         window_samples_missing,
@@ -400,13 +451,14 @@ def compute_results(
                     "Existing raw metrics file has unexpected schema. "
                     "Recomputing from scratch."
                 )
-                window_samples_all = (
-                    sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                        pm4py_log,
-                        all_window_sizes_f,
-                        settings.samples_per_size,
-                        settings.random_state,
-                    )
+                full_pairs = {
+                    int(s): [str(i) for i in range(settings.samples_per_size)]
+                    for s in all_window_sizes_f
+                }
+                window_samples_all = _sample_consecutive_windows_by_size_and_sample_id(
+                    pm4py_log,
+                    full_pairs,
+                    settings.random_state,
                 )
                 raw_metrics_df = compute_metrics_for_samples(
                     window_samples_all,
@@ -418,13 +470,14 @@ def compute_results(
                 ).sort_index()
                 raw_metrics_df.to_csv(raw_metrics_path)
         else:
-            window_samples_all = (
-                sampling_helper.sample_consecutive_trace_windows_with_replacement(
-                    pm4py_log,
-                    all_window_sizes_f,
-                    settings.samples_per_size,
-                    settings.random_state,
-                )
+            full_pairs = {
+                int(s): [str(i) for i in range(settings.samples_per_size)]
+                for s in all_window_sizes_f
+            }
+            window_samples_all = _sample_consecutive_windows_by_size_and_sample_id(
+                pm4py_log,
+                full_pairs,
+                settings.random_state,
             )
             raw_metrics_df = compute_metrics_for_samples(
                 window_samples_all,
