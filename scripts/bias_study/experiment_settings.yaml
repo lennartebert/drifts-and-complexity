@@ -32,7 +32,7 @@ full:
   reliability_analysis:
     # Across-sample relative CI width (RelCI) at these window sizes; same list is passed to
     # combine_analysis_with_means as ref_sizes (master columns RelCI {n}).
-    window_sizes: [100, 500, 10000]
+    window_sizes: [100, 500, 1000]
 
 test:
   samples_per_size: 2
