@@ -245,10 +245,11 @@ def _summary_below_tabular_legend(
     sizes_join = ", ".join(nums)
     rho_name = "Spearman" if correlation == "Spearman" else "Pearson"
     return f"""{{\\centering
+\\vspace{{0.5em}}
 $\\rho$: {rho_name} correlation \\quad
 \\textit{{ES}}: Effect size~\\cite{{Cohen2009StatisticalPowerAnalysis}} \\quad
-($|\\rho|\\geq 0.1$ small, $\\geq 0.3$ medium, $\\geq 0.5$ large) \\quad
-PR: Plateau reached (X/Y logs) \\quad
+($|\\rho|\\in[0.1,0.3)$ small, $|\\rho|\\in[0.3,0.5)$ medium, $|\\rho|\\geq 0.5$ large) \\quad
+PR: Plateau reached (X/Y logs) \\
 Rel.\\ CI {relci_join}: 95\\% relative CI at window sizes {sizes_join}
 }}
 
