@@ -35,8 +35,6 @@ This repository contains the code and data for empirical studies on concept drif
      git submodule update --init plugins/cdrift_evaluation
      ```
 
-   **Note:** If you encounter authentication errors when installing *optional* plugins, the repositories may be private. Contact the repository maintainer for access if needed.
-
 3. **Verify installation:**
    ```bash
    python --version  # Should be 3.10.x or 3.11.x
@@ -53,7 +51,7 @@ This repository contains the code and data for empirical studies on concept drif
 
 ## Run/Replicate Analysis
 
-### Sampling-Window Bias: Threats to Construct Validity and Reliability in Process Complexity Measurement
+### Window-Size Bias: Threats to Construct Validity and Reliability in Process Complexity Measurement
 
 Run the bias study via module execution:
 
@@ -62,6 +60,11 @@ python -m scripts.bias_study.run_bias_study
 ```
 
 By default, this runs all scenarios from `scripts/bias_study/scenarios.yaml` except `test`, using the `full` profile from `scripts/bias_study/experiment_settings.yaml`.
+
+Then, run the Latex generation:
+```bash
+python -m scripts.bias_study.generate_latex
+```
 
 **Typical commands:**
 - Run selected scenarios:
@@ -84,7 +87,7 @@ By default, this runs all scenarios from `scripts/bias_study/scenarios.yaml` exc
 
 **Output:** Bias study results are saved in `results/bias_study/<scenario_name>/`.
 
-**Submitted results:** Permanent (submitted) results for this study are saved under `results/perm/CAiSE2026/...`.
+**Submitted results:** Permanent (submitted) results for this study are saved under `results/perm/CBI2026/...`.
 
 ### Drifts and Complexity Analysis Pipeline
 

@@ -348,54 +348,58 @@ def compute_results(
         log: info for log, info in data_dictionary.items() if log in list_of_logs
     }
 
+    scenario_out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name
+    scenario_out_dir.mkdir(parents=True, exist_ok=True)
+    existing_log_stats_path = scenario_out_dir / "log_statistics.csv"
+    log_statistics_by_log: Dict[str, Dict[str, Any]] = {}
+    if existing_log_stats_path.exists():
+        existing_stats_df = pd.read_csv(existing_log_stats_path)
+        for _, row in existing_stats_df.iterrows():
+            existing_log_name = str(row.get("Event Log", "")).strip()
+            if not existing_log_name:
+                continue
+            existing_entry: Dict[str, Any] = {
+                "type": row.get("Type", ""),
+                "log_name": existing_log_name,
+                "description": row.get("Description", ""),
+            }
+            for metric_name in METRICS_FOR_LOG_STATISTICS:
+                if metric_name in existing_stats_df.columns:
+                    existing_entry[metric_name] = row.get(metric_name)
+            log_statistics_by_log[existing_log_name] = existing_entry
+
     # Store population sizes (number of traces) for FPC
     log_population_sizes: Dict[str, int] = {}
     # Store analysis results per log
     analysis_per_log: Dict[str, pd.DataFrame] = {}
-    # Store log statistics for summary table
-    log_statistics: List[Dict[str, any]] = []
 
     # Get metric adapter for computing basic log statistics
     basic_metrics_adapter = LocalMetricsAdapter()
 
     for log_name, dataset_info in data_dictionary.items():
         print(f"Computing for {log_name}")
-        log_path = Path(dataset_info["path"])
-        pm4py_log = xes_importer.apply(str(log_path))
-        # Store population size (number of traces) for FPC
-        log_n = len(pm4py_log)
-        log_population_sizes[log_name] = log_n
-        all_window_sizes_f = [s for s in settings.window_sizes if s <= log_n]
-        correlation_sizes_f = [
-            s
-            for s in all_window_sizes_f
-            if settings.correlation_start <= s <= settings.correlation_stop
-        ]
-        reliability_sizes_f = [s for s in settings.reliability_sizes if s <= log_n]
-
-        # Compute basic log statistics
-        basic_metrics = compute_metrics_for_log_statistics(
-            pm4py_log, basic_metrics_adapter, population_extractor
-        )
-        log_statistics.append(
-            {
-                "type": dataset_info["type"],
-                "log_name": log_name,  # Use the key (e.g., BPIC12)
-                "description": dataset_info["name"],
-                **basic_metrics,
-            }
-        )
+        existing_stats_for_log = log_statistics_by_log.get(log_name)
+        if existing_stats_for_log is not None:
+            n_pop_val = existing_stats_for_log.get("Number of Traces")
+            if pd.notna(n_pop_val):
+                try:
+                    log_population_sizes[log_name] = int(float(n_pop_val))
+                except (TypeError, ValueError):
+                    pass
 
         out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name / log_name
         out_dir.mkdir(parents=True, exist_ok=True)
         raw_metrics_path = out_dir / "raw_metrics.csv"
+        raw_metrics_df: Optional[pd.DataFrame] = None
+        pm4py_log = None
+        all_window_sizes_f: List[int] = []
 
         if reuse_raw_metrics_if_available and raw_metrics_path.exists():
             raw_existing = pd.read_csv(raw_metrics_path)
             if {"Metric", "Sample Size", "Sample ID", "Value"}.issubset(
                 set(raw_existing.columns)
             ):
-                required_sizes = sorted(int(s) for s in all_window_sizes_f)
+                required_sizes = sorted(int(s) for s in settings.window_sizes)
                 expected_sample_ids = [str(i) for i in range(settings.samples_per_size)]
                 sample_ids_by_size = (
                     raw_existing[["Sample Size", "Sample ID"]]
@@ -406,51 +410,125 @@ def compute_results(
                     .groupby("Sample Size")["Sample ID"]
                     .apply(list)
                 )
-                missing_by_size: Dict[int, List[str]] = {}
+                missing_by_size_from_cache: Dict[int, List[str]] = {}
                 for s in required_sizes:
                     existing_ids = set(sample_ids_by_size.get(s, []))
                     missing_ids = [sid for sid in expected_sample_ids if sid not in existing_ids]
                     if missing_ids:
-                        missing_by_size[s] = missing_ids
+                        missing_by_size_from_cache[s] = missing_ids
 
-                if missing_by_size:
+                if not missing_by_size_from_cache:
+                    raw_metrics_df = raw_existing.set_index(["Metric", "Sample Size"])
+                    print(
+                        f"Reusing existing raw metrics without log parsing: {raw_metrics_path}"
+                    )
+                    cached_sizes = {
+                        int(s)
+                        for s in raw_existing["Sample Size"].dropna().astype(int).unique()
+                    }
+                    all_window_sizes_f = [s for s in settings.window_sizes if s in cached_sizes]
+                else:
                     print(
                         "Found existing raw metrics but some required (size, sample_id) "
                         "pairs are missing. Computing missing pairs only."
                     )
-                    window_samples_missing = _sample_consecutive_windows_by_size_and_sample_id(
+            else:
+                print(
+                    "Existing raw metrics file has unexpected schema. "
+                    "Recomputing from scratch."
+                )
+
+        if raw_metrics_df is None:
+            log_path = Path(dataset_info["path"])
+            pm4py_log = xes_importer.apply(str(log_path))
+            # Store population size (number of traces) for FPC
+            log_n = len(pm4py_log)
+            log_population_sizes[log_name] = log_n
+            all_window_sizes_f = [s for s in settings.window_sizes if s <= log_n]
+
+            # Compute basic log statistics (only when log is loaded)
+            basic_metrics = compute_metrics_for_log_statistics(
+                pm4py_log, basic_metrics_adapter, population_extractor
+            )
+            log_statistics_by_log[log_name] = {
+                "type": dataset_info["type"],
+                "log_name": log_name,  # Use the key (e.g., BPIC12)
+                "description": dataset_info["name"],
+                **basic_metrics,
+            }
+
+            if reuse_raw_metrics_if_available and raw_metrics_path.exists():
+                raw_existing = pd.read_csv(raw_metrics_path)
+                if {"Metric", "Sample Size", "Sample ID", "Value"}.issubset(
+                    set(raw_existing.columns)
+                ):
+                    required_sizes = sorted(int(s) for s in all_window_sizes_f)
+                    expected_sample_ids = [str(i) for i in range(settings.samples_per_size)]
+                    sample_ids_by_size = (
+                        raw_existing[["Sample Size", "Sample ID"]]
+                        .dropna(subset=["Sample Size", "Sample ID"])
+                        .drop_duplicates()
+                        .assign(**{"Sample Size": lambda d: d["Sample Size"].astype(int)})
+                        .assign(**{"Sample ID": lambda d: d["Sample ID"].astype(str)})
+                        .groupby("Sample Size")["Sample ID"]
+                        .apply(list)
+                    )
+                    missing_by_size: Dict[int, List[str]] = {}
+                    for s in required_sizes:
+                        existing_ids = set(sample_ids_by_size.get(s, []))
+                        missing_ids = [sid for sid in expected_sample_ids if sid not in existing_ids]
+                        if missing_ids:
+                            missing_by_size[s] = missing_ids
+
+                    if missing_by_size:
+                        window_samples_missing = _sample_consecutive_windows_by_size_and_sample_id(
+                            pm4py_log,
+                            missing_by_size,
+                            settings.random_state,
+                        )
+                        raw_missing_df = compute_metrics_for_samples(
+                            window_samples_missing,
+                            population_extractor=population_extractor,
+                            metric_adapters=metric_adapters,
+                            bootstrap_sampler=bootstrap_sampler,
+                            normalizers=normalizers,
+                            include_metrics=include_metrics,
+                        ).sort_index()
+                        raw_metrics_df = pd.concat(
+                            [raw_existing, raw_missing_df.reset_index()],
+                            ignore_index=True,
+                        )
+                        raw_metrics_df = raw_metrics_df.drop_duplicates(
+                            subset=["Metric", "Sample Size", "Sample ID"],
+                            keep="last",
+                        )
+                        raw_metrics_df = raw_metrics_df.set_index(
+                            ["Metric", "Sample Size"]
+                        ).sort_index()
+                        raw_metrics_df.to_csv(raw_metrics_path)
+                    else:
+                        raw_metrics_df = raw_existing.set_index(["Metric", "Sample Size"])
+                        print(f"Reusing existing raw metrics: {raw_metrics_path}")
+                else:
+                    full_pairs = {
+                        int(s): [str(i) for i in range(settings.samples_per_size)]
+                        for s in all_window_sizes_f
+                    }
+                    window_samples_all = _sample_consecutive_windows_by_size_and_sample_id(
                         pm4py_log,
-                        missing_by_size,
+                        full_pairs,
                         settings.random_state,
                     )
-                    raw_missing_df = compute_metrics_for_samples(
-                        window_samples_missing,
+                    raw_metrics_df = compute_metrics_for_samples(
+                        window_samples_all,
                         population_extractor=population_extractor,
                         metric_adapters=metric_adapters,
                         bootstrap_sampler=bootstrap_sampler,
                         normalizers=normalizers,
                         include_metrics=include_metrics,
                     ).sort_index()
-                    raw_metrics_df = pd.concat(
-                        [raw_existing, raw_missing_df.reset_index()],
-                        ignore_index=True,
-                    )
-                    raw_metrics_df = raw_metrics_df.drop_duplicates(
-                        subset=["Metric", "Sample Size", "Sample ID"],
-                        keep="last",
-                    )
-                    raw_metrics_df = raw_metrics_df.set_index(
-                        ["Metric", "Sample Size"]
-                    ).sort_index()
                     raw_metrics_df.to_csv(raw_metrics_path)
-                else:
-                    raw_metrics_df = raw_existing.set_index(["Metric", "Sample Size"])
-                    print(f"Reusing existing raw metrics: {raw_metrics_path}")
             else:
-                print(
-                    "Existing raw metrics file has unexpected schema. "
-                    "Recomputing from scratch."
-                )
                 full_pairs = {
                     int(s): [str(i) for i in range(settings.samples_per_size)]
                     for s in all_window_sizes_f
@@ -469,25 +547,16 @@ def compute_results(
                     include_metrics=include_metrics,
                 ).sort_index()
                 raw_metrics_df.to_csv(raw_metrics_path)
-        else:
-            full_pairs = {
-                int(s): [str(i) for i in range(settings.samples_per_size)]
-                for s in all_window_sizes_f
-            }
-            window_samples_all = _sample_consecutive_windows_by_size_and_sample_id(
-                pm4py_log,
-                full_pairs,
-                settings.random_state,
-            )
-            raw_metrics_df = compute_metrics_for_samples(
-                window_samples_all,
-                population_extractor=population_extractor,
-                metric_adapters=metric_adapters,
-                bootstrap_sampler=bootstrap_sampler,
-                normalizers=normalizers,
-                include_metrics=include_metrics,
-            ).sort_index()
-            raw_metrics_df.to_csv(raw_metrics_path)
+
+        correlation_sizes_f = [
+            s
+            for s in all_window_sizes_f
+            if settings.correlation_start <= s <= settings.correlation_stop
+        ]
+        reliability_sizes_f = [s for s in settings.reliability_sizes if s in set(all_window_sizes_f)]
+
+        if raw_metrics_df is None:
+            raise RuntimeError(f"raw_metrics_df was not built for log {log_name}")
 
         # Correlation analysis (rho / Pearson vs window size)
         corr_metrics = raw_metrics_df.reset_index()
@@ -614,8 +683,7 @@ def compute_results(
 
         analysis_per_log[log_name] = analysis_df
 
-    out_dir = constants.BIAS_STUDY_RESULTS_DIR / scenario_name
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = scenario_out_dir
 
     # Compute sample size for FPC (correlation interval over configured window grid)
     correlation_window_count = len(
@@ -670,8 +738,8 @@ def compute_results(
             out_csv_path=comparison_csv_path,
         )
 
-    if log_statistics:
-        log_stats_df = build_log_statistics_dataframe(log_statistics)
+    if log_statistics_by_log:
+        log_stats_df = build_log_statistics_dataframe(list(log_statistics_by_log.values()))
         log_stats_csv_path = out_dir / "log_statistics.csv"
         log_stats_df.to_csv(log_stats_csv_path, index=False)
         print(f"Log statistics table saved to: {log_stats_csv_path}")

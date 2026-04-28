@@ -1,0 +1,49 @@
+\begin{table}[ht]
+\centering
+\setlength{\tabcolsep}{3pt}
+
+\caption{Summarized diagnostic results for real-world data}
+\label{tab:summarized_master_means_real_base}
+\begin{tabular}{llcccccc}
+\toprule
+ & & \multicolumn{2}{c}{Corr.} & Conv. & \multicolumn{3}{c}{Var.} \\
+Dimension & Measure & $\rho$ & ES & PR & Rel.\ CI 100 & Rel.\ CI 500 & Rel.\ CI 1000 \\
+\midrule
+Length & $\#\text{Events}$ & 0.9787 & large & 0 / 2 & 0.4821 & 0.3435 & 0.3067 \\
+ & $\#\text{Traces}$ & 1.0000 & large & 0 / 2 & 0.0000 & 0.0000 & 0.0000 \\
+\midrule
+Size & $|\text{Act.}|$ & 0.4253 & medium & 2 / 2 & 0.3132 & 0.1671 & 0.0705 \\
+ & $|\text{Traces}|$ & 0.8558 & large & 1 / 2 & 0.4980 & 0.5136 & 0.4728 \\
+ & $|\text{DFR}|$ & 0.7387 & large & 2 / 2 & 0.4874 & 0.4116 & 0.2827 \\
+ & $\text{Min. TL}$ & -0.0496 & --- & 2 / 2 & 0.0000 & 0.0000 & 0.0000 \\
+ & $\text{Avg. TL}$ & -0.0178 & --- & 2 / 2 & 0.4821 & 0.3435 & 0.3067 \\
+ & $\text{Max. TL}$ & 0.4210 & medium & 2 / 2 & 0.6079 & 0.5483 & 0.4031 \\
+\midrule
+Variation & $\%|\text{Traces}|$ & -0.7295 & large & 1 / 2 & 0.4980 & 0.5136 & 0.4728 \\
+ & $\text{Avg.\ } | \text{Act.}| /\text{Trace}$ & -0.0158 & --- & 2 / 2 & 0.4111 & 0.2967 & 0.2801 \\
+ & $\text{Structure}$ & -0.5211 & large & 2 / 2 & 0.1181 & 0.0744 & 0.0695 \\
+ & $\text{Est.\ } |\text{AP}|$ & 0.7459 & large & 2 / 2 & 2.2282 & 2.6937 & 2.1574 \\
+ & $\#\text{TPG}$ & 0.8378 & large & 1 / 2 & 0.7520 & 0.7259 & 0.5874 \\
+ & $\text{LZ}$ & 0.9791 & large & 0 / 2 & 0.2978 & 0.2673 & 0.2032 \\
+\midrule
+Distance & Avg.\ Affinity & -0.0165 & --- & 2 / 2 & 0.2709 & 0.1973 & 0.1839 \\
+ & Dev.\ from Rand. & 0.0266 & --- & 2 / 2 & 0.0869 & 0.0646 & 0.0453 \\
+ & Avg.\ Edit Dist. & 0.0270 & --- & 2 / 2 & 0.5110 & 0.3299 & 0.2482 \\
+\midrule
+Graph Entropy & Seq.\ Entropy & 0.9413 & large & 0 / 2 & 0.7539 & 0.5772 & 0.5881 \\
+ & Norm.\ Seq.\ Entropy & 0.0270 & --- & 2 / 2 & 0.4931 & 0.4604 & 0.4242 \\
+ & Var.\ Entropy & 0.8163 & large & 1 / 2 & 1.0623 & 0.8916 & 0.7260 \\
+ & Norm.\ Var.\ Entropy & 0.6568 & large & 1 / 2 & 0.1937 & 0.1164 & 0.0912 \\
+\bottomrule
+\end{tabular}
+
+{\centering
+\vspace{0.5em}
+$\rho$: Spearman correlation \quad
+\textit{ES}: Effect size~\cite{Cohen2009StatisticalPowerAnalysis} \quad
+($|\rho|\in[0.1,0.3)$ small, $|\rho|\in[0.3,0.5)$ medium, $|\rho|\geq 0.5$ large) \quad
+PR: Plateau reached (X/Y logs) \
+Rel.\ CI 100/500/1000: 95\% relative CI at window sizes 100, 500, 1000
+}
+
+\end{table}
